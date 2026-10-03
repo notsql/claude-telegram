@@ -8,6 +8,7 @@
 
 import { parseStreamJson, type InitEvent, type ResultEvent, type StreamEvent } from './stream.ts'
 import { TELEGRAM_INSTRUCTIONS } from './prompt.ts'
+import { createInitGuard } from './initGuard.ts'
 
 export type RunTurnOpts = {
   /** Rendered hook settings file (`hooks/settings.ts`). */
@@ -25,6 +26,8 @@ export type TurnOutcome = {
   init?: InitEvent
   /** Missing when the child exited without a `result` (e.g. SIGTERM). */
   result?: ResultEvent
+  /** Set when the never-bare guard (FR14) killed the turn; the caller alerts the owner. */
+  refused?: string[]
   exitCode: number
 }
 
@@ -59,7 +62,14 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
   })
 
   const outcome: Omit<TurnOutcome, 'exitCode'> = {}
+  const guard = createInitGuard()
   for await (const ev of parseStreamJson(child.stdout)) {
+    const problems = guard(ev)
+    if (problems?.length) {
+      outcome.refused = problems
+      child.kill('SIGTERM')
+      break
+    }
     if (ev.kind === 'init') {
       outcome.init = ev.event
       sessionId = ev.event.session_id
