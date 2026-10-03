@@ -37,6 +37,6 @@
   *Verify:* a 30-second task shows edits and the final message triggers a push notification.
 - [ ] **T013** Service install: launchd and systemd templates (`PATH` including `claude` and `bun`), log directory.
   *Verify:* AC5.
-- [ ] **T014** Config: `maxTurns`, daily turn budget, default workspace `cwd`, minimum CLI version check.
+- [x] **T014** Config: `maxTurns`, daily turn budget, default workspace `cwd`, minimum CLI version check.
 - [ ] **T015** Update README and ACCESS.md for daemon mode.
   *Verify:* a fresh-install walkthrough works end to end.

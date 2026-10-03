@@ -19,6 +19,7 @@ export type RunTurnOpts = {
   mcpToken: string
   hookToken: string
   cwd: string
+  maxTurns: number
   /** Every parsed event, for logging and progress. */
   onEvent?: (ev: StreamEvent) => void
   /** Abort ends the turn via `interruptChild` (FR8, FR9). */
@@ -72,6 +73,7 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     '--append-system-prompt', TELEGRAM_INSTRUCTIONS,
     // The daemon's own tools; with no handler a PermissionRequest denies in -p.
     '--allowedTools', 'mcp__tg',
+    '--max-turns', String(opts.maxTurns),
   ], {
     cwd: opts.cwd,
     stdin: 'ignore',

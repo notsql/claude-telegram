@@ -11,7 +11,6 @@ import type { ReactionTypeEmoji } from 'grammy/types'
 import { readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { randomBytes } from 'crypto'
-import { homedir } from 'os'
 import { join } from 'path'
 import {
   STATE_DIR, initAccess, setBotUsername, loadAccess,
@@ -24,6 +23,7 @@ import { writeHookSettings } from './hooks/settings.ts'
 import { runTurn } from './agent/runner.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
+import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
@@ -58,9 +58,27 @@ if (keyRefusal) {
   process.exit(1)
 }
 
+let config: ReturnType<typeof loadConfig>
+try {
+  config = loadConfig(process.env)
+} catch (err) {
+  log(String(err instanceof Error ? err.message : err))
+  process.exit(1)
+}
+
+// FR12: the stream-json and hook shapes are pinned to a minimum CLI version.
+const versionRefusal = cliVersionRefusal(
+  Bun.spawnSync(['claude', '--version'], { stdout: 'pipe', stderr: 'ignore' }).stdout?.toString() ?? '',
+)
+if (versionRefusal) {
+  log(versionRefusal)
+  process.exit(1)
+}
+
 // FR7: one getUpdates consumer per token. Replace a stale daemon, verifying
 // the PID still belongs to one (PIDs get recycled).
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+mkdirSync(config.cwd, { recursive: true })
 try {
   const stale = parseInt(readFileSync(PID_FILE, 'utf8'), 10)
   if (stale > 1 && stale !== process.pid) {
@@ -103,6 +121,7 @@ let currentTurn: AbortController | undefined
 const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
 // FR10: set when a turn hits a usage limit; queued turns wait until then.
 let pausedUntil = 0
+const budget = createTurnBudget(config.dailyTurnBudget)
 
 const pauseMessage = (until: number) => `Usage limit reached. Paused until ${new Date(until).toLocaleString()}.`
 
@@ -117,6 +136,10 @@ function enqueueTurn(chat_id: string, prompt: string): void {
       })
       if (turnAbort.signal.aborted) return
     }
+    if (!budget.take()) {
+      await bot.api.sendMessage(chat_id, `Daily turn budget (${config.dailyTurnBudget}) used up. Try again tomorrow.`).catch(() => {})
+      return
+    }
     const turn = currentTurn = new AbortController()
     const progress = startProgress(bot.api, chat_id)
     const outcome = await runTurn(chat_id, prompt, {
@@ -124,7 +147,8 @@ function enqueueTurn(chat_id: string, prompt: string): void {
       mcpPort: mcpServer.port,
       mcpToken,
       hookToken,
-      cwd: homedir(),
+      cwd: config.cwd,
+      maxTurns: config.maxTurns,
       signal: AbortSignal.any([turnAbort.signal, turn.signal]),
       onEvent: progress.onEvent,
     }).finally(() => {
