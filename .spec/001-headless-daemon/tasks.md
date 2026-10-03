@@ -31,7 +31,7 @@
   *Verify:* AC2, AC3, and SIGTERM exits in under 10 seconds.
 - [x] **T010** Auth guard and usage-limit handling: API-key refusal, login check, pause and notify.
   *Verify:* AC7.
-- [ ] **T011** `/stop` with SIGINT then SIGKILL, and the `interruptOnNewMessage` flag.
+- [x] **T011** `/stop` with SIGINT then SIGKILL, and the `interruptOnNewMessage` flag.
   *Verify:* AC4.
 - [ ] **T012** Progress UX: typing loop and an edited progress message, with a new final message at the end.
   *Verify:* a 30-second task shows edits and the final message triggers a push notification.
