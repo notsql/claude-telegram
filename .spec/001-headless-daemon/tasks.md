@@ -19,7 +19,7 @@
   *Verify:* the test passes, and fails on a doctored fixture.
 - [x] **T005** `mcp/server.ts` (streamable HTTP, `127.0.0.1`, bearer token, session binding) and `mcp/telegramTools.ts`.
   *Verify:* AC8, and the `claude` CLI lists `mcp__tg__reply`.
-- [ ] **T006** `hooks/endpoint.ts` and `hooks/settings.ts` (http hooks, async observational hooks, timeouts derived from config).
+- [x] **T006** `hooks/endpoint.ts` and `hooks/settings.ts` (http hooks, async observational hooks, timeouts derived from config).
   *Verify:* the daemon logs each hook event during a turn, and AC6 (the terminal runs no daemon hooks).
 - [ ] **T007** `agent/runner.ts` `runTurn()` with a single global session (002 replaces this) and `--append-system-prompt`.
   *Verify:* AC1.
