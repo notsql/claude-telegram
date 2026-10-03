@@ -6,23 +6,27 @@
   *Verify:* the legacy `claude --channels` flow still pairs and replies.
 - [ ] **T003** **CLI spike**: confirm and document, against the installed `claude` version:
   - `-p` with `--resume`, `--output-format stream-json --verbose`
-  - `--settings` hook merge
-  - `--mcp-config` with an HTTP server
+  - `--settings` hook merge, `http` hook type with `headers` + `allowedEnvVars`, and whether `url` interpolates env
+  - `--mcp-config` with an HTTP server (and the `system/init` `mcp_servers` status)
   - `--append-system-prompt`, `--allowedTools`/`--disallowedTools`/`--permission-mode`/`--max-turns`
-  - hook stdin/stdout schemas (`additionalContext`, `permissionDecision`)
-  - how usage-limit errors appear in the output
+  - hook payloads and outputs: `SessionStart`/`UserPromptSubmit` `additionalContext`, `PermissionRequest` `decision.behavior` + `applyRule`, `PreToolUse` `permissionDecision`, `Stop` `transcript_path` + `last_assistant_message`
+  - SIGINT vs SIGTERM behaviour mid-turn
+  - how usage-limit errors appear (`system/api_retry` `error` values, the error `result`)
+  - what `system/init` lists (tools, skills or slash commands?, plugins, `capabilities`)
   Record the findings in this plan.
   *Verify:* a scripted turn works with no `ANTHROPIC_API_KEY`, and the start latency is noted.
 - [ ] **T004** `agent/stream.ts` parser with fixtures from T003, plus a contract test (`test:contract`).
   *Verify:* the test passes, and fails on a doctored fixture.
 - [ ] **T005** `mcp/server.ts` (streamable HTTP, `127.0.0.1`, bearer token, session binding) and `mcp/telegramTools.ts`.
   *Verify:* AC8, and the `claude` CLI lists `mcp__tg__reply`.
-- [ ] **T006** `hooks/endpoint.ts`, `hooks/client.ts`, the settings template, and no-op hook scripts.
+- [ ] **T006** `hooks/endpoint.ts` and `hooks/settings.ts` (http hooks, async observational hooks, timeouts derived from config).
   *Verify:* the daemon logs each hook event during a turn, and AC6 (the terminal runs no daemon hooks).
 - [ ] **T007** `agent/runner.ts` `runTurn()` with a single global session (002 replaces this) and `--append-system-prompt`.
   *Verify:* AC1.
-- [ ] **T008** `agent/oneshot.ts`: `claude -p --model haiku --output-format json` with tools disabled and zod validation, for 004–006.
-  *Verify:* returns parsed JSON.
+- [ ] **T008** `agent/oneshot.ts`: `claude -p --agent <hermes-*> --output-format json --json-schema … --settings '{"disableAllHooks":true}'`, with zod as a second check, for 004–006 (agents from 009 T902; use `--model haiku` until then).
+  *Verify:* returns `structured_output`, and no hook events fire.
+- [ ] **T016** `agent/initGuard.ts` (FR14): never-bare checks on `system/init`.
+  *Verify:* AC9.
 - [ ] **T009** `daemon.ts`: bot startup, PID guard, approvals poller, error guards, graceful shutdown.
   *Verify:* AC2, AC3, and SIGTERM exits in under 10 seconds.
 - [ ] **T010** Auth guard and usage-limit handling: API-key refusal, login check, pause and notify.

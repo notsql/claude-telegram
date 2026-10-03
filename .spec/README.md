@@ -20,6 +20,10 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 | [005](./005-history-search/spec.md) | Session history search (FTS5) | P3 | 002, 003 |
 | [006](./006-skills-learning-loop/spec.md) | Self-authored skills / learning loop | P4 | 004, 005 |
 | [007](./007-scheduler/spec.md) | Scheduled jobs (cron) | P5 | 001–003 |
+| [009](./009-subagents-skills/spec.md) | Custom subagents & full skill usage | P2 (shipped agents), P4 (learned agents) | 001, 003, 004/006 |
+| [010](./010-agent-teams/spec.md) | Agent teams | **Deferred**: teams need an interactive session, which `-p` can't provide | 009 |
+
+Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](https://code.claude.com/docs/en/headless), [hooks](https://code.claude.com/docs/en/hooks), [sub-agents](https://code.claude.com/docs/en/sub-agents), [skills](https://code.claude.com/docs/en/skills), [agent-teams](https://code.claude.com/docs/en/agent-teams).
 
 ## Hermes → Claude Code mapping
 
@@ -31,11 +35,13 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 | User model (Honcho / `USER.md`) | Per-Telegram-user `type: user` memory files, refined by the reflection pass (004) |
 | FTS5 session search + LLM summary | An indexer over Claude Code's own `~/.claude/projects/**/*.jsonl` transcripts → `bun:sqlite` FTS5 cache (005) |
 | Skills created from experience | The reflection pass writes or patches `~/.claude/skills/<name>/SKILL.md` and tracks usage (006) |
-| "Nudges" to persist knowledge | `Stop` and `PreCompact` hooks trigger a reflection pass (`claude -p --model haiku`) shared by 004 and 006 |
+| "Nudges" to persist knowledge | `Stop` and `PreCompact` hooks trigger a reflection pass (`claude -p --agent hermes-reflector --json-schema`) shared by 004, 006 and 009 |
+| Specialised workers / delegation | Custom subagents in `~/.claude/agents/hermes-*` with their own model, tools, preloaded skills and `memory: user`. Chats can run as a named agent (`--agent`). The loop learns new agents for recurring roles (009) |
+| Parallel multi-agent teams | Claude Code agent teams: deferred until they work in `-p` (010) |
 | Context assembly | `SessionStart` and `UserPromptSubmit` hooks inject memory, the user model and recalled history (004/005) |
 | Scheduled automations | A daemon-owned `croner` scheduler, with results delivered to the originating chat or topic (007) |
 | Multi-platform messaging | Telegram DMs, groups and forum topics (002). Other platforms are a non-goal for now. |
-| Tool approval | The `PreToolUse` hook shows inline Allow / Deny / Always buttons, plus per-chat policy mapped to CLI flags (003) |
+| Tool approval | Claude Code's native permission rules first. The `PermissionRequest` http hook then shows inline Allow / Deny / Always buttons (`applyRule`), and `PreToolUse` enforces hard scope limits (003) |
 | Slash commands | Telegram bot menu (`setMyCommands`, scoped). These are a **fallback**; autonomy is the primary path (008) |
 
 ## Architecture
@@ -52,27 +58,28 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 │     --settings claude-settings.json  --mcp-config mcp.json          │
 │     --append-system-prompt …  [policy flags]                        │
 │     env: TG_SESSION_KEY TG_DAEMON_URL TG_HOOK_TOKEN                 │
-│        │ stream-json            │ MCP (HTTP)          │ hooks        │
+│        │ stream-json            │ MCP (HTTP)          │ http hooks   │
 │        ▼                        ▼                     ▼              │
 │  runner: session_id,     MCP server @127.0.0.1   hook endpoint       │
 │  progress, usage,        reply react edit        SessionStart/       │
-│  /stop = SIGINT          download memory_*       UserPromptSubmit →  │
-│                          history_search skill_*    inject context    │
-│                          schedule_* session_*    PreToolUse → policy │
-│                                                    + inline buttons  │
-│                                                  PostToolUse →       │
-│                                                    progress, usage   │
+│  subagent lines,         download memory_*       UserPromptSubmit →  │
+│  initGuard (never bare), history_search skill_*    inject context    │
+│  /stop = SIGINT          agent_* schedule_*      PermissionRequest → │
+│                          session_*                 inline buttons    │
+│                                                  PreToolUse → scope  │
+│                                                  PostToolUse/        │
+│                                                  Subagent* → usage   │
 │                                                  Stop/PreCompact →   │
 │                                                    reflection        │
 │  ┌──────────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
 │  │ reflection       │  │ history      │  │ scheduler            │   │
-│  │ claude -p haiku  │  │ indexer (005)│  │ (croner, 007)        │   │
-│  │ (004, 006)       │  │ JSONL→FTS5   │  │ → runTurn() → chat   │   │
+│  │ --agent hermes-  │  │ indexer (005)│  │ (croner, 007)        │   │
+│  │ reflector (009)  │  │ JSONL→FTS5   │  │ → runTurn() → chat   │   │
 │  └────────┬─────────┘  └──────────────┘  └──────────────────────┘   │
 └───────────┼─────────────────────────────────────────────────────────┘
             ▼
  ~/.claude/  (one brain, shared with the CLI)
-   CLAUDE.md · projects/<daemon>/memory/** · skills/** · projects/**/*.jsonl
+   CLAUDE.md · projects/<daemon>/memory/** · skills/** · agents/hermes-* · agent-memory/** · projects/**/*.jsonl
  ~/.claude/channels/telegram/  (daemon state)
    .env · access.json · sessions.json · jobs.json · history.db · skills-usage.json · inbox/
 ```

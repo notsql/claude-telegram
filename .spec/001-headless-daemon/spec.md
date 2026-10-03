@@ -23,19 +23,32 @@ Hermes itself hit a billing problem: it called the Anthropic API directly with t
   The child process gets the env vars `TG_SESSION_KEY`, `TG_DAEMON_URL` and `TG_HOOK_TOKEN`.
 - **FR2**: The normal Claude Code configuration (CLAUDE.md, skills, memory, user settings) loads as usual because this is the real CLI. Daemon-specific hooks are added **only** through `--settings`, so terminal sessions are unaffected unless the owner opts in (004 FR10).
 - **FR3**: Telegram and Hermes tools are served by an **MCP server inside the daemon** (streamable HTTP on `127.0.0.1`, bearer-token auth). `mcp.json` points the CLI to it. The tools reuse `server.ts` logic and share the daemon's in-memory state.
-- **FR4**: A **hook endpoint** inside the daemon (localhost HTTP, same token) receives calls from small hook scripts (`hooks/*.ts`, run by Bun). Hooks used: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop` and `PreCompact`. Their owners are 003–006.
+- **FR4**: A **hook endpoint** inside the daemon (localhost HTTP, same token) receives Claude Code **`http`-type hooks** directly. Claude Code POSTs the hook JSON to `${TG_DAEMON_URL}/hook/<event>` with an `Authorization` header filled from env through `allowedEnvVars`, so no hook scripts are needed. Hooks used:
+  - `SessionStart`, `UserPromptSubmit` (004/005)
+  - `PreToolUse`, `PermissionRequest` (003)
+  - `PostToolUse`, `SubagentStart`, `SubagentStop` (006/009)
+  - `Stop`, `PreCompact` (004/006)
+  
+  The default hook timeout is 600s. `UserPromptSubmit` defaults to 30s.
 - **FR5**: The daemon parses the stream-json output. It reads `session_id` from the `system/init` event, posts progress from tool-use events, records usage, and handles the final `result`.
 - **FR6**: Access control, pairing, the approvals poller, attachment download to `inbox/`, and chunking behave exactly as they do today.
 - **FR7**: Only one poller instance runs per state dir (the existing PID guard, adapted to `daemon.ts`).
-- **FR8**: Interrupt: `/stop` sends SIGINT to the turn's `claude` process (SIGKILL after 3 seconds). The config flag `interruptOnNewMessage` does the same when a new message arrives.
-- **FR9**: Graceful shutdown on SIGTERM/SIGINT: stop polling, interrupt child processes, persist the session map, and exit within 10 seconds.
+- **FR8**: Interrupt: `/stop` sends **SIGINT** to the turn's `claude` process, which ends the turn cleanly and records it. SIGTERM is used only as a fallback after 5 seconds; it leaves the turn unfinished and exits with code 143. The config flag `interruptOnNewMessage` does the same when a new message arrives.
+- **FR9**: Graceful shutdown on SIGTERM/SIGINT: stop polling, send SIGINT to child processes (escalating to SIGTERM), persist the session map, and exit within 10 seconds.
 - **FR10**: **Subscription-only auth.** The daemon never reads, stores or forwards credentials. At startup:
   - It refuses to start if `ANTHROPIC_API_KEY` is set (unless config `allowApiKey: true`), because the CLI would bill the key.
   - It checks that `claude` is logged in. If not, it reports to the owner and the logs.
-  - On usage or rate-limit results, it pauses queues and tells the owner when usage resets.
+  - On usage or rate-limit results (stream-json `system/api_retry` with `error: rate_limit | billing_error`, or an error `result`), it pauses queues and tells the owner when usage resets.
 - **FR11**: A service installer: a launchd plist on macOS and an optional systemd user unit. Logs go to `~/.claude/channels/telegram/logs/`. The service `PATH` must find `claude` and `bun`.
 - **FR12**: Pin a minimum `claude` CLI version. A contract test checks that the stream-json event shapes and hook I/O the daemon relies on still match.
 - **FR13**: The legacy `server.ts` channel mode stays runnable until P1 is verified.
+- **FR14**: **Never bare.** The docs say `--bare` *"will become the default for `-p` in a future release"*. Bare mode skips hooks, skills, CLAUDE.md, auto memory and plugins, and **does not use the subscription login**. The daemon:
+  - never passes `--bare`
+  - checks every `system/init` event for the expected state: daemon MCP server `connected`, skills and plugins loaded, hooks active (a `SessionStart` `hook_response` was seen)
+  - if any of these is missing, refuses to continue and alerts the owner
+  
+  When the default changes, the opt-out flag goes into `args.ts` (tracked by the contract test).
+- **FR15**: Turns can run as a named agent (`--agent <name>`) when the chat policy sets one (009).
 
 ## Non-goals
 - Agent SDK or direct Anthropic API calls (constitution VIII).
@@ -51,6 +64,7 @@ Hermes itself hit a billing problem: it called the Anthropic API directly with t
 - **AC6** (FR2): A skill in `~/.claude/skills/` is invoked from natural language. A terminal `claude` session does **not** run the daemon's hooks.
 - **AC7** (FR10): With `ANTHROPIC_API_KEY` unset, AC1 passes on the subscription. With it set, the daemon exits with a clear message. When the usage limit is hit, the owner gets a "paused until <time>" message.
 - **AC8** (FR3, FR4): A request to the MCP or hook endpoint without the token is rejected with 401.
+- **AC9** (FR14): Simulating a bare-like init (hooks or MCP missing) makes the daemon refuse the turn and alert the owner.
 
 ## Open questions
 - Queue or interrupt by default when a new message arrives mid-turn? (Proposal: queue, with `/stop` used for interrupts.)

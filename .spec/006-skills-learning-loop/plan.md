@@ -31,6 +31,17 @@ metadata:
 ## Pitfalls
 ## Verify
 ```
+Optional frontmatter, filled when relevant (validated, 009 FR10):
+```yaml
+arguments: [env]                 # Telegram "/deploy_blog staging" → $env
+argument-hint: "[staging|prod]"
+allowed-tools: Bash(pnpm build *) Bash(wrangler pages deploy *)   # never broader than the chat policy
+disable-model-invocation: true   # side-effecting → explicit invocation only
+context: fork                    # heavy procedure → run in a subagent
+agent: general-purpose
+paths: ["blog/**"]
+```
+The live-context `` !`cmd` `` lines are limited to a read-only allowlist (`git status`, `git log`, `gh pr view`, …).
 The `description` field is what Claude Code uses to decide when to load the skill. The reflection prompt has to optimise it for trigger accuracy, with concrete "Use when…" phrasing.
 
 ## Reflection prompt additions

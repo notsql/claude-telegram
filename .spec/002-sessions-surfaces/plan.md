@@ -41,5 +41,5 @@ message text
 Only the daemon builds this wrapper. Any `<telegram` or `</telegram>` that appears inside user text is escaped.
 
 ## Risks
-- **Claude Code session files are stored per project dir (cwd)**: if a chat's `cwd` changes, `--resume` may fail. Detect that failure and start a new session, carrying a summary forward.
+- **Changing a chat's `cwd`**: `--resume <id>` finds a session by ID in any project on the machine (CLI ≥ 2.1.223), so this is safe. If resume still fails (for example the transcript was cleaned up after `cleanupPeriodDays`), start a new session and carry a summary forward (005).
 - **Rate limits**: Telegram allows about 30 msgs/sec globally and about 20/min per group. Use a send queue with backoff (grammY `auto-retry` plugin).

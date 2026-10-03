@@ -30,7 +30,7 @@ Mappings persist in `commands.json`, so a name stays stable once assigned.
 ## Dispatch
 `dispatch.ts` runs after `gate()` (or `dmCommandGate()` for DMs):
 1. Built-in command → handler.
-2. Mapped skill → `router.dispatch(key, "Use the <skill> skill. Arguments: <args>")`.
+2. Mapped skill → `router.dispatch(key, "/<original-skill-name> <args>")`. The prompt starts with the native slash invocation, which `claude -p` expands (headless docs: "Include `/skill-name` in the prompt string").
 3. Otherwise → pass to the router as plain text.
 
 The current `bot.command('start' | 'help' | 'status')` handlers move into `handlers/help.ts`.

@@ -7,7 +7,7 @@ src/history/
   indexer.ts    scan ~/.claude/projects/**/*.jsonl, tail from stored offset, parse, insert; fs.watch + 60s poll fallback
   parse.ts      JSONL line → {role, text, ts, toolSummary, telegramMeta?}
   search.ts     query building (escape FTS syntax), scope filter, bm25 ranking, snippet()
-  summarize.ts  condense with citations via agent/oneshot.ts (claude -p --model haiku)
+  summarize.ts  condense with citations via agent/oneshot.ts (--agent hermes-summarizer, 009)
   tools.ts      history_search tool on the daemon MCP server (scope-checked)
   recall.ts     auto-recall handler for the UserPromptSubmit hook (fresh/rotated sessions, FTS only)
 ```

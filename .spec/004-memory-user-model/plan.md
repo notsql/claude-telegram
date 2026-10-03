@@ -9,7 +9,7 @@ src/memory/
   tools.ts       memory_* tools on the daemon MCP server, scope-checked against resolvePolicy(key)
   guard.ts       secret pattern rejection, size limits, name slugging
 src/reflection/
-  worker.ts      queue of {sessionKey, transcriptPath, fromOffset}; fed by Stop/PreCompact hooks; debounced; runs agent/oneshot.ts (claude -p --model haiku)
+  worker.ts      queue of {sessionKey, transcriptPath, fromOffset}; fed by Stop/PreCompact hooks; debounced; runs agent/oneshot.ts (--agent hermes-reflector, 009)
   prompt.ts      reflection system prompt + JSON schema for proposals
   apply.ts       dedup/merge → apply or propose (inline keyboard), emits notices
 ```
@@ -33,12 +33,13 @@ The `source`, `session_key` and `user_id` fields are extensions. Claude Code ign
 ## Reflection worker
 - **Trigger**: the `Stop` hook POSTs `{session_id, transcript_path}` plus `TG_SESSION_KEY`. The worker enqueues `{key, transcriptPath, fromOffset}`, where `fromOffset` is the byte offset reflected up to last time. Calls are debounced (30 seconds of quiet per key) so that a fast back-and-forth is reflected on once. `PreCompact` triggers an immediate, non-debounced pass so knowledge is saved before compaction drops it.
 - **Input**: the turn delta parsed from the transcript JSONL (user and assistant text plus a summary of tool calls, capped at about 8k tokens, reusing 005's `parse.ts`), the relevant indexes, and the sender's user-model files.
-- **Model**: `claude -p --model haiku --output-format json` with tools disabled and no `--settings` hooks, so it doesn't trigger reflection on itself. The JSON is validated with zod, with one retry if it is malformed.
+- **Model**: `agent/oneshot.ts` runs `claude -p --agent hermes-reflector --output-format json --json-schema <proposals schema> --settings '{"disableAllHooks":true}'` (009). `disableAllHooks` stops it from triggering reflection on itself. Claude Code enforces the schema and returns `structured_output`. zod re-validates it, with one retry on failure.
 - **Output schema**:
   ```ts
   { memory: Array<{op:'create'|'update'|'delete', scope, type, name, description, body, reason}>,
     user_model: Array<{op, user_id, name, description, body, reason}>,
-    skills: Array<...> /* 006 */ }
+    skills: Array<...> /* 006 */,
+    agents: Array<...> /* 009 */ }
   ```
 - **apply.ts**: enforces scope (policy), runs guard checks, deduplicates by name and by token overlap with existing descriptions (a simple Jaccard score over 0.6 means update instead of create), and handles `autoLearn` modes.
 - The reflection prompt borrows from Hermes' "nudge" idea and from Claude Code's memory guidance: what to save, what not to save, and to prefer updating over adding.
@@ -53,7 +54,7 @@ The `source`, `session_key` and `user_id` fields are extensions. Claude Code ign
 This block is returned as `additionalContext` from the **`SessionStart`** hook, once per session (including resumes). The **`UserPromptSubmit`** hook adds a delta only when an index has changed since then (an mtime check) or when a new group participant speaks. This keeps the prompt prefix stable for caching. The append-system-prompt text stays static.
 
 ## Risks
-- **Memory bloat or drift**: handled by the limits and the consolidation pass (a periodic job through 007: "consolidate memory" every week).
+- **Memory bloat or drift**: handled by the limits and the consolidation pass (a weekly 007 job run as `--agent hermes-curator`, 009). The curator also reviews subagent memories in `~/.claude/agent-memory/hermes-*/`.
 - **Reflection recursion or cost**: one-shots run without daemon hooks, and use Haiku with debounce and a daily cap.
 - **Hook latency**: the `SessionStart` and `UserPromptSubmit` handlers must answer in under 200ms. Indexes are cached in memory and invalidated by fs watch.
 - **Privacy in groups**: user-model files for group participants are only written when the group policy is `autoLearn != off`, and are stored under the chat root, not under the global `users/`.

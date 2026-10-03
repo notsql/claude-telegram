@@ -12,10 +12,10 @@ Telegram's `/` menu is the most discoverable way to control a bot. Under the con
 
 ## Functional requirements
 - **FR1**: Session commands: `/new`, `/resume [n]`, `/sessions`, `/stop`, `/model [name]`, `/compact`, `/cost`, `/status`.
-- **FR2**: Hermes commands: `/remember <text>`, `/forget <name|query>`, `/memory`, `/search <query>`, `/skills [show|rm] [name]`, `/cron`, `/policy`.
+- **FR2**: Hermes commands: `/remember <text>`, `/forget <name|query>`, `/memory`, `/search <query>`, `/skills [show|rm] [name]`, `/agents`, `/agent [name|off]` (009), `/cron`, `/policy`.
 - **FR3**: Legacy commands remain: `/start`, `/help` and `/status` keep the current pairing-aware behaviour from `server.ts`, extended for the new features.
 - **FR4**: **Skill commands**: discover all skills (user, project and plugin), map each `name` to Telegram's charset (`[a-z0-9_]{1,32}`: lowercase, `-`→`_`, truncate, deduplicate with a numeric suffix), and use the skill `description` truncated to 256 chars as the command description. A collision table is kept in `commands.json`.
-- **FR5**: Invoking a skill command sends the agent a prompt telling it to run skill `<name>` with the given args, in the current session.
+- **FR5**: Invoking a skill command passes the **native skill invocation** `/<original-skill-name> <args>` as the `claude -p` prompt in the current session. Claude Code expands it, including `$ARGUMENTS` and named `arguments`. This also works for `disable-model-invocation` skills. Skills with `user-invocable: false` are never put in the menu.
 - **FR6**: Menus are registered per scope with `setMyCommands` + `BotCommandScope`:
   - `all_private_chats`: session, Hermes and skill commands
   - `all_group_chats`: `/new`, `/stop`, `/search`, `/status`, and the skills allowed by group policy

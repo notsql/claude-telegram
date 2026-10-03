@@ -15,16 +15,15 @@ src/
     stream.ts          stream-json event types + parser (contract-tested)
     args.ts            policy (003) → CLI flags
     prompt.ts          TELEGRAM_INSTRUCTIONS (for --append-system-prompt)
-    oneshot.ts         runOneShot(prompt, {model:'haiku', json:true}) for reflection/summaries (004–006)
+    oneshot.ts         runOneShot(agent, input, schema) → claude -p --agent <hermes-*> --output-format json --json-schema … --settings '{"disableAllHooks":true}' (009)
+    initGuard.ts       FR14: validate system/init (MCP connected, skills/plugins, hook_response seen)
   mcp/
     server.ts          MCP streamable-HTTP server on 127.0.0.1, bearer token, per-request session key
     registry.ts        tool registry with policy `requires` flags (003)
     telegramTools.ts   reply, react, edit_message, download_attachment
   hooks/
-    endpoint.ts        HTTP routes /hook/<event> → handlers registered by 003–006
-    client.ts          shared hook-script helper: read stdin JSON, POST to TG_DAEMON_URL, write stdout JSON
-    session-start.ts  user-prompt-submit.ts  pre-tool-use.ts  post-tool-use.ts  stop.ts  pre-compact.ts
-    settings.tmpl.json → rendered to STATE_DIR/claude-settings.json
+    endpoint.ts        HTTP routes /hook/<event> → handlers registered by 003–006, 009
+    settings.ts        renders STATE_DIR/claude-settings.json (http hooks, timeouts, env)
   service/
     launchd.plist.tmpl  systemd.service.tmpl  install.ts
 server.ts              legacy channel entry (kept until P1 is verified)
@@ -57,8 +56,21 @@ for await (const ev of parseStreamJson(child.stdout)) {
 }
 ```
 - **Session binding**: the MCP config URL includes the session key (`/mcp?key=<key>`), or the daemon maps requests by a per-turn token. Either way, `reply` defaults to the originating chat or topic and cannot target other chats unless the policy allows it.
-- **Hook scripts** are thin. They POST the hook's stdin JSON plus `TG_SESSION_KEY` to the daemon and print the daemon's JSON response. All logic stays in the daemon.
-- **Hook timeouts** are set per hook in the settings template. `PreToolUse` must be at least `approvalTimeoutSec` + 10s (see 003).
+- **Hooks are `http` type**. Claude Code POSTs the hook JSON and uses the response body as the hook output. There are no scripts. Example of the rendered settings:
+  ```json
+  { "hooks": {
+      "PermissionRequest": [{ "hooks": [{ "type": "http",
+        "url": "${TG_DAEMON_URL}/hook/permission-request?key=${TG_SESSION_KEY}",
+        "headers": { "Authorization": "Bearer ${TG_HOOK_TOKEN}" },
+        "allowedEnvVars": ["TG_DAEMON_URL", "TG_SESSION_KEY", "TG_HOOK_TOKEN"],
+        "timeout": 330 }] }],
+      "Stop": [{ "hooks": [{ "type": "http", "url": "…/hook/stop?key=${TG_SESSION_KEY}", "async": true, … }] }]
+  } }
+  ```
+  Confirm env interpolation in `url` vs. `headers` in T003. If `url` can't be interpolated, use a fixed URL and pass the key in a header.
+- **Session key on hooks**: from the query string or header. The hook payload's `session_id` is cross-checked against `sessions.json`.
+- **Timeouts**: the default is 600s for http hooks, so approvals fit. `PermissionRequest` timeout = `approvalTimeoutSec` + 30s. Observational hooks (`Stop`, `PostToolUse`, `Subagent*`) use `async: true` so they never slow a turn.
+- **Hook failure**: if the daemon is unreachable, `PermissionRequest` is left unresolved, which counts as a deny in `-p` mode, so the system fails closed. Context hooks fail open (no injection) and the failure is logged.
 - **Prompt input** is passed as an argument, or through stdin when it is long. Images are passed as `image_path` in the wrapper, and the model reads them with the Read tool (as it does today).
 
 ## Progress UX
@@ -71,7 +83,9 @@ for await (const ev of parseStreamJson(child.stdout)) {
 - `package.json` scripts: `start` → `bun src/daemon.ts`, `start:channel` → `bun server.ts`, `install-service`, `test:contract`.
 
 ## Risks
-- **CLI output or flag drift**: pin the minimum version, run the contract test in CI and at startup (a `claude --version` check), and isolate parsing in `stream.ts`.
+- **CLI output or flag drift**: pin the minimum version, run the contract test in CI and at startup (a `claude --version` check), and isolate parsing in `stream.ts`. Feature-detect with the `system/init` `capabilities` array where possible.
+- **`--bare` becoming the default for `-p`**: this would silently drop hooks, skills, memory and subscription auth. `initGuard.ts` (FR14) detects it on the first turn.
+- **Untrusted project config**: `-p` runs a cwd's `.claude/settings.json` hooks and `.mcp.json` servers **without a trust prompt**. Chat `cwd`s are restricted to an owner-approved allowlist (003).
 - **Process start per turn** (about 1 second): acceptable for chat. Measure it in the T003 spike.
 - **Plan limits**: an always-on agent with cron jobs and reflection uses up the usage window faster. Mitigations:
   - Haiku one-shots for background work

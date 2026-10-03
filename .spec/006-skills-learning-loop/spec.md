@@ -18,7 +18,14 @@ Today, procedures the agent works out ("how to deploy the blog", "how to file my
   - the task was a repeat (005 search finds similar past requests), or
   - the agent explicitly flagged "this is reusable".
 - **FR3**: Proposals are `create`, or `patch` an existing skill (matched by name or description similarity). Patch is preferred over create. A patch edits sections; it does not rewrite the whole file.
-- **FR4**: Skill content is a procedure: when to use it, prerequisites, steps, commands, pitfalls and verification. It never contains secrets (004 guard) or chat-specific personal data.
+- **FR4**: Skill content is a procedure: when to use it, prerequisites, steps, commands, pitfalls and verification. It never contains secrets (004 guard) or chat-specific personal data. It uses the full skill format (009 FR10):
+  - `arguments`, `allowed-tools`
+  - `context: fork` + `agent` for heavy procedures
+  - `` !`cmd` `` live context (read-only allowlist)
+  - `paths`
+  - `disable-model-invocation` for side-effecting skills
+  - supporting files
+- **FR4a**: Drafting and patching is delegated to the `hermes-skill-author` subagent (009), which has the authoring guidance preloaded. The reflector only decides *whether* to learn something; the author writes it. When the signal is a recurring *role*, not a procedure, the proposal becomes a subagent (009 FR8).
 - **FR5**: Guardrails:
   - Never overwrite a skill without `metadata.source = hermes`. Skills authored by the user or by plugins can only receive proposals, shown as a diff, which the owner approves.
   - Names must match `[a-z0-9-]{1,48}` and must not collide with built-in or plugin skills.
@@ -30,7 +37,7 @@ Today, procedures the agent works out ("how to deploy the blog", "how to file my
 - **FR10**: Every write emits a notice with a **Show** button (renders the SKILL.md) and an **Undo** button (restores the previous version from `.bak`).
 
 ## Non-goals
-- Skills that bundle scripts or binaries in v1 (SKILL.md only, though markdown may contain shell snippets).
+- Learned skills that bundle executable scripts in v1. Supporting markdown files (`reference.md`, `examples.md`) are allowed. Shipped hermes skills (009) may include scripts.
 - Sharing or publishing skills to a marketplace.
 
 ## Acceptance criteria

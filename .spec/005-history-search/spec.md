@@ -14,7 +14,7 @@ Telegram's Bot API has no history or search, and resumed sessions eventually get
 - **FR2**: Each Claude Code session ID is mapped to a session key in `sessions.json` (002). Sessions not in the map are tagged `origin: cli`.
 - **FR3**: The indexer incrementally ingests user and assistant text (tool calls are summarised to `tool: name(args-preview)`) into a `bun:sqlite` FTS5 database at `<STATE_DIR>/history.db`. Per-file byte offsets are tracked, so ingestion survives restarts and only reads new content.
 - **FR4**: The index includes Telegram message IDs where they are known (from the inbound wrapper meta), so hits can link back with `t.me/c/<chat>/<thread>/<msg>`.
-- **FR5**: Tool `history_search(query, {scope?, since?, limit?, summarize?})` returns ranked snippets (`bm25`) with session key, timestamp and title. When `summarize` is true, a `claude -p --model haiku` one-shot (001 `oneshot.ts`) condenses the hits into an answer with citations.
+- **FR5**: Tool `history_search(query, {scope?, since?, limit?, summarize?})` returns ranked snippets (`bm25`) with session key, timestamp and title. When `summarize` is true, a one-shot run as the `hermes-summarizer` agent (001 `oneshot.ts`, 009) condenses the hits into an answer with citations.
 - **FR6**: Scope is enforced by the session's `historyScope` policy (003):
   - `all`: every session, including CLI
   - `chat`: same session key only
