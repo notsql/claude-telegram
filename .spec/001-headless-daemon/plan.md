@@ -56,19 +56,19 @@ for await (const ev of parseStreamJson(child.stdout)) {
 }
 ```
 - **Session binding**: the MCP config URL includes the session key (`/mcp?key=<key>`), or the daemon maps requests by a per-turn token. Either way, `reply` defaults to the originating chat or topic and cannot target other chats unless the policy allows it.
-- **Hooks are `http` type**. Claude Code POSTs the hook JSON and uses the response body as the hook output. There are no scripts. Example of the rendered settings:
+- **Hooks are `http` type**, except `SessionStart` (see T003 findings). Claude Code POSTs the hook JSON and uses the response body as the hook output. `url` is **not** env-interpolated, so `settings.ts` writes the literal daemon port into it and the session key travels in a header. Example of the rendered settings:
   ```json
   { "hooks": {
       "PermissionRequest": [{ "hooks": [{ "type": "http",
-        "url": "${TG_DAEMON_URL}/hook/permission-request?key=${TG_SESSION_KEY}",
-        "headers": { "Authorization": "Bearer ${TG_HOOK_TOKEN}" },
-        "allowedEnvVars": ["TG_DAEMON_URL", "TG_SESSION_KEY", "TG_HOOK_TOKEN"],
+        "url": "http://127.0.0.1:<port>/hook/permission-request",
+        "headers": { "Authorization": "Bearer ${TG_HOOK_TOKEN}", "X-TG-Session-Key": "${TG_SESSION_KEY}" },
+        "allowedEnvVars": ["TG_SESSION_KEY", "TG_HOOK_TOKEN"],
         "timeout": 330 }] }],
-      "Stop": [{ "hooks": [{ "type": "http", "url": "…/hook/stop?key=${TG_SESSION_KEY}", "async": true, … }] }]
+      "Stop": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:<port>/hook/stop", "async": true, … }] }],
+      "SessionStart": [{ "hooks": [{ "type": "command", "command": "curl -sf -H \"Authorization: Bearer $TG_HOOK_TOKEN\" -H \"X-TG-Session-Key: $TG_SESSION_KEY\" --data-binary @- http://127.0.0.1:<port>/hook/session-start" }] }]
   } }
   ```
-  Confirm env interpolation in `url` vs. `headers` in T003. If `url` can't be interpolated, use a fixed URL and pass the key in a header.
-- **Session key on hooks**: from the query string or header. The hook payload's `session_id` is cross-checked against `sessions.json`.
+- **Session key on hooks**: from the `X-TG-Session-Key` header. The hook payload's `session_id` is cross-checked against `sessions.json`.
 - **Timeouts**: the default is 600s for http hooks, so approvals fit. `PermissionRequest` timeout = `approvalTimeoutSec` + 30s. Observational hooks (`Stop`, `PostToolUse`, `Subagent*`) use `async: true` so they never slow a turn.
 - **Hook failure**: if the daemon is unreachable, `PermissionRequest` is left unresolved, which counts as a deny in `-p` mode, so the system fails closed. Context hooks fail open (no injection) and the failure is logged.
 - **Prompt input** is passed as an argument, or through stdin when it is long. Images are passed as `image_path` in the wrapper, and the model reads them with the Read tool (as it does today).
@@ -97,3 +97,31 @@ for await (const ev of parseStreamJson(child.stdout)) {
 - **Terms**: Pro and Max limits assume ordinary individual use. Other people's requests must not run on the owner's plan; 003 FR12 enforces this ([legal & compliance](https://code.claude.com/docs/en/legal-and-compliance)).
 - **Localhost endpoints**: bind to `127.0.0.1` only, use a random token per daemon start, and give child processes the token only through env.
 - **Silent API-key fallback**: prevented by the startup guard (FR10).
+
+## T003 findings (Claude Code 2.1.288, 03/10/2026)
+Run in a cloud container where auth comes through a proxy (`system/init` `apiKeySource: "none"`, no `ANTHROPIC_API_KEY`). Re-check auth and latency on the owner's Mac.
+
+| Item | Result |
+|---|---|
+| `-p --resume <id>` | Works; the resumed turn keeps the same `session_id` and context. Also works after a SIGINT-interrupted turn. |
+| `--output-format stream-json --verbose` | Event types seen: `system/init`, `system/status`, `system/hook_started`, `system/hook_response`, `system/permission_denied`, `system/task_notification`, `system/post_turn_summary`, `assistant`, `user`, `tool_progress`, `rate_limit_event`, `result`, plus unversioned extras (`active_goal`, `autocompact_state`). The parser must ignore unknown types. |
+| `--settings <file>` | Merges with user settings (`flagSettings`). Inline JSON also works. |
+| http hook `url` with `${VAR}` | **Not interpolated.** With `${TG_DAEMON_URL}` as the host, every hook was **silently dropped** (no error, no hook events). A literal `${TG_SESSION_KEY}` in the query string is sent unexpanded. |
+| http hook `headers` + `allowedEnvVars` | Interpolated correctly (`Bearer tok`, `123:9`). |
+| `SessionStart` | Fires in `-p` for **command** hooks only; an http hook on it was ignored. `additionalContext` reached the model. |
+| `UserPromptSubmit` `additionalContext` | Works over http. |
+| `PreToolUse` `permissionDecision: "deny"` | Blocks the tool; the reason is shown to the model and the call is listed in `result.permission_denials`. |
+| `PermissionRequest` `decision.behavior: "allow"` | Works. Payload keys: `tool_name`, `tool_input`, `permission_suggestions`, `permission_mode`, `session_id`, `transcript_path`, `cwd`, `prompt_id`. Read-only commands (`echo`) are auto-allowed and never reach it. `applyRule` not yet exercised. |
+| `Stop` payload | Includes `transcript_path`, `last_assistant_message`, `stop_hook_active`, `session_id`. |
+| `--mcp-config` HTTP server | Connects (`mcp_servers: [{name:"tg",status:"connected"}]`); tool appears as `mcp__tg__reply`. `${VAR}` in MCP `headers` is interpolated; query string `?key=` reaches the server, so per-turn binding by URL works. Stateless streamable HTTP (`sessionIdGenerator: undefined`, JSON responses) is enough. |
+| `--append-system-prompt`, `--allowedTools`, `--disallowedTools`, `--permission-mode`, `--json-schema`, `--agent`, `--bare`, `--max-budget-usd` | Listed in `--help`. `--max-turns` is accepted but hidden from `--help`. |
+| `--json-schema` one-shot | `--model haiku --output-format json --settings '{"disableAllHooks":true}'` returns `structured_output`; about 3.5 s wall clock. |
+| SIGINT mid-tool | Exit 0 after about 1.8 s, with a final `result` `subtype: "error_during_execution"`, `is_error: true`. Use for `/stop`. |
+| SIGTERM mid-tool | Exit 143 after about 1.4 s, **no `result` event**. Only for shutdown or as the escalation after SIGINT. |
+| Usage-limit errors | Not reproducible here. `rate_limit_event` appears on every turn; treat `result.is_error` plus `api_retry` errors as the signal and capture a real fixture on the owner's plan. |
+| `system/init` contents | `tools`, `mcp_servers`, `slash_commands` (skills appear here), `skills`, `agents`, `plugins`, `capabilities`, `apiKeySource`, `claude_code_version`, `permissionMode`, `model`, `startup_timing`. FR14 can check `apiKeySource`, `mcp_servers[].status` and `hook_response` events. |
+| Start latency | `init` emitted about 1.5 s after process start; a trivial turn with hooks took about 19 s end to end here, mostly model time. |
+
+Gotchas for the runner:
+- Pass `stdin` as `/dev/null` (or the prompt). Otherwise `-p` waits 3 s for stdin and prints a warning.
+- Strip inherited `CLAUDECODE` / `CLAUDE_CODE_SESSION_ID` env vars when the daemon itself runs under Claude Code, or the child reuses the parent's session id.
