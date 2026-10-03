@@ -15,7 +15,7 @@
   - what `system/init` lists (tools, skills or slash commands?, plugins, `capabilities`)
   Record the findings in this plan.
   *Verify:* a scripted turn works with no `ANTHROPIC_API_KEY`, and the start latency is noted.
-- [ ] **T004** `agent/stream.ts` parser with fixtures from T003, plus a contract test (`test:contract`).
+- [x] **T004** `agent/stream.ts` parser with fixtures from T003, plus a contract test (`test:contract`).
   *Verify:* the test passes, and fails on a doctored fixture.
 - [ ] **T005** `mcp/server.ts` (streamable HTTP, `127.0.0.1`, bearer token, session binding) and `mcp/telegramTools.ts`.
   *Verify:* AC8, and the `claude` CLI lists `mcp__tg__reply`.
