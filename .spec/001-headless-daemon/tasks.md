@@ -4,7 +4,7 @@
   *Verify:* `git ls-files` lists them.
 - [x] **T002** Extract `access.ts`, `telegram/send.ts` and `telegram/attachments.ts` from `server.ts` without changing behaviour.
   *Verify:* the legacy `claude --channels` flow still pairs and replies.
-- [ ] **T003** **CLI spike**: confirm and document, against the installed `claude` version:
+- [x] **T003** **CLI spike**: confirm and document, against the installed `claude` version:
   - `-p` with `--resume`, `--output-format stream-json --verbose`
   - `--settings` hook merge, `http` hook type with `headers` + `allowedEnvVars`, and whether `url` interpolates env
   - `--mcp-config` with an HTTP server (and the `system/init` `mcp_servers` status)
