@@ -21,7 +21,7 @@ export type RunTurnOpts = {
   cwd: string
   /** Every parsed event, for logging and progress. */
   onEvent?: (ev: StreamEvent) => void
-  /** Abort ends the turn: SIGINT, then SIGTERM after 5s (FR8, FR9). */
+  /** Abort ends the turn via `interruptChild` (FR8, FR9). */
   signal?: AbortSignal
 }
 
@@ -37,6 +37,20 @@ export type TurnOutcome = {
 }
 
 let sessionId: string | undefined
+
+type Killable = { kill(signal: NodeJS.Signals): void; exited: Promise<number> }
+
+/**
+ * FR8: SIGINT ends the turn cleanly with an error `result` (T003). SIGTERM
+ * after `termMs` drops the result; SIGKILL after `killMs` more covers a child
+ * that ignores both, so the queue can never hang on it.
+ */
+export function interruptChild(child: Killable, termMs = 5000, killMs = 2000): void {
+  child.kill('SIGINT')
+  const term = setTimeout(() => child.kill('SIGTERM'), termMs)
+  const kill = setTimeout(() => child.kill('SIGKILL'), termMs + killMs)
+  void child.exited.finally(() => { clearTimeout(term); clearTimeout(kill) })
+}
 
 export function renderMcpConfig(port: number, key: string) {
   return { mcpServers: { tg: {
@@ -66,10 +80,7 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     env: { ...env, TG_SESSION_KEY: key, TG_MCP_TOKEN: opts.mcpToken, TG_HOOK_TOKEN: opts.hookToken },
   })
 
-  const onAbort = () => {
-    child.kill('SIGINT')
-    setTimeout(() => child.kill('SIGTERM'), 5000).unref()
-  }
+  const onAbort = () => interruptChild(child)
   if (opts.signal?.aborted) onAbort()
   else opts.signal?.addEventListener('abort', onAbort, { once: true })
 
