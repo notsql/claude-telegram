@@ -97,6 +97,9 @@ writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: AP
 // Turns run one at a time on the single global session (002 adds per-key queues).
 let queue: Promise<void> = Promise.resolve()
 const turnAbort = new AbortController()
+// FR8: the running turn, so /stop or a new message (with the flag) can interrupt it.
+let currentTurn: AbortController | undefined
+const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
 // FR10: set when a turn hits a usage limit; queued turns wait until then.
 let pausedUntil = 0
 
@@ -113,14 +116,18 @@ function enqueueTurn(chat_id: string, prompt: string): void {
       })
       if (turnAbort.signal.aborted) return
     }
+    const turn = currentTurn = new AbortController()
     const outcome = await runTurn(chat_id, prompt, {
       settingsFile: SETTINGS_FILE,
       mcpPort: mcpServer.port,
       mcpToken,
       hookToken,
       cwd: homedir(),
-      signal: turnAbort.signal,
-    })
+      signal: AbortSignal.any([turnAbort.signal, turn.signal]),
+    }).finally(() => { if (currentTurn === turn) currentTurn = undefined })
+    if (turn.signal.aborted && !turnAbort.signal.aborted) {
+      await bot.api.sendMessage(chat_id, 'Stopped.').catch(() => {})
+    }
     if (outcome.refused) {
       log(`turn refused (never bare): ${outcome.refused.join('; ')}`)
       await bot.api.sendMessage(chat_id, `Turn refused: ${outcome.refused.join('; ')}`).catch(() => {})
@@ -154,7 +161,17 @@ process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
 process.on('SIGHUP', shutdown)
 
-// Commands are DM-only, as in the channel server: no pairing-code leaks to groups.
+// FR8: owners can interrupt the running turn from any chat.
+bot.command('stop', async ctx => {
+  if (!ctx.from || !loadAccess().allowFrom.includes(String(ctx.from.id))) return
+  if (!currentTurn) {
+    await ctx.reply('Nothing is running.')
+    return
+  }
+  currentTurn.abort()
+})
+
+// The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
 
 bot.command('start', async ctx => {
   if (!dmCommandGate(ctx)) return
@@ -173,7 +190,8 @@ bot.command('help', async ctx => {
     `Messages you send here route to a paired Claude Code session. ` +
     `Text and photos are forwarded; replies and reactions come back.\n\n` +
     `/start: pairing instructions\n` +
-    `/status: check your pairing state`
+    `/status: check your pairing state\n` +
+    `/stop: interrupt the running turn`
   )
 })
 
@@ -278,6 +296,7 @@ async function handleInbound(
       .catch(() => {})
   }
 
+  if (INTERRUPT_ON_NEW_MESSAGE) currentTurn?.abort()
   const imagePath = downloadImage ? await downloadImage() : undefined
   enqueueTurn(chat_id, renderChannelMessage(text, {
     chat_id,
@@ -312,6 +331,7 @@ for (let attempt = 1; ; attempt++) {
             { command: 'start', description: 'Welcome and setup guide' },
             { command: 'help', description: 'What this bot can do' },
             { command: 'status', description: 'Check your pairing status' },
+            { command: 'stop', description: 'Interrupt the running turn' },
           ],
           { scope: { type: 'all_private_chats' } },
         ).catch(() => {})
