@@ -1,8 +1,8 @@
 # 001 — Tasks
 
-- [ ] **T001** Commit the untracked fork baseline (`server.ts`, `package.json`, `bun.lock`, `skills/`, `telegram/`, `ACCESS.md`).
+- [x] **T001** Commit the untracked fork baseline (`server.ts`, `package.json`, `bun.lock`, `skills/`, `telegram/`, `ACCESS.md`).
   *Verify:* `git ls-files` lists them.
-- [ ] **T002** Extract `access.ts`, `telegram/send.ts` and `telegram/attachments.ts` from `server.ts` without changing behaviour.
+- [x] **T002** Extract `access.ts`, `telegram/send.ts` and `telegram/attachments.ts` from `server.ts` without changing behaviour.
   *Verify:* the legacy `claude --channels` flow still pairs and replies.
 - [ ] **T003** **CLI spike**: confirm and document, against the installed `claude` version:
   - `-p` with `--resume`, `--output-format stream-json --verbose`
