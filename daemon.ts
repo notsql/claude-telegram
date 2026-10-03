@@ -22,6 +22,7 @@ import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { runTurn } from './agent/runner.ts'
+import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
@@ -49,6 +50,13 @@ if (!TOKEN) {
   process.exit(1)
 }
 
+// FR10: never let the CLI fall back to API-key billing.
+const keyRefusal = apiKeyRefusal(process.env)
+if (keyRefusal) {
+  log(keyRefusal)
+  process.exit(1)
+}
+
 // FR7: one getUpdates consumer per token. Replace a stale daemon, verifying
 // the PID still belongs to one (PIDs get recycled).
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
@@ -73,6 +81,13 @@ initAccess({ static: STATIC })
 const bot = new Bot(TOKEN)
 if (!STATIC) setInterval(() => checkApprovals(bot.api), 5000).unref()
 
+// FR10: a missing login is reported, not fatal; the owner can log in without a restart.
+if (!isLoggedIn()) {
+  const msg = 'claude is not logged in. Run `claude auth login` on the daemon host.'
+  log(msg)
+  for (const owner of loadAccess().allowFrom) void bot.api.sendMessage(owner, msg).catch(() => {})
+}
+
 const mcpToken = randomBytes(32).toString('hex')
 const hookToken = randomBytes(32).toString('hex')
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN })
@@ -82,10 +97,22 @@ writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: AP
 // Turns run one at a time on the single global session (002 adds per-key queues).
 let queue: Promise<void> = Promise.resolve()
 const turnAbort = new AbortController()
+// FR10: set when a turn hits a usage limit; queued turns wait until then.
+let pausedUntil = 0
+
+const pauseMessage = (until: number) => `Usage limit reached. Paused until ${new Date(until).toLocaleString()}.`
 
 function enqueueTurn(chat_id: string, prompt: string): void {
   queue = queue.then(async () => {
     if (turnAbort.signal.aborted) return
+    if (pausedUntil > Date.now()) {
+      await bot.api.sendMessage(chat_id, `${pauseMessage(pausedUntil)} Your message will run then.`).catch(() => {})
+      await new Promise<void>(r => {
+        const t = setTimeout(r, pausedUntil - Date.now())
+        turnAbort.signal.addEventListener('abort', () => { clearTimeout(t); r() }, { once: true })
+      })
+      if (turnAbort.signal.aborted) return
+    }
     const outcome = await runTurn(chat_id, prompt, {
       settingsFile: SETTINGS_FILE,
       mcpPort: mcpServer.port,
@@ -97,6 +124,10 @@ function enqueueTurn(chat_id: string, prompt: string): void {
     if (outcome.refused) {
       log(`turn refused (never bare): ${outcome.refused.join('; ')}`)
       await bot.api.sendMessage(chat_id, `Turn refused: ${outcome.refused.join('; ')}`).catch(() => {})
+    } else if (outcome.pausedUntil) {
+      pausedUntil = outcome.pausedUntil
+      log(pauseMessage(pausedUntil))
+      await bot.api.sendMessage(chat_id, pauseMessage(pausedUntil)).catch(() => {})
     } else if (outcome.result?.is_error) {
       log(`turn ended with error result (exit ${outcome.exitCode})`)
     }

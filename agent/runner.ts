@@ -9,6 +9,7 @@
 import { parseStreamJson, type InitEvent, type ResultEvent, type StreamEvent } from './stream.ts'
 import { TELEGRAM_INSTRUCTIONS } from './prompt.ts'
 import { createInitGuard } from './initGuard.ts'
+import { createUsageLimitWatcher } from './auth.ts'
 
 export type RunTurnOpts = {
   /** Rendered hook settings file (`hooks/settings.ts`). */
@@ -30,6 +31,8 @@ export type TurnOutcome = {
   result?: ResultEvent
   /** Set when the never-bare guard (FR14) killed the turn; the caller alerts the owner. */
   refused?: string[]
+  /** Epoch ms to pause the queue until, when the turn hit a usage limit (FR10). */
+  pausedUntil?: number
   exitCode: number
 }
 
@@ -72,6 +75,7 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
 
   const outcome: Omit<TurnOutcome, 'exitCode'> = {}
   const guard = createInitGuard()
+  const usageLimit = createUsageLimitWatcher()
   for await (const ev of parseStreamJson(child.stdout)) {
     const problems = guard(ev)
     if (problems?.length) {
@@ -79,6 +83,8 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
       child.kill('SIGTERM')
       break
     }
+    const pausedUntil = usageLimit(ev)
+    if (pausedUntil) outcome.pausedUntil = pausedUntil
     if (ev.kind === 'init') {
       outcome.init = ev.event
       sessionId = ev.event.session_id
