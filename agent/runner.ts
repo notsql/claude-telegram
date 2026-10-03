@@ -20,6 +20,8 @@ export type RunTurnOpts = {
   cwd: string
   /** Every parsed event, for logging and progress. */
   onEvent?: (ev: StreamEvent) => void
+  /** Abort ends the turn: SIGINT, then SIGTERM after 5s (FR8, FR9). */
+  signal?: AbortSignal
 }
 
 export type TurnOutcome = {
@@ -60,6 +62,13 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     stderr: 'inherit',
     env: { ...env, TG_SESSION_KEY: key, TG_MCP_TOKEN: opts.mcpToken, TG_HOOK_TOKEN: opts.hookToken },
   })
+
+  const onAbort = () => {
+    child.kill('SIGINT')
+    setTimeout(() => child.kill('SIGTERM'), 5000).unref()
+  }
+  if (opts.signal?.aborted) onAbort()
+  else opts.signal?.addEventListener('abort', onAbort, { once: true })
 
   const outcome: Omit<TurnOutcome, 'exitCode'> = {}
   const guard = createInitGuard()
