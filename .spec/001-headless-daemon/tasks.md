@@ -23,7 +23,7 @@
   *Verify:* the daemon logs each hook event during a turn, and AC6 (the terminal runs no daemon hooks).
 - [x] **T007** `agent/runner.ts` `runTurn()` with a single global session (002 replaces this) and `--append-system-prompt`.
   *Verify:* AC1.
-- [ ] **T008** `agent/oneshot.ts`: `claude -p --agent <hermes-*> --output-format json --json-schema … --settings '{"disableAllHooks":true}'`, with zod as a second check, for 004–006 (agents from 009 T902; use `--model haiku` until then).
+- [x] **T008** `agent/oneshot.ts`: `claude -p --agent <hermes-*> --output-format json --json-schema … --settings '{"disableAllHooks":true}'`, with zod as a second check, for 004–006 (agents from 009 T902; use `--model haiku` until then).
   *Verify:* returns `structured_output`, and no hook events fire.
 - [ ] **T016** `agent/initGuard.ts` (FR14): never-bare checks on `system/init`.
   *Verify:* AC9.
