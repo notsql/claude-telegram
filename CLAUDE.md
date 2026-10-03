@@ -10,3 +10,6 @@
 
 ## Spec workflow
 - Work comes from `.spec/<feature>/tasks.md`; take the first unticked task and tick it when its *Verify* step passes.
+
+## Code
+- YAGNI: build only what the current task needs. No speculative options, abstractions, config flags or helpers for later tasks; add them when a task actually requires them.
