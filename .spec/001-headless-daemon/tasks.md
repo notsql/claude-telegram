@@ -25,7 +25,7 @@
   *Verify:* AC1.
 - [x] **T008** `agent/oneshot.ts`: `claude -p --agent <hermes-*> --output-format json --json-schema … --settings '{"disableAllHooks":true}'`, with zod as a second check, for 004–006 (agents from 009 T902; use `--model haiku` until then).
   *Verify:* returns `structured_output`, and no hook events fire.
-- [ ] **T016** `agent/initGuard.ts` (FR14): never-bare checks on `system/init`.
+- [x] **T016** `agent/initGuard.ts` (FR14): never-bare checks on `system/init`.
   *Verify:* AC9.
 - [ ] **T009** `daemon.ts`: bot startup, PID guard, approvals poller, error guards, graceful shutdown.
   *Verify:* AC2, AC3, and SIGTERM exits in under 10 seconds.
