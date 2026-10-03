@@ -22,6 +22,7 @@ import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { runTurn } from './agent/runner.ts'
+import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
@@ -117,6 +118,7 @@ function enqueueTurn(chat_id: string, prompt: string): void {
       if (turnAbort.signal.aborted) return
     }
     const turn = currentTurn = new AbortController()
+    const progress = startProgress(bot.api, chat_id)
     const outcome = await runTurn(chat_id, prompt, {
       settingsFile: SETTINGS_FILE,
       mcpPort: mcpServer.port,
@@ -124,7 +126,11 @@ function enqueueTurn(chat_id: string, prompt: string): void {
       hookToken,
       cwd: homedir(),
       signal: AbortSignal.any([turnAbort.signal, turn.signal]),
-    }).finally(() => { if (currentTurn === turn) currentTurn = undefined })
+      onEvent: progress.onEvent,
+    }).finally(() => {
+      progress.finish()
+      if (currentTurn === turn) currentTurn = undefined
+    })
     if (turn.signal.aborted && !turnAbort.signal.aborted) {
       await bot.api.sendMessage(chat_id, 'Stopped.').catch(() => {})
     }
