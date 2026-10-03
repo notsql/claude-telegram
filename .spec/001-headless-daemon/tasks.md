@@ -17,7 +17,7 @@
   *Verify:* a scripted turn works with no `ANTHROPIC_API_KEY`, and the start latency is noted.
 - [x] **T004** `agent/stream.ts` parser with fixtures from T003, plus a contract test (`test:contract`).
   *Verify:* the test passes, and fails on a doctored fixture.
-- [ ] **T005** `mcp/server.ts` (streamable HTTP, `127.0.0.1`, bearer token, session binding) and `mcp/telegramTools.ts`.
+- [x] **T005** `mcp/server.ts` (streamable HTTP, `127.0.0.1`, bearer token, session binding) and `mcp/telegramTools.ts`.
   *Verify:* AC8, and the `claude` CLI lists `mcp__tg__reply`.
 - [ ] **T006** `hooks/endpoint.ts` and `hooks/settings.ts` (http hooks, async observational hooks, timeouts derived from config).
   *Verify:* the daemon logs each hook event during a turn, and AC6 (the terminal runs no daemon hooks).
