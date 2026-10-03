@@ -27,9 +27,9 @@
   *Verify:* returns `structured_output`, and no hook events fire.
 - [x] **T016** `agent/initGuard.ts` (FR14): never-bare checks on `system/init`.
   *Verify:* AC9.
-- [ ] **T009** `daemon.ts`: bot startup, PID guard, approvals poller, error guards, graceful shutdown.
+- [x] **T009** `daemon.ts`: bot startup, PID guard, approvals poller, error guards, graceful shutdown.
   *Verify:* AC2, AC3, and SIGTERM exits in under 10 seconds.
-- [ ] **T010** Auth guard and usage-limit handling: API-key refusal, login check, pause and notify.
+- [x] **T010** Auth guard and usage-limit handling: API-key refusal, login check, pause and notify.
   *Verify:* AC7.
 - [ ] **T011** `/stop` with SIGINT then SIGKILL, and the `interruptOnNewMessage` flag.
   *Verify:* AC4.
