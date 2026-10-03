@@ -99,7 +99,7 @@ for await (const ev of parseStreamJson(child.stdout)) {
 - **Silent API-key fallback**: prevented by the startup guard (FR10).
 
 ## T003 findings (Claude Code 2.1.288, 03/10/2026)
-Run in a cloud container where auth comes through a proxy (`system/init` `apiKeySource: "none"`, no `ANTHROPIC_API_KEY`). Re-check auth and latency on the owner's Mac.
+Run in a cloud container where auth comes through a proxy (`system/init` `apiKeySource: "none"`, no `ANTHROPIC_API_KEY`). Re-check auth and latency on the owner's Mac. Sanitised, trimmed fixtures for the T004 contract test: `test/fixtures/stream-json/`.
 
 | Item | Result |
 |---|---|
