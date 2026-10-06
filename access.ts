@@ -144,8 +144,22 @@ export function pruneExpired(a: Access): boolean {
 
 export type GateResult =
   | { action: 'deliver'; access: Access }
-  | { action: 'drop' }
+  /** `unmentioned`: an allowed group sender who didn't address the bot (002 FR8 context). */
+  | { action: 'drop'; unmentioned?: true }
   | { action: 'pair'; code: string; isResend: boolean }
+
+/** The group part of gate(): unknown groups and senders outside `allowFrom` are dropped outright. */
+export function groupVerdict(
+  policy: GroupPolicy | undefined,
+  senderId: string,
+  mentioned: () => boolean,
+): 'deliver' | 'drop' | 'unmentioned' {
+  if (!policy) return 'drop'
+  const groupAllowFrom = policy.allowFrom ?? []
+  if (groupAllowFrom.length > 0 && !groupAllowFrom.includes(senderId)) return 'drop'
+  if ((policy.requireMention ?? true) && !mentioned()) return 'unmentioned'
+  return 'deliver'
+}
 
 export function gate(ctx: Context): GateResult {
   const access = loadAccess()
@@ -190,17 +204,10 @@ export function gate(ctx: Context): GateResult {
   }
 
   if (chatType === 'group' || chatType === 'supergroup') {
-    const groupId = String(ctx.chat!.id)
-    const policy = access.groups[groupId]
-    if (!policy) return { action: 'drop' }
-    const groupAllowFrom = policy.allowFrom ?? []
-    const requireMention = policy.requireMention ?? true
-    if (groupAllowFrom.length > 0 && !groupAllowFrom.includes(senderId)) {
-      return { action: 'drop' }
-    }
-    if (requireMention && !isMentioned(ctx, access.mentionPatterns)) {
-      return { action: 'drop' }
-    }
+    const verdict = groupVerdict(access.groups[String(ctx.chat!.id)], senderId,
+      () => isMentioned(ctx, access.mentionPatterns))
+    if (verdict === 'unmentioned') return { action: 'drop', unmentioned: true }
+    if (verdict === 'drop') return { action: 'drop' }
     return { action: 'deliver', access }
   }
 

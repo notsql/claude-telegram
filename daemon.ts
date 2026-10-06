@@ -25,6 +25,7 @@ import { parseKey, sessionKey } from './sessions/key.ts'
 import { threadOpts } from './telegram/send.ts'
 import { createSessionStore } from './sessions/store.ts'
 import { createTurnQueue } from './sessions/queue.ts'
+import { createGroupBuffer, type BufferedMessage } from './sessions/groupBuffer.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
@@ -339,12 +340,22 @@ bot.on('message:sticker', ctx => {
   return handleInbound(ctx, `(sticker${emoji})`, undefined, { kind: 'sticker', file_id: sticker.file_id, size: sticker.file_size })
 })
 
+const groupBuffer = createGroupBuffer()
+
 const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-/** The `<channel>` wrapper the system prompt describes; meta lives in attributes so the body can't forge it. */
-function renderChannelMessage(text: string, meta: Record<string, string>): string {
+const hhmm = (ts: number) => new Date(ts).toTimeString().slice(0, 5)
+
+/**
+ * The `<channel>` wrapper the system prompt describes; meta lives in attributes
+ * so the body can't forge it. `recent` is unaddressed group chatter (002 FR8).
+ */
+function renderChannelMessage(text: string, meta: Record<string, string>, recent: BufferedMessage[] = []): string {
   const attrs = Object.entries(meta).map(([k, v]) => ` ${k}="${escapeXml(v)}"`).join('')
-  return `<channel source="telegram"${attrs}>${escapeXml(text)}</channel>`
+  const context = recent.length
+    ? `<recent_context>\n${recent.map(m => escapeXml(`[${hhmm(m.ts)}] ${m.user}: ${m.text}`)).join('\n')}\n</recent_context>\n`
+    : ''
+  return `<channel source="telegram"${attrs}>${context}${escapeXml(text)}</channel>`
 }
 
 async function handleInbound(
@@ -354,7 +365,16 @@ async function handleInbound(
   attachment?: AttachmentMeta,
 ): Promise<void> {
   const result = gate(ctx)
-  if (result.action === 'drop') return
+  if (result.action === 'drop') {
+    if (result.unmentioned) {
+      groupBuffer.push(sessionKey(ctx.msg!), {
+        ts: ctx.msg!.date * 1000,
+        user: ctx.from!.username ?? String(ctx.from!.id),
+        text,
+      })
+    }
+    return
+  }
   if (result.action === 'pair') {
     const lead = result.isResend ? 'Still pending' : 'Pairing required'
     await ctx.reply(`${lead}: run in Claude Code:\n\n/telegram:access pair ${result.code}`)
@@ -392,7 +412,7 @@ async function handleInbound(
       ...(attachment.mime ? { attachment_mime: attachment.mime } : {}),
       ...(attachment.name ? { attachment_name: attachment.name } : {}),
     } : {}),
-  })
+  }, groupBuffer.take(key))
   turns.enqueue(key, { prompt, text, msgId })
 }
 
