@@ -25,7 +25,8 @@ import { parseKey, sessionKey } from './sessions/key.ts'
 import { threadOpts } from './telegram/send.ts'
 import { createSessionStore } from './sessions/store.ts'
 import { createTurnQueue } from './sessions/queue.ts'
-import { createGroupBuffer, type BufferedMessage } from './sessions/groupBuffer.ts'
+import { createGroupBuffer } from './sessions/groupBuffer.ts'
+import { renderInbound } from './agent/inbound.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
@@ -342,22 +343,6 @@ bot.on('message:sticker', ctx => {
 
 const groupBuffer = createGroupBuffer()
 
-const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-
-const hhmm = (ts: number) => new Date(ts).toTimeString().slice(0, 5)
-
-/**
- * The `<channel>` wrapper the system prompt describes; meta lives in attributes
- * so the body can't forge it. `recent` is unaddressed group chatter (002 FR8).
- */
-function renderChannelMessage(text: string, meta: Record<string, string>, recent: BufferedMessage[] = []): string {
-  const attrs = Object.entries(meta).map(([k, v]) => ` ${k}="${escapeXml(v)}"`).join('')
-  const context = recent.length
-    ? `<recent_context>\n${recent.map(m => escapeXml(`[${hhmm(m.ts)}] ${m.user}: ${m.text}`)).join('\n')}\n</recent_context>\n`
-    : ''
-  return `<channel source="telegram"${attrs}>${context}${escapeXml(text)}</channel>`
-}
-
 async function handleInbound(
   ctx: Context,
   text: string,
@@ -398,7 +383,7 @@ async function handleInbound(
 
   if (INTERRUPT_ON_NEW_MESSAGE) runningTurns.get(key)?.abort()
   const imagePath = downloadImage ? await downloadImage() : undefined
-  const prompt = renderChannelMessage(text, {
+  const prompt = renderInbound(text, {
     chat_id,
     ...(msgId != null ? { message_id: String(msgId) } : {}),
     user: from.username ?? String(from.id),

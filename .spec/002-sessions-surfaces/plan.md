@@ -31,14 +31,13 @@ src/sessions/
 
 ## Inbound prompt format
 ```
-<telegram chat_id="…" chat_type="supergroup" chat_title="Ops" topic="Infra" message_id="…" user="alice" user_id="…" ts="…" [image_path=… attachment_*=…]>
+<channel source="telegram" chat_id="…" chat_type="supergroup" chat_title="Ops" topic="Infra" message_id="…" user="alice" user_id="…" ts="…" [image_path=… attachment_*=…]>
 <recent_context>  (groups only, from groupBuffer)
   [10:02] bob: …
 </recent_context>
-message text
-</telegram>
+message text</channel>
 ```
-Only the daemon builds this wrapper. Any `<telegram` or `</telegram>` that appears inside user text is escaped.
+Only the daemon builds this wrapper (`agent/inbound.ts`). It keeps the `<channel source="telegram">` tag that `TELEGRAM_INSTRUCTIONS` and the tool descriptions already use, shared with the legacy `server.ts`. Every `<`, `>`, `&` and `"` in user text, recent context and attribute values is escaped, so text such as `</telegram>` or `</channel>` can't close or forge the wrapper.
 
 ## Risks
 - **Changing a chat's `cwd`**: `--resume <id>` finds a session by ID in any project on the machine (CLI ≥ 2.1.223), so this is safe. If resume still fails (for example the transcript was cleaned up after `cleanupPeriodDays`), start a new session and carry a summary forward (005).
