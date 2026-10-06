@@ -1,7 +1,7 @@
 # 002 — Tasks
 Depends on: 001 (T005, T007, T009)
 
-- [ ] **T201** `sessions/key.ts` with unit tests (DM, group, forum topic, General topic).
+- [x] **T201** `sessions/key.ts` with unit tests (DM, group, forum topic, General topic).
 - [ ] **T202** `sessions/store.ts`: atomic persistence plus `new`, `resume` and `list`.
   *Verify:* unit tests, and the file survives a kill -9 mid-write.
 - [ ] **T203** Runner passes `--resume <sessionId>` and the per-key `TG_SESSION_KEY`, and captures `session_id` from the stream-json `system/init` event. The MCP session binding (001 T005) uses the key.
