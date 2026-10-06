@@ -13,7 +13,7 @@ Depends on: 001 (T005, T007, T009)
 - [x] **T206** `groupBuffer.ts` plus a hook in the router for messages dropped only because a mention was missing.
   *Verify:* AC4, and a non-allowlisted sender's text never shows up in the buffer.
   *Verified by unit tests only (`test/groupBuffer.test.ts`): the owner runs groups with `requireMention: false`, so AC4 was not exercised live (2026-10-06).*
-- [ ] **T207** Inbound prompt formatter that escapes wrapper tags.
+- [x] **T207** Inbound prompt formatter that escapes wrapper tags.
   *Verify:* unit test where the user text contains `</telegram>`.
 - [ ] **T208** Topic name cache from service messages.
   *Verify:* renaming a topic updates `topic=` in the next prompt.
