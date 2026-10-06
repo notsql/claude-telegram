@@ -4,6 +4,8 @@
  * these hooks (FR2, AC6). T003: http hook `url`s are not env-interpolated, so
  * the port is written literally and the token and session key travel in
  * headers. `SessionStart` ignores http hooks in `-p`, so it uses curl.
+ * It also disables the Telegram channel plugin for daemon turns: the plugin
+ * would start its own poller on the same bot token and cause 409 conflicts.
  */
 
 import { writeFileSync, renameSync } from 'fs'
@@ -14,6 +16,8 @@ export type HookEvent =
 
 /** `PermissionRequest` → `permission-request`, the endpoint's route slug. */
 export const hookSlug = (event: HookEvent) => event.replace(/(?<!^)([A-Z])/g, '-$1').toLowerCase()
+
+const CHANNEL_PLUGIN = 'telegram@claude-plugins-official'
 
 /** Observational hooks: fire-and-forget so they never slow a turn. */
 const ASYNC: HookEvent[] = ['PostToolUse', 'SubagentStart', 'SubagentStop', 'Stop', 'PreCompact']
@@ -34,16 +38,19 @@ export function renderHookSettings({ port, approvalTimeoutSec }: HookSettingsOpt
     ...extra,
   }] }]
 
-  return { hooks: {
-    SessionStart: [{ hooks: [{
-      type: 'command',
-      command: `curl -sf -H "Authorization: Bearer $TG_HOOK_TOKEN" -H "X-TG-Session-Key: $TG_SESSION_KEY" --data-binary @- ${url('SessionStart')}`,
-    }] }],
-    UserPromptSubmit: http('UserPromptSubmit', { timeout: 30 }),
-    PreToolUse: http('PreToolUse'),
-    PermissionRequest: http('PermissionRequest', { timeout: approvalTimeoutSec + 30 }),
-    ...Object.fromEntries(ASYNC.map(e => [e, http(e, { async: true })])),
-  } }
+  return {
+    enabledPlugins: { [CHANNEL_PLUGIN]: false },
+    hooks: {
+      SessionStart: [{ hooks: [{
+        type: 'command',
+        command: `curl -sf -H "Authorization: Bearer $TG_HOOK_TOKEN" -H "X-TG-Session-Key: $TG_SESSION_KEY" --data-binary @- ${url('SessionStart')}`,
+      }] }],
+      UserPromptSubmit: http('UserPromptSubmit', { timeout: 30 }),
+      PreToolUse: http('PreToolUse'),
+      PermissionRequest: http('PermissionRequest', { timeout: approvalTimeoutSec + 30 }),
+      ...Object.fromEntries(ASYNC.map(e => [e, http(e, { async: true })])),
+    },
+  }
 }
 
 /** Atomic write, so a turn never reads a half-written file. */
