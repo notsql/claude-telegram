@@ -44,3 +44,8 @@ test('renders literal port, approval timeout and async observational hooks', () 
   expect(hooks.PreToolUse[0].hooks[0].async).toBeUndefined()
   expect(hooks.SessionStart[0].hooks[0].type).toBe('command')
 })
+
+test('disables the Telegram channel plugin so turns never start a second poller', () => {
+  const settings = renderHookSettings({ port: 4321, approvalTimeoutSec: 300 }) as any
+  expect(settings.enabledPlugins).toEqual({ 'telegram@claude-plugins-official': false })
+})
