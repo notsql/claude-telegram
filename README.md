@@ -69,7 +69,22 @@ Daemon mode runs the bot without an open Claude Code session. `daemon.ts` polls 
 
 **Requirements:** the `claude` CLI on `PATH`, version 2.1.288 or newer, logged in with `claude auth login`. `ANTHROPIC_API_KEY` must be unset; the daemon refuses to start with it, because the CLI would bill the key instead of your subscription.
 
-**1. Set the token and pair.** Follow steps 1, 3 and 5 of Quick Setup. Pairing works the same way: DM the bot, then run `/telegram:access pair <code>` from any Claude Code session.
+**Turn off the Telegram plugin.** Telegram allows one poller per bot token. The plugin starts its own poller in every Claude Code session that loads it, and the daemon then logs `409 Conflict`. Turns the daemon spawns already skip the plugin; disable it for your other sessions in `~/.claude/settings.json`:
+
+```json
+"enabledPlugins": { "telegram@claude-plugins-official": false }
+```
+
+Sessions that were already open keep the plugin until you restart them.
+
+**1. Set the token and pair.** Put the token in `~/.claude/channels/telegram/.env` as `TELEGRAM_BOT_TOKEN=...` (step 3 of Quick Setup). With the plugin off, its skills are gone too, so install them as user skills from this repo:
+
+```sh
+ln -s "$PWD/skills/access" ~/.claude/skills/telegram-access
+ln -s "$PWD/skills/configure" ~/.claude/skills/telegram-configure
+```
+
+Then pair as in step 5, using `/telegram-access pair <code>` in place of `/telegram:access pair <code>`.
 
 **2. Try it in the foreground.**
 
@@ -86,6 +101,17 @@ bun run install-service
 
 On macOS this loads a launchd agent (`~/Library/LaunchAgents/com.claude.telegram.plist`). On Linux it enables a systemd user unit (`~/.config/systemd/user/claude-telegram.service`); run `loginctl enable-linger $USER` so it also starts at boot before you log in. Logs go to `~/.claude/channels/telegram/logs/`. Rerun the command after moving the repo or upgrading `bun` or `claude`, because their paths are written into the service file.
 
+The service runs `daemon.ts` from this checkout. Once it is installed, don't also run `bun run start:daemon`: each daemon replaces the one already polling, and launchd or systemd restarts the service, so the two keep killing each other. Manage it with:
+
+| | macOS | Linux |
+| --- | --- | --- |
+| Restart (e.g. after `git pull`) | `launchctl kickstart -k gui/$(id -u)/com.claude.telegram` | `systemctl --user restart claude-telegram` |
+| Stop | `launchctl bootout gui/$(id -u)/com.claude.telegram` | `systemctl --user stop claude-telegram` |
+| Start again | `bun run install-service` | `systemctl --user start claude-telegram` |
+| Follow the log | `tail -f ~/.claude/channels/telegram/logs/daemon.err.log` | same |
+
+To debug in the foreground, stop the service first.
+
 **Config.** Set these in `~/.claude/channels/telegram/.env` (or the environment) and restart:
 
 | Variable | Default | Effect |
@@ -95,7 +121,7 @@ On macOS this loads a launchd agent (`~/Library/LaunchAgents/com.claude.telegram
 | `TELEGRAM_DAILY_TURN_BUDGET` | `0` (no limit) | Turns allowed per local day |
 | `TELEGRAM_INTERRUPT_ON_NEW_MESSAGE` | unset | `1` interrupts the running turn when a new message arrives |
 
-**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. `/stop` interrupts the running turn. When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
+**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. `/stop` interrupts the running turn. When your usage limit is reached, the bot says when it will resume and holds queued messages until then. In groups with topics, typing and progress don't show in the topic yet; replies still arrive.
 
 ## Access control
 

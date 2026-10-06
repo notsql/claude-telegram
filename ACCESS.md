@@ -6,7 +6,7 @@ By default, a DM from an unknown sender triggers **pairing**: the bot replies wi
 
 All state lives in `~/.claude/channels/telegram/access.json`. The `/telegram:access` skill commands edit this file; the server re-reads it on every inbound message, so changes take effect without a restart. Set `TELEGRAM_ACCESS_MODE=static` to pin config to what was on disk at boot (pairing is unavailable in static mode since it requires runtime writes).
 
-In daemon mode (`bun run start:daemon`, see the README) the same file and gate apply. Run `/telegram:access` from any Claude Code session on the daemon host; the daemon picks up the change on the next message. Only users in `allowFrom` can use `/stop`.
+In daemon mode (`bun run start:daemon`, see the README) the same file and gate apply. With the plugin disabled (see the README), run `/telegram-access` from any Claude Code session on the daemon host; it takes the same arguments as `/telegram:access`, and the daemon picks up the change on the next message. Only users in `allowFrom` can use `/stop`.
 
 ## At a glance
 
