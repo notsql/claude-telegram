@@ -22,6 +22,11 @@ test('rejects requests without a session key', async () => {
   expect(res.status).toBe(400)
 })
 
+test('rejects a malformed session key', async () => {
+  const res = await fetch(url.replace('key=123', 'key=abc'), { method: 'POST', headers: { authorization: 'Bearer secret' } })
+  expect(res.status).toBe(400)
+})
+
 test('lists the telegram tools with the token', async () => {
   const res = await listTools({ authorization: 'Bearer secret' })
   expect(res.status).toBe(200)

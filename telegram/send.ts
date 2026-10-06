@@ -7,6 +7,12 @@ import { realpathSync } from 'fs'
 import { join, sep } from 'path'
 import { STATE_DIR } from '../access.ts'
 
+/** Where a send lands: a chat, or a forum topic inside one (002 FR4). */
+export type Target = { chatId: string; threadId?: number }
+
+/** Send options that keep a message in the target's topic. */
+export const threadOpts = (t: Target) => (t.threadId != null ? { message_thread_id: t.threadId } : {})
+
 export const MAX_CHUNK_LIMIT = 4096
 export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 

@@ -25,7 +25,7 @@ const opts = { typingMs: 20, delayMs: 50, editMs: 40 }
 describe('startProgress', () => {
   test('types, posts after the delay, throttles edits and deletes on finish', async () => {
     const api = fakeApi()
-    const p = startProgress(api, '1', opts)
+    const p = startProgress(api, { chatId: '1' }, opts)
     await sleep(60)
     expect(api.calls.filter(c => c === 'typing').length).toBeGreaterThanOrEqual(3)
     expect(api.calls).toContain('send ⏳ Working…')
@@ -43,16 +43,30 @@ describe('startProgress', () => {
 
   test('posts nothing when the agent replies before the delay', async () => {
     const api = fakeApi()
-    const p = startProgress(api, '1', opts)
+    const p = startProgress(api, { chatId: '1' }, opts)
     p.onEvent(tool('mcp__tg__reply'))
     await sleep(70)
     p.finish()
     expect(api.calls.some(c => c.startsWith('send'))).toBe(false)
   })
 
+  test('typing and the progress message stay in the forum topic', async () => {
+    const seen: unknown[] = []
+    const api = {
+      ...fakeApi(),
+      sendChatAction: async (_: string, __: string, other?: unknown) => { seen.push(other) },
+      sendMessage: async (_: string, __: string, other?: unknown) => { seen.push(other); return { message_id: 7 } },
+    }
+    const p = startProgress(api, { chatId: '-100', threadId: 42 }, opts)
+    await sleep(60)
+    p.finish()
+    expect(seen.length).toBeGreaterThan(1)
+    expect(seen.every(o => (o as { message_thread_id?: number }).message_thread_id === 42)).toBe(true)
+  })
+
   test('a short turn never posts a progress message', async () => {
     const api = fakeApi()
-    const p = startProgress(api, '1', opts)
+    const p = startProgress(api, { chatId: '1' }, opts)
     await sleep(10)
     p.finish()
     await sleep(60)

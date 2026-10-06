@@ -10,10 +10,16 @@ import type { ReactionTypeEmoji } from 'grammy/types'
 import { statSync } from 'fs'
 import { extname } from 'path'
 import { loadAccess, assertAllowedChat } from '../access.ts'
-import { MAX_CHUNK_LIMIT, MAX_ATTACHMENT_BYTES, PHOTO_EXTS, assertSendable, chunk } from '../telegram/send.ts'
+import { MAX_CHUNK_LIMIT, MAX_ATTACHMENT_BYTES, PHOTO_EXTS, assertSendable, chunk, threadOpts } from '../telegram/send.ts'
+import { parseKey } from '../sessions/key.ts'
 import { downloadAttachment } from '../telegram/attachments.ts'
 
-export function registerTelegramTools(mcp: Server, api: Api, token: string): void {
+/**
+ * `key` is the session the daemon's MCP request is bound to; replies to its
+ * chat land in its forum topic (002 FR4). The stdio channel passes none.
+ */
+export function registerTelegramTools(mcp: Server, api: Api, token: string, key?: string): void {
+  const bound = key ? parseKey(key) : undefined
   mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {
@@ -101,6 +107,7 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string): voi
           const parseMode = format === 'markdownv2' ? 'MarkdownV2' as const : undefined
 
           assertAllowedChat(chat_id)
+          const thread = bound?.chatId === chat_id ? threadOpts(bound) : {}
 
           for (const f of files) {
             assertSendable(f)
@@ -124,6 +131,7 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string): voi
                 replyMode !== 'off' &&
                 (replyMode === 'all' || i === 0)
               const sent = await api.sendMessage(chat_id, chunks[i], {
+                ...thread,
                 ...(shouldReplyTo ? { reply_parameters: { message_id: reply_to } } : {}),
                 ...(parseMode ? { parse_mode: parseMode } : {}),
               })
@@ -141,9 +149,10 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string): voi
           for (const f of files) {
             const ext = extname(f).toLowerCase()
             const input = new InputFile(f)
-            const opts = reply_to != null && replyMode !== 'off'
-              ? { reply_parameters: { message_id: reply_to } }
-              : undefined
+            const opts = {
+              ...thread,
+              ...(reply_to != null && replyMode !== 'off' ? { reply_parameters: { message_id: reply_to } } : {}),
+            }
             if (PHOTO_EXTS.has(ext)) {
               const sent = await api.sendPhoto(chat_id, input, opts)
               sentIds.push(sent.message_id)

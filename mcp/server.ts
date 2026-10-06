@@ -10,6 +10,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import type { Api } from 'grammy'
 import { registerTelegramTools } from './telegramTools.ts'
+import { parseKey } from '../sessions/key.ts'
 
 export type McpServerOpts = {
   /** Bearer token clients must send; random per daemon start. */
@@ -32,9 +33,14 @@ export function startMcpServer(opts: McpServerOpts): { port: number; stop: () =>
       }
       const key = url.searchParams.get('key')
       if (!key) return new Response('missing session key', { status: 400 })
+      try {
+        parseKey(key)
+      } catch {
+        return new Response('invalid session key', { status: 400 })
+      }
 
       const mcp = new Server({ name: 'tg', version: '1.0.0' }, { capabilities: { tools: {} } })
-      registerTelegramTools(mcp, opts.api, opts.botToken)
+      registerTelegramTools(mcp, opts.api, opts.botToken, key)
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,

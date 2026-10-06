@@ -6,10 +6,13 @@
  */
 
 import { toolUses, type StreamEvent } from './stream.ts'
+import { threadOpts, type Target } from '../telegram/send.ts'
+
+type ThreadOpts = { message_thread_id?: number }
 
 export type ProgressApi = {
-  sendChatAction(chat_id: string, action: 'typing'): Promise<unknown>
-  sendMessage(chat_id: string, text: string): Promise<{ message_id: number }>
+  sendChatAction(chat_id: string, action: 'typing', other?: ThreadOpts): Promise<unknown>
+  sendMessage(chat_id: string, text: string, other?: ThreadOpts): Promise<{ message_id: number }>
   editMessageText(chat_id: string, message_id: number, text: string): Promise<unknown>
   deleteMessage(chat_id: string, message_id: number): Promise<unknown>
 }
@@ -18,7 +21,7 @@ const REPLY_TOOL = 'mcp__tg__reply'
 
 export function startProgress(
   api: ProgressApi,
-  chat_id: string,
+  target: Target,
   { typingMs = 4000, delayMs = 8000, editMs = 3000 } = {},
 ) {
   let done = false
@@ -28,8 +31,9 @@ export function startProgress(
   let lastEdit = 0
   let editTimer: ReturnType<typeof setTimeout> | undefined
   let msg: Promise<number | undefined> | undefined
+  const { chatId: chat_id } = target
 
-  const typing = () => void api.sendChatAction(chat_id, 'typing').catch(() => {})
+  const typing = () => void api.sendChatAction(chat_id, 'typing', threadOpts(target)).catch(() => {})
   typing()
   const typingTimer = setInterval(typing, typingMs)
 
@@ -54,7 +58,7 @@ export function startProgress(
     if (done || replied) return
     lastEdit = Date.now()
     shown = text
-    msg = api.sendMessage(chat_id, text).then(m => m.message_id, () => undefined)
+    msg = api.sendMessage(chat_id, text, threadOpts(target)).then(m => m.message_id, () => undefined)
   }, delayMs)
 
   return {

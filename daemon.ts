@@ -21,7 +21,8 @@ import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from './agent/runner.ts'
-import { sessionKey } from './sessions/key.ts'
+import { parseKey, sessionKey } from './sessions/key.ts'
+import { threadOpts } from './telegram/send.ts'
 import { createSessionStore } from './sessions/store.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
@@ -145,11 +146,15 @@ const budget = createTurnBudget(config.dailyTurnBudget)
 
 const pauseMessage = (until: number) => `Usage limit reached. Paused until ${new Date(until).toLocaleString()}.`
 
-function enqueueTurn(chat_id: string, key: string, prompt: string, firstMessage: string): void {
+function enqueueTurn(key: string, prompt: string, firstMessage: string): void {
+  const target = parseKey(key)
+  const { chatId: chat_id } = target
+  // 002 FR4: daemon notices land in the key's forum topic.
+  const notify = (text: string) => bot.api.sendMessage(chat_id, text, threadOpts(target)).catch(() => {})
   queue = queue.then(async () => {
     if (turnAbort.signal.aborted) return
     if (pausedUntil > Date.now()) {
-      await bot.api.sendMessage(chat_id, `${pauseMessage(pausedUntil)} Your message will run then.`).catch(() => {})
+      await notify(`${pauseMessage(pausedUntil)} Your message will run then.`)
       await new Promise<void>(r => {
         const t = setTimeout(r, pausedUntil - Date.now())
         turnAbort.signal.addEventListener('abort', () => { clearTimeout(t); r() }, { once: true })
@@ -157,11 +162,11 @@ function enqueueTurn(chat_id: string, key: string, prompt: string, firstMessage:
       if (turnAbort.signal.aborted) return
     }
     if (!budget.take()) {
-      await bot.api.sendMessage(chat_id, `Daily turn budget (${config.dailyTurnBudget}) used up. Try again tomorrow.`).catch(() => {})
+      await notify(`Daily turn budget (${config.dailyTurnBudget}) used up. Try again tomorrow.`)
       return
     }
     const turn = currentTurn = new AbortController()
-    const progress = startProgress(bot.api, chat_id)
+    const progress = startProgress(bot.api, target)
     const outcome = await runInSession(key, prompt, firstMessage, {
       settingsFile: SETTINGS_FILE,
       mcpPort: mcpServer.port,
@@ -176,15 +181,15 @@ function enqueueTurn(chat_id: string, key: string, prompt: string, firstMessage:
       if (currentTurn === turn) currentTurn = undefined
     })
     if (turn.signal.aborted && !turnAbort.signal.aborted) {
-      await bot.api.sendMessage(chat_id, 'Stopped.').catch(() => {})
+      await notify('Stopped.')
     }
     if (outcome.refused) {
       log(`turn refused (never bare): ${outcome.refused.join('; ')}`)
-      await bot.api.sendMessage(chat_id, `Turn refused: ${outcome.refused.join('; ')}`).catch(() => {})
+      await notify(`Turn refused: ${outcome.refused.join('; ')}`)
     } else if (outcome.pausedUntil) {
       pausedUntil = outcome.pausedUntil
       log(pauseMessage(pausedUntil))
-      await bot.api.sendMessage(chat_id, pauseMessage(pausedUntil)).catch(() => {})
+      await notify(pauseMessage(pausedUntil))
     } else if (outcome.result?.is_error) {
       log(`turn ended with error result (exit ${outcome.exitCode})`)
     }
@@ -337,7 +342,8 @@ async function handleInbound(
   const chat_id = String(ctx.chat!.id)
   const msgId = ctx.message?.message_id
 
-  void bot.api.sendChatAction(chat_id, 'typing').catch(() => {})
+  const key = sessionKey(ctx.msg!)
+  void bot.api.sendChatAction(chat_id, 'typing', threadOpts(parseKey(key))).catch(() => {})
   if (access.ackReaction && msgId != null) {
     void bot.api
       .setMessageReaction(chat_id, msgId, [
@@ -348,7 +354,7 @@ async function handleInbound(
 
   if (INTERRUPT_ON_NEW_MESSAGE) currentTurn?.abort()
   const imagePath = downloadImage ? await downloadImage() : undefined
-  enqueueTurn(chat_id, sessionKey(ctx.msg!), renderChannelMessage(text, {
+  enqueueTurn(key, renderChannelMessage(text, {
     chat_id,
     ...(msgId != null ? { message_id: String(msgId) } : {}),
     user: from.username ?? String(from.id),
