@@ -8,7 +8,7 @@ Depends on: 001 (T005, T007, T009)
   *Verify:* AC1.
 - [x] **T204** Thread-aware `Target` in `send.ts`. Every send path (reply tool, progress, files, errors) passes `message_thread_id`.
   *Verify:* AC2.
-- [ ] **T205** `queue.ts`: serial execution per key, a global semaphore, batching of pending messages, and a "queued" reaction.
+- [x] **T205** `queue.ts`: serial execution per key, a global semaphore, batching of pending messages, and a "queued" reaction.
   *Verify:* AC3.
 - [ ] **T206** `groupBuffer.ts` plus a hook in the router for messages dropped only because a mention was missing.
   *Verify:* AC4, and a non-allowlisted sender's text never shows up in the buffer.
