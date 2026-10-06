@@ -8,6 +8,8 @@
 
 import { Bot, GrammyError, type Context } from 'grammy'
 import type { ReactionTypeEmoji } from 'grammy/types'
+import { autoRetry } from '@grammyjs/auto-retry'
+import { apiThrottler } from '@grammyjs/transformer-throttler'
 import { readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { randomBytes } from 'crypto'
@@ -106,6 +108,10 @@ process.on('uncaughtException', err => log(`uncaught exception: ${err}`))
 
 initAccess({ static: STATIC })
 const bot = new Bot(TOKEN)
+// 002 plan risk: Telegram allows ~30 msgs/s overall and ~20/min per group. The
+// throttler keeps sends under those limits; a 429 that still happens is retried.
+bot.api.config.use(apiThrottler())
+bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 60 }))
 if (!STATIC) setInterval(() => checkApprovals(bot.api), 5000).unref()
 
 // FR10: a missing login is reported, not fatal; the owner can log in without a restart.
