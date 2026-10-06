@@ -36,11 +36,14 @@ function run(cmd: string[], allowFail = false): void {
 function main(): void {
   const claude = Bun.which('claude')
   if (!claude) throw new Error('`claude` not found on PATH; install it and log in first')
+  // The PATH symlink, not `process.execPath`: Homebrew resolves that to a
+  // versioned Cellar dir that vanishes on `brew upgrade bun`.
+  const bun = Bun.which('bun') ?? process.execPath
   const logDir = join(STATE_DIR, 'logs')
   mkdirSync(logDir, { recursive: true, mode: 0o700 })
   const vars = {
-    LABEL, ROOT, BUN: process.execPath, DAEMON: join(ROOT, 'daemon.ts'),
-    PATH: servicePath(claude, process.execPath), STATE_DIR, LOG_DIR: logDir,
+    LABEL, ROOT, BUN: bun, DAEMON: join(ROOT, 'daemon.ts'),
+    PATH: servicePath(claude, bun), STATE_DIR, LOG_DIR: logDir,
   }
   const tmpl = (name: string) => readFileSync(join(import.meta.dir, name), 'utf8')
 
