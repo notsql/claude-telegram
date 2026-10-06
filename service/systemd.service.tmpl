@@ -1,0 +1,19 @@
+[Unit]
+Description=Claude Telegram daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart="{{BUN}}" "{{DAEMON}}"
+WorkingDirectory={{ROOT}}
+Environment="PATH={{PATH}}"
+Environment="TELEGRAM_STATE_DIR={{STATE_DIR}}"
+Restart=always
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=15
+StandardOutput=append:{{LOG_DIR}}/daemon.out.log
+StandardError=append:{{LOG_DIR}}/daemon.err.log
+
+[Install]
+WantedBy=default.target
