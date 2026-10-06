@@ -15,7 +15,7 @@ Depends on: 001 (T005, T007, T009)
   *Verified by unit tests only (`test/groupBuffer.test.ts`): the owner runs groups with `requireMention: false`, so AC4 was not exercised live (2026-10-06).*
 - [x] **T207** Inbound prompt formatter that escapes wrapper tags.
   *Verify:* unit test where the user text contains `</telegram>`.
-- [ ] **T208** Topic name cache from service messages.
+- [x] **T208** Topic name cache from service messages.
   *Verify:* renaming a topic updates `topic=` in the next prompt.
 - [ ] **T209** Expose session lifecycle functions to 008 (`/new`, `/resume`, `/sessions`).
   *Verify:* AC5.
