@@ -122,7 +122,18 @@ To debug in the foreground, stop the service first.
 | `TELEGRAM_MAX_CONCURRENT_SESSIONS` | `3` | Chats or topics whose turns run at the same time; others wait with a 🫡 reaction |
 | `TELEGRAM_INTERRUPT_ON_NEW_MESSAGE` | unset | `1` interrupts the running turn when a new message arrives |
 
-**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. Each chat and forum topic is its own conversation, and up to `TELEGRAM_MAX_CONCURRENT_SESSIONS` of them work at once. Messages sent while the bot is busy in that chat are answered together in the next turn; a 🫡 reaction marks a message that is waiting. `/stop` interrupts the turn running in the chat or topic where you send it. When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
+**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. Each chat and forum topic is its own conversation, and up to `TELEGRAM_MAX_CONCURRENT_SESSIONS` of them work at once. Messages sent while the bot is busy in that chat are answered together in the next turn; a 🫡 reaction marks a message that is waiting. `/stop` interrupts the turn running in the chat or topic where you send it. `/new` starts a fresh conversation there, `/sessions` lists the earlier ones and `/resume <n>` switches back to one; these and `/stop` only work for senders in your `allowFrom` list. When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
+
+### Groups and forum topics
+
+Each group, and each topic in a forum group, gets its own conversation. To set one up:
+
+1. **Add the bot.** In the group, open the member list, choose **Add members** and pick your bot.
+2. **Turn on topics (optional).** In the group settings, choose **Edit** and enable **Topics**. This turns a basic group into a supergroup with a new `-100…` chat ID, so do it before the next step.
+3. **Turn off privacy mode.** Send [@BotFather](https://t.me/BotFather) `/setprivacy`, pick your bot and choose **Disable**. With privacy mode on, Telegram delivers only @mentions and replies. The bot then can't see the group messages that weren't addressed to it, which it otherwise passes to the next mentioned turn as recent context. Telegram applies the change only to groups the bot joins afterwards, so remove the bot and add it again. Making the bot a group admin also gets it every message.
+4. **Allow the group.** Get its chat ID (see [ACCESS.md](./ACCESS.md#groups)) and run `/telegram-access group add <chatId>`. Add `--no-mention` to have it answer every message, not just @mentions and replies.
+
+Replies, progress messages and notices go to the topic the message came from. The bot learns topic names when a topic is created or renamed, and after a restart from the next message in each topic. The prompt carries the name, so you can ask it which topic it's in.
 
 ## Access control
 
