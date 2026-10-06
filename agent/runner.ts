@@ -1,7 +1,7 @@
 /**
  * Runs one daemon turn: spawns `claude -p`, parses its stream-json output and
- * resolves with the final `result`. Holds a single global session that every
- * turn resumes (002 replaces this with per-key sessions). The MCP config is
+ * resolves with the final `result`. The caller picks the Claude Code session
+ * to resume (002 FR3) and reads the new one from `init`. The MCP config is
  * rendered per turn so its URL carries the session key (T003: the query
  * string reaches the server, `${VAR}` in `headers` is interpolated).
  */
@@ -20,6 +20,8 @@ export type RunTurnOpts = {
   hookToken: string
   cwd: string
   maxTurns: number
+  /** Claude Code session to `--resume`; omitted for a fresh session. */
+  resume?: string
   /** Every parsed event, for logging and progress. */
   onEvent?: (ev: StreamEvent) => void
   /** Abort ends the turn via `interruptChild` (FR8, FR9). */
@@ -36,8 +38,6 @@ export type TurnOutcome = {
   pausedUntil?: number
   exitCode: number
 }
-
-let sessionId: string | undefined
 
 type Killable = { kill(signal: NodeJS.Signals): void; exited: Promise<number> }
 
@@ -66,7 +66,7 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
   const { CLAUDECODE, CLAUDE_CODE_SESSION_ID, ...env } = process.env
   const child = Bun.spawn([
     'claude', '-p', prompt,
-    ...(sessionId ? ['--resume', sessionId] : []),
+    ...(opts.resume ? ['--resume', opts.resume] : []),
     '--output-format', 'stream-json', '--verbose',
     '--settings', opts.settingsFile,
     '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key)),
@@ -100,11 +100,18 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     if (pausedUntil) outcome.pausedUntil = pausedUntil
     if (ev.kind === 'init') {
       outcome.init = ev.event
-      sessionId = ev.event.session_id
     } else if (ev.kind === 'result') {
       outcome.result = ev.event
     }
     opts.onEvent?.(ev)
   }
   return { ...outcome, exitCode: await child.exited }
+}
+
+/**
+ * A `--resume` whose transcript is gone (e.g. cleaned up after
+ * `cleanupPeriodDays`) ends with this error result and no `init`.
+ */
+export function isMissingSession(outcome: TurnOutcome): boolean {
+  return !outcome.init && !!outcome.result?.errors?.some(e => e.startsWith('No conversation found'))
 }

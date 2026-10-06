@@ -20,7 +20,9 @@ import { type AttachmentMeta, safeName, downloadPhoto } from './telegram/attachm
 import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
-import { runTurn } from './agent/runner.ts'
+import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from './agent/runner.ts'
+import { sessionKey } from './sessions/key.ts'
+import { createSessionStore } from './sessions/store.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
@@ -113,7 +115,25 @@ const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: 
 const hookServer = startHookServer({ authToken: hookToken, log })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 
-// Turns run one at a time on the single global session (002 adds per-key queues).
+const sessions = createSessionStore(join(STATE_DIR, 'sessions.json'))
+
+/**
+ * Runs a turn in the key's session and stores the `session_id` from `init`,
+ * since resume can return a new one (002 FR3). A session whose transcript is
+ * gone is archived and the turn retried fresh, so the chat never gets stuck.
+ */
+async function runInSession(key: string, prompt: string, firstMessage: string, opts: RunTurnOpts): Promise<TurnOutcome> {
+  let outcome = await runTurn(key, prompt, { ...opts, resume: sessions.current(key) })
+  if (isMissingSession(outcome)) {
+    log(`session for ${key} is gone, starting fresh`)
+    sessions.new(key)
+    outcome = await runTurn(key, prompt, opts)
+  }
+  if (outcome.init) sessions.record(key, outcome.init.session_id, firstMessage)
+  return outcome
+}
+
+// Turns run one at a time across all keys (T205 adds per-key queues).
 let queue: Promise<void> = Promise.resolve()
 const turnAbort = new AbortController()
 // FR8: the running turn, so /stop or a new message (with the flag) can interrupt it.
@@ -125,7 +145,7 @@ const budget = createTurnBudget(config.dailyTurnBudget)
 
 const pauseMessage = (until: number) => `Usage limit reached. Paused until ${new Date(until).toLocaleString()}.`
 
-function enqueueTurn(chat_id: string, prompt: string): void {
+function enqueueTurn(chat_id: string, key: string, prompt: string, firstMessage: string): void {
   queue = queue.then(async () => {
     if (turnAbort.signal.aborted) return
     if (pausedUntil > Date.now()) {
@@ -142,7 +162,7 @@ function enqueueTurn(chat_id: string, prompt: string): void {
     }
     const turn = currentTurn = new AbortController()
     const progress = startProgress(bot.api, chat_id)
-    const outcome = await runTurn(chat_id, prompt, {
+    const outcome = await runInSession(key, prompt, firstMessage, {
       settingsFile: SETTINGS_FILE,
       mcpPort: mcpServer.port,
       mcpToken,
@@ -328,7 +348,7 @@ async function handleInbound(
 
   if (INTERRUPT_ON_NEW_MESSAGE) currentTurn?.abort()
   const imagePath = downloadImage ? await downloadImage() : undefined
-  enqueueTurn(chat_id, renderChannelMessage(text, {
+  enqueueTurn(chat_id, sessionKey(ctx.msg!), renderChannelMessage(text, {
     chat_id,
     ...(msgId != null ? { message_id: String(msgId) } : {}),
     user: from.username ?? String(from.id),
@@ -342,7 +362,7 @@ async function handleInbound(
       ...(attachment.mime ? { attachment_mime: attachment.mime } : {}),
       ...(attachment.name ? { attachment_name: attachment.name } : {}),
     } : {}),
-  }))
+  }), text)
 }
 
 // Without this, any throw in a handler stops polling permanently.
