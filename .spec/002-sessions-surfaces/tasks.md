@@ -6,7 +6,7 @@ Depends on: 001 (T005, T007, T009)
   *Verify:* unit tests, and the file survives a kill -9 mid-write.
 - [x] **T203** Runner passes `--resume <sessionId>` and the per-key `TG_SESSION_KEY`, and captures `session_id` from the stream-json `system/init` event. The MCP session binding (001 T005) uses the key.
   *Verify:* AC1.
-- [ ] **T204** Thread-aware `Target` in `send.ts`. Every send path (reply tool, progress, files, errors) passes `message_thread_id`.
+- [x] **T204** Thread-aware `Target` in `send.ts`. Every send path (reply tool, progress, files, errors) passes `message_thread_id`.
   *Verify:* AC2.
 - [ ] **T205** `queue.ts`: serial execution per key, a global semaphore, batching of pending messages, and a "queued" reaction.
   *Verify:* AC3.
