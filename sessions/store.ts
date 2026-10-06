@@ -24,6 +24,9 @@ function truncateTitle(text: string): string {
 
 export function createSessionStore(file: string, now: () => number = Date.now) {
   let data: Record<string, SessionEntry> = load()
+  // Bumped by new/resume so a turn that was running across one can't undo it.
+  const generations = new Map<string, number>()
+  const bump = (key: string) => generations.set(key, (generations.get(key) ?? 0) + 1)
 
   function load(): Record<string, SessionEntry> {
     try {
@@ -69,9 +72,11 @@ export function createSessionStore(file: string, now: () => number = Date.now) {
     /**
      * Stores the `session_id` from a turn's `system/init` (FR3). Resume can
      * return a new ID, which replaces the current one without touching history.
-     * `firstMessage` titles the session when it is new.
+     * `firstMessage` titles the session when it is new. With `since` (from
+     * `generation` when the turn started), a `new`/`resume` in between wins.
      */
-    record(key: string, sessionId: string, firstMessage: string): void {
+    record(key: string, sessionId: string, firstMessage: string, since?: number): void {
+      if (since != null && since !== (generations.get(key) ?? 0)) return
       const e = entry(key)
       if (!e.sessionId) {
         e.startedAt = now()
@@ -84,6 +89,7 @@ export function createSessionStore(file: string, now: () => number = Date.now) {
 
     /** Archives the current session; the next turn starts fresh (FR9 `new`). */
     new(key: string): void {
+      bump(key)
       archive(entry(key))
       save()
     },
@@ -96,6 +102,7 @@ export function createSessionStore(file: string, now: () => number = Date.now) {
       const e = entry(key)
       const picked = e.history[n - 1]
       if (!Number.isInteger(n) || !picked) throw new Error(`no session #${n}`)
+      bump(key)
       e.history.splice(n - 1, 1)
       archive(e)
       e.sessionId = picked.sessionId
@@ -104,6 +111,11 @@ export function createSessionStore(file: string, now: () => number = Date.now) {
       e.lastActive = now()
       save()
       return picked
+    },
+
+    /** Pass to `record` as `since`. */
+    generation(key: string): number {
+      return generations.get(key) ?? 0
     },
 
     /** Past sessions for this key, most recent first (FR9 `list`). */

@@ -24,6 +24,7 @@ import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from '.
 import { parseKey, sessionKey } from './sessions/key.ts'
 import { threadOpts } from './telegram/send.ts'
 import { createSessionStore } from './sessions/store.ts'
+import { createSessionLifecycle, formatSessions } from './sessions/lifecycle.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
 import { renderInbound } from './agent/inbound.ts'
@@ -128,13 +129,15 @@ const sessions = createSessionStore(join(STATE_DIR, 'sessions.json'))
  * gone is archived and the turn retried fresh, so the chat never gets stuck.
  */
 async function runInSession(key: string, prompt: string, firstMessage: string, opts: RunTurnOpts): Promise<TurnOutcome> {
+  let since = sessions.generation(key)
   let outcome = await runTurn(key, prompt, { ...opts, resume: sessions.current(key) })
   if (isMissingSession(outcome)) {
     log(`session for ${key} is gone, starting fresh`)
     sessions.new(key)
+    since = sessions.generation(key)
     outcome = await runTurn(key, prompt, opts)
   }
-  if (outcome.init) sessions.record(key, outcome.init.session_id, firstMessage)
+  if (outcome.init) sessions.record(key, outcome.init.session_id, firstMessage, since)
   return outcome
 }
 
@@ -142,6 +145,7 @@ const turnAbort = new AbortController()
 // FR8: each key's running turn, so /stop or a new message (with the flag) can interrupt it.
 const runningTurns = new Map<string, AbortController>()
 const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
+const lifecycle = createSessionLifecycle(sessions, key => runningTurns.get(key)?.abort())
 // FR10: set when a turn hits a usage limit; queued turns wait until then.
 let pausedUntil = 0
 const budget = createTurnBudget(config.dailyTurnBudget)
@@ -242,15 +246,45 @@ process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
 process.on('SIGHUP', shutdown)
 
+const isOwner = (ctx: Context) => !!ctx.from && loadAccess().allowFrom.includes(String(ctx.from.id))
+
 // FR8: owners can interrupt the turn running in this chat or topic.
 bot.command('stop', async ctx => {
-  if (!ctx.from || !loadAccess().allowFrom.includes(String(ctx.from.id))) return
+  if (!isOwner(ctx)) return
   const turn = runningTurns.get(sessionKey(ctx.msg!))
   if (!turn) {
     await ctx.reply('Nothing is running here.')
     return
   }
   turn.abort()
+})
+
+// 002 FR9, owner-only like /stop. 008 moves these into its command handlers.
+bot.command('new', async ctx => {
+  if (!isOwner(ctx)) return
+  lifecycle.new(sessionKey(ctx.msg!))
+  await ctx.reply('New session. The next message starts with no earlier context.')
+})
+
+bot.command('sessions', async ctx => {
+  if (!isOwner(ctx)) return
+  await ctx.reply(formatSessions(lifecycle.list(sessionKey(ctx.msg!))))
+})
+
+bot.command('resume', async ctx => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  const arg = ctx.match.trim()
+  if (!arg) {
+    await ctx.reply(`${formatSessions(lifecycle.list(key))}\n\nSend /resume <n> to switch.`)
+    return
+  }
+  try {
+    const picked = lifecycle.resume(key, Number(arg))
+    await ctx.reply(`Resumed: ${picked.title || '(untitled)'}`)
+  } catch (err) {
+    await ctx.reply((err as Error).message)
+  }
 })
 
 // The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
@@ -273,7 +307,10 @@ bot.command('help', async ctx => {
     `Text and photos are forwarded; replies and reactions come back.\n\n` +
     `/start: pairing instructions\n` +
     `/status: check your pairing state\n` +
-    `/stop: interrupt the running turn in this chat`
+    `/stop: interrupt the running turn in this chat\n` +
+    `/new: start a fresh session here\n` +
+    `/sessions: list earlier sessions\n` +
+    `/resume <n>: switch back to an earlier session`
   )
 })
 
