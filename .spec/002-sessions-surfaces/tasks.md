@@ -19,6 +19,7 @@ Depends on: 001 (T005, T007, T009)
   *Verify:* renaming a topic updates `topic=` in the next prompt.
 - [ ] **T209** Expose session lifecycle functions to 008 (`/new`, `/resume`, `/sessions`).
   *Verify:* AC5.
-- [ ] **T210** grammY `auto-retry` and throttling for outbound sends.
+- [x] **T210** grammY `auto-retry` and throttling for outbound sends.
   *Verify:* a burst of 50 chunks completes without 429 errors.
+  *Verified 2026-10-06: 50 concurrent DM sends, 0 failures, 0 raw 429s, ~49s (the per-chat limiter sends 1/s).*
 - [ ] **T211** Group onboarding doc: how to add the bot, turn off privacy mode in BotFather (required to see unmentioned messages for FR8), and enable topics.
