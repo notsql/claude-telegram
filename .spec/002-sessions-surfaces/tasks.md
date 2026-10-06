@@ -10,8 +10,9 @@ Depends on: 001 (T005, T007, T009)
   *Verify:* AC2.
 - [x] **T205** `queue.ts`: serial execution per key, a global semaphore, batching of pending messages, and a "queued" reaction.
   *Verify:* AC3.
-- [ ] **T206** `groupBuffer.ts` plus a hook in the router for messages dropped only because a mention was missing.
+- [x] **T206** `groupBuffer.ts` plus a hook in the router for messages dropped only because a mention was missing.
   *Verify:* AC4, and a non-allowlisted sender's text never shows up in the buffer.
+  *Verified by unit tests only (`test/groupBuffer.test.ts`): the owner runs groups with `requireMention: false`, so AC4 was not exercised live (2026-10-06).*
 - [ ] **T207** Inbound prompt formatter that escapes wrapper tags.
   *Verify:* unit test where the user text contains `</telegram>`.
 - [ ] **T208** Topic name cache from service messages.
