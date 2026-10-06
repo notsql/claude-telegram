@@ -1,6 +1,7 @@
 /**
  * Daemon config (T014) from env or the state-dir `.env`: per-turn
- * `--max-turns`, a daily turn budget, the default workspace `cwd`, and the
+ * `--max-turns`, a daily turn budget, how many sessions run at once (002
+ * FR5), the default workspace `cwd`, and the
  * minimum `claude` CLI version (FR12), pinned to the T003 spike.
  */
 
@@ -13,6 +14,8 @@ export type Config = {
   maxTurns: number
   /** Turns allowed per local day; 0 means no budget. */
   dailyTurnBudget: number
+  /** Sessions whose turns may run at the same time; at least 1. */
+  maxConcurrentSessions: number
   cwd: string
 }
 
@@ -25,9 +28,12 @@ function positiveInt(env: Record<string, string | undefined>, name: string, fall
 }
 
 export function loadConfig(env: Record<string, string | undefined>): Config {
+  const maxConcurrentSessions = positiveInt(env, 'TELEGRAM_MAX_CONCURRENT_SESSIONS', 3)
+  if (maxConcurrentSessions < 1) throw new Error('TELEGRAM_MAX_CONCURRENT_SESSIONS must be at least 1')
   return {
     maxTurns: positiveInt(env, 'TELEGRAM_MAX_TURNS', 30),
     dailyTurnBudget: positiveInt(env, 'TELEGRAM_DAILY_TURN_BUDGET', 0),
+    maxConcurrentSessions,
     cwd: env.TELEGRAM_WORKSPACE || join(STATE_DIR, 'workspace'),
   }
 }

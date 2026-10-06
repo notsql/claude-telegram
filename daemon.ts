@@ -24,6 +24,7 @@ import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from '.
 import { parseKey, sessionKey } from './sessions/key.ts'
 import { threadOpts } from './telegram/send.ts'
 import { createSessionStore } from './sessions/store.ts'
+import { createTurnQueue } from './sessions/queue.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
@@ -134,11 +135,9 @@ async function runInSession(key: string, prompt: string, firstMessage: string, o
   return outcome
 }
 
-// Turns run one at a time across all keys (T205 adds per-key queues).
-let queue: Promise<void> = Promise.resolve()
 const turnAbort = new AbortController()
-// FR8: the running turn, so /stop or a new message (with the flag) can interrupt it.
-let currentTurn: AbortController | undefined
+// FR8: each key's running turn, so /stop or a new message (with the flag) can interrupt it.
+const runningTurns = new Map<string, AbortController>()
 const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
 // FR10: set when a turn hits a usage limit; queued turns wait until then.
 let pausedUntil = 0
@@ -146,54 +145,78 @@ const budget = createTurnBudget(config.dailyTurnBudget)
 
 const pauseMessage = (until: number) => `Usage limit reached. Paused until ${new Date(until).toLocaleString()}.`
 
-function enqueueTurn(key: string, prompt: string, firstMessage: string): void {
+/** One inbound message waiting for its key's next turn. */
+type Inbound = { prompt: string; text: string; msgId?: number; queued?: boolean }
+
+// Telegram only allows reactions from a fixed set, which has no hourglass.
+const QUEUED_REACTION = '🫡'
+
+const setReaction = (chat_id: string, msgId: number, emoji: string | undefined) =>
+  bot.api.setMessageReaction(chat_id, msgId, emoji ? [{ type: 'emoji', emoji: emoji as ReactionTypeEmoji['emoji'] }] : [])
+    .catch(() => {})
+
+// 002 FR5/FR6: serial per key, up to N keys at once, mid-turn messages batched.
+const turns = createTurnQueue<Inbound>({
+  concurrency: config.maxConcurrentSessions,
+  run: (key, batch) => runBatch(key, batch).catch(err => log(`turn failed: ${err}`)),
+  onQueued: (key, item) => {
+    item.queued = true
+    if (item.msgId != null) void setReaction(parseKey(key).chatId, item.msgId, QUEUED_REACTION)
+  },
+})
+
+async function runBatch(key: string, batch: Inbound[]): Promise<void> {
   const target = parseKey(key)
   const { chatId: chat_id } = target
   // 002 FR4: daemon notices land in the key's forum topic.
   const notify = (text: string) => bot.api.sendMessage(chat_id, text, threadOpts(target)).catch(() => {})
-  queue = queue.then(async () => {
-    if (turnAbort.signal.aborted) return
-    if (pausedUntil > Date.now()) {
-      await notify(`${pauseMessage(pausedUntil)} Your message will run then.`)
-      await new Promise<void>(r => {
-        const t = setTimeout(r, pausedUntil - Date.now())
-        turnAbort.signal.addEventListener('abort', () => { clearTimeout(t); r() }, { once: true })
-      })
-      if (turnAbort.signal.aborted) return
-    }
-    if (!budget.take()) {
-      await notify(`Daily turn budget (${config.dailyTurnBudget}) used up. Try again tomorrow.`)
-      return
-    }
-    const turn = currentTurn = new AbortController()
-    const progress = startProgress(bot.api, target)
-    const outcome = await runInSession(key, prompt, firstMessage, {
-      settingsFile: SETTINGS_FILE,
-      mcpPort: mcpServer.port,
-      mcpToken,
-      hookToken,
-      cwd: config.cwd,
-      maxTurns: config.maxTurns,
-      signal: AbortSignal.any([turnAbort.signal, turn.signal]),
-      onEvent: progress.onEvent,
-    }).finally(() => {
-      progress.finish()
-      if (currentTurn === turn) currentTurn = undefined
+  if (turnAbort.signal.aborted) return
+  // The queued reaction goes back to the ack (or none) once the turn starts.
+  const ack = loadAccess().ackReaction
+  for (const m of batch) if (m.queued && m.msgId != null) void setReaction(chat_id, m.msgId, ack)
+  const prompt = batch.map(m => m.prompt).join('\n\n')
+  const firstMessage = batch[0]!.text
+  if (pausedUntil > Date.now()) {
+    await notify(`${pauseMessage(pausedUntil)} Your message will run then.`)
+    await new Promise<void>(r => {
+      const t = setTimeout(r, pausedUntil - Date.now())
+      turnAbort.signal.addEventListener('abort', () => { clearTimeout(t); r() }, { once: true })
     })
-    if (turn.signal.aborted && !turnAbort.signal.aborted) {
-      await notify('Stopped.')
-    }
-    if (outcome.refused) {
-      log(`turn refused (never bare): ${outcome.refused.join('; ')}`)
-      await notify(`Turn refused: ${outcome.refused.join('; ')}`)
-    } else if (outcome.pausedUntil) {
-      pausedUntil = outcome.pausedUntil
-      log(pauseMessage(pausedUntil))
-      await notify(pauseMessage(pausedUntil))
-    } else if (outcome.result?.is_error) {
-      log(`turn ended with error result (exit ${outcome.exitCode})`)
-    }
-  }).catch(err => log(`turn failed: ${err}`))
+    if (turnAbort.signal.aborted) return
+  }
+  if (!budget.take()) {
+    await notify(`Daily turn budget (${config.dailyTurnBudget}) used up. Try again tomorrow.`)
+    return
+  }
+  const turn = new AbortController()
+  runningTurns.set(key, turn)
+  const progress = startProgress(bot.api, target)
+  const outcome = await runInSession(key, prompt, firstMessage, {
+    settingsFile: SETTINGS_FILE,
+    mcpPort: mcpServer.port,
+    mcpToken,
+    hookToken,
+    cwd: config.cwd,
+    maxTurns: config.maxTurns,
+    signal: AbortSignal.any([turnAbort.signal, turn.signal]),
+    onEvent: progress.onEvent,
+  }).finally(() => {
+    progress.finish()
+    if (runningTurns.get(key) === turn) runningTurns.delete(key)
+  })
+  if (turn.signal.aborted && !turnAbort.signal.aborted) {
+    await notify('Stopped.')
+  }
+  if (outcome.refused) {
+    log(`turn refused (never bare): ${outcome.refused.join('; ')}`)
+    await notify(`Turn refused: ${outcome.refused.join('; ')}`)
+  } else if (outcome.pausedUntil) {
+    pausedUntil = outcome.pausedUntil
+    log(pauseMessage(pausedUntil))
+    await notify(pauseMessage(pausedUntil))
+  } else if (outcome.result?.is_error) {
+    log(`turn ended with error result (exit ${outcome.exitCode})`)
+  }
 }
 
 let shuttingDown = false
@@ -206,7 +229,7 @@ function shutdown(): void {
   } catch {}
   setTimeout(() => process.exit(0), SHUTDOWN_DEADLINE_MS).unref()
   turnAbort.abort()
-  void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), queue]).finally(() => {
+  void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
     hookServer.stop()
     process.exit(0)
@@ -216,14 +239,15 @@ process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
 process.on('SIGHUP', shutdown)
 
-// FR8: owners can interrupt the running turn from any chat.
+// FR8: owners can interrupt the turn running in this chat or topic.
 bot.command('stop', async ctx => {
   if (!ctx.from || !loadAccess().allowFrom.includes(String(ctx.from.id))) return
-  if (!currentTurn) {
-    await ctx.reply('Nothing is running.')
+  const turn = runningTurns.get(sessionKey(ctx.msg!))
+  if (!turn) {
+    await ctx.reply('Nothing is running here.')
     return
   }
-  currentTurn.abort()
+  turn.abort()
 })
 
 // The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
@@ -246,7 +270,7 @@ bot.command('help', async ctx => {
     `Text and photos are forwarded; replies and reactions come back.\n\n` +
     `/start: pairing instructions\n` +
     `/status: check your pairing state\n` +
-    `/stop: interrupt the running turn`
+    `/stop: interrupt the running turn in this chat`
   )
 })
 
@@ -352,9 +376,9 @@ async function handleInbound(
       .catch(() => {})
   }
 
-  if (INTERRUPT_ON_NEW_MESSAGE) currentTurn?.abort()
+  if (INTERRUPT_ON_NEW_MESSAGE) runningTurns.get(key)?.abort()
   const imagePath = downloadImage ? await downloadImage() : undefined
-  enqueueTurn(key, renderChannelMessage(text, {
+  const prompt = renderChannelMessage(text, {
     chat_id,
     ...(msgId != null ? { message_id: String(msgId) } : {}),
     user: from.username ?? String(from.id),
@@ -368,7 +392,8 @@ async function handleInbound(
       ...(attachment.mime ? { attachment_mime: attachment.mime } : {}),
       ...(attachment.name ? { attachment_name: attachment.name } : {}),
     } : {}),
-  }), text)
+  })
+  turns.enqueue(key, { prompt, text, msgId })
 }
 
 // Without this, any throw in a handler stops polling permanently.
@@ -387,7 +412,7 @@ for (let attempt = 1; ; attempt++) {
             { command: 'start', description: 'Welcome and setup guide' },
             { command: 'help', description: 'What this bot can do' },
             { command: 'status', description: 'Check your pairing status' },
-            { command: 'stop', description: 'Interrupt the running turn' },
+            { command: 'stop', description: 'Interrupt the running turn in this chat' },
           ],
           { scope: { type: 'all_private_chats' } },
         ).catch(() => {})

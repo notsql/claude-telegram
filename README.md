@@ -119,9 +119,10 @@ To debug in the foreground, stop the service first.
 | `TELEGRAM_WORKSPACE` | `~/.claude/channels/telegram/workspace` | Working directory for every turn |
 | `TELEGRAM_MAX_TURNS` | `30` | `--max-turns` for each turn |
 | `TELEGRAM_DAILY_TURN_BUDGET` | `0` (no limit) | Turns allowed per local day |
+| `TELEGRAM_MAX_CONCURRENT_SESSIONS` | `3` | Chats or topics whose turns run at the same time; others wait with a 🫡 reaction |
 | `TELEGRAM_INTERRUPT_ON_NEW_MESSAGE` | unset | `1` interrupts the running turn when a new message arrives |
 
-**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. `/stop` interrupts the running turn. When your usage limit is reached, the bot says when it will resume and holds queued messages until then. In groups with topics, typing and progress don't show in the topic yet; replies still arrive.
+**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. Each chat and forum topic is its own conversation, and up to `TELEGRAM_MAX_CONCURRENT_SESSIONS` of them work at once. Messages sent while the bot is busy in that chat are answered together in the next turn; a 🫡 reaction marks a message that is waiting. `/stop` interrupts the turn running in the chat or topic where you send it. When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
 
 ## Access control
 
