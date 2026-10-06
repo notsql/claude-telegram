@@ -14,7 +14,7 @@ import { randomBytes } from 'crypto'
 import { join } from 'path'
 import {
   STATE_DIR, initAccess, setBotUsername, loadAccess,
-  gate, dmCommandGate, checkApprovals,
+  gate, groupVerdict, dmCommandGate, checkApprovals,
 } from './access.ts'
 import { type AttachmentMeta, safeName, downloadPhoto } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
@@ -27,6 +27,7 @@ import { createSessionStore } from './sessions/store.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
 import { renderInbound } from './agent/inbound.ts'
+import { createTopicNames } from './sessions/topics.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
@@ -342,6 +343,14 @@ bot.on('message:sticker', ctx => {
 })
 
 const groupBuffer = createGroupBuffer()
+const topicNames = createTopicNames()
+
+// Names only from senders who could talk to the bot in this group (constitution IV).
+bot.on(['message:forum_topic_created', 'message:forum_topic_edited'], ctx => {
+  if (groupVerdict(loadAccess().groups[String(ctx.chat.id)], String(ctx.from?.id), () => true) !== 'drop') {
+    topicNames.learn(ctx.msg)
+  }
+})
 
 async function handleInbound(
   ctx: Context,
@@ -352,6 +361,7 @@ async function handleInbound(
   const result = gate(ctx)
   if (result.action === 'drop') {
     if (result.unmentioned) {
+      topicNames.learn(ctx.msg!)
       groupBuffer.push(sessionKey(ctx.msg!), {
         ts: ctx.msg!.date * 1000,
         user: ctx.from!.username ?? String(ctx.from!.id),
@@ -372,6 +382,7 @@ async function handleInbound(
   const msgId = ctx.message?.message_id
 
   const key = sessionKey(ctx.msg!)
+  topicNames.learn(ctx.msg!)
   void bot.api.sendChatAction(chat_id, 'typing', threadOpts(parseKey(key))).catch(() => {})
   if (access.ackReaction && msgId != null) {
     void bot.api
@@ -383,8 +394,13 @@ async function handleInbound(
 
   if (INTERRUPT_ON_NEW_MESSAGE) runningTurns.get(key)?.abort()
   const imagePath = downloadImage ? await downloadImage() : undefined
+  const chat = ctx.chat!
+  const topic = topicNames.get(key)
   const prompt = renderInbound(text, {
     chat_id,
+    chat_type: chat.type,
+    ...('title' in chat && chat.title ? { chat_title: chat.title } : {}),
+    ...(topic ? { topic } : {}),
     ...(msgId != null ? { message_id: String(msgId) } : {}),
     user: from.username ?? String(from.id),
     user_id: String(from.id),
