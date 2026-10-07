@@ -7,6 +7,7 @@ let answer = false
 const asked: string[] = []
 const opts = {
   trustedDirs: () => ['~/infra'],
+  policy: (key: string) => (key === '-200' ? { memoryScope: 'none', historyScope: 'none' } : { memoryScope: 'global', historyScope: 'chat' }) as any,
   extraDirs: ['/state/inbox'],
   confirm: async (key: string, tool: string) => { asked.push(`${key} ${tool}`); return answer },
 }
@@ -35,6 +36,13 @@ describe('scopeDecision', () => {
     answer = false
     expect((await call('Grep', { pattern: 'x', path: '../' }, '-100')).hookSpecificOutput.permissionDecision).toBe('deny')
     expect(asked).toEqual(['-100:7 Read', '-100 Grep'])
+  })
+
+  test('memory and history tools are denied when the policy turns them off', async () => {
+    expect((await call('mcp__tg__memory_write', {}, '-200')).hookSpecificOutput.permissionDecision).toBe('deny')
+    expect((await call('mcp__tg__history_search', { query: 'x' }, '-200')).hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(await call('mcp__tg__memory_search', { query: 'x' }, '-100')).toEqual({})
+    expect(await call('mcp__tg__history_search', { query: 'x' }, '-100')).toEqual({})
   })
 
   test('owner DM file tools are not scoped', async () => {

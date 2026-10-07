@@ -346,7 +346,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
     if (name && isLearnedSkill(key, name)) skillUsage.invoked(name)
   },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
-  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
+  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 
