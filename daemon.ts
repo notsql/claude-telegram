@@ -46,6 +46,7 @@ import { openHistoryDb } from './history/db.ts'
 import { startIndexer } from './history/indexer.ts'
 import { createHistoryTools } from './history/tools.ts'
 import { recall, withContext } from './history/recall.ts'
+import { searchCommand } from './history/commands.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
 import { createInjector } from './memory/inject.ts'
@@ -385,6 +386,13 @@ bot.command('new', async ctx => {
   await ctx.reply('New session. The next message starts with no earlier context.')
 })
 
+// 005 US4: owner-only like /stop, scoped by the chat's historyScope. 008 moves it into its handlers.
+bot.command('search', async ctx => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  await ctx.reply(searchCommand({ db: historyDb, sessions }, ctx.match, key, policyOf(key)), { link_preview_options: { is_disabled: true } })
+})
+
 bot.command('sessions', async ctx => {
   if (!isOwner(ctx)) return
   await ctx.reply(formatSessions(lifecycle.list(sessionKey(ctx.msg!))))
@@ -697,6 +705,7 @@ for (let attempt = 1; ; attempt++) {
             { command: 'new', description: 'Start a fresh session' },
             { command: 'sessions', description: 'List past sessions' },
             { command: 'resume', description: 'Resume a past session: /resume <n>' },
+            { command: 'search', description: 'Search past conversations: /search <words>' },
             { command: 'policy', description: 'View or edit this chat\'s policy' },
           ],
           { scope: { type: 'all_private_chats' } },
@@ -708,6 +717,7 @@ for (let attempt = 1; ; attempt++) {
             { command: 'new', description: 'Start a fresh session here' },
             { command: 'sessions', description: 'List past sessions' },
             { command: 'resume', description: 'Resume a past session: /resume <n>' },
+            { command: 'search', description: 'Search this chat\'s past conversations' },
             { command: 'policy', description: 'View or edit this chat\'s policy' },
           ],
           { scope: { type: 'all_group_chats' } },
