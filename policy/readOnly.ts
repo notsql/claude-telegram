@@ -17,11 +17,11 @@ const READERS = new Set([
   'ls', 'cat', 'head', 'tail', 'less', 'more', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'find', 'fd', 'wc', 'pwd', 'echo', 'printf',
   'which', 'whereis', 'type', 'stat', 'file', 'du', 'df', 'date', 'whoami', 'id', 'uname', 'hostname', 'tree', 'sort', 'uniq',
   'cut', 'tr', 'jq', 'yq', 'diff', 'cmp', 'basename', 'dirname', 'realpath', 'readlink', 'env', 'printenv', 'ps', 'uptime',
-  'man', 'sw_vers', 'true', 'test', 'column', 'nl', 'od', 'xxd', 'hexdump', 'strings', 'md5', 'md5sum', 'shasum', 'sha256sum',
+  'man', 'sw_vers', 'true', 'test', '[', '[[', 'column', 'nl', 'od', 'xxd', 'hexdump', 'strings', 'md5', 'md5sum', 'shasum', 'sha256sum',
   'awk', 'sed', 'cd', 'curl', 'tldr', 'dig', 'nslookup', 'ping', 'lsof', 'top', 'free', 'vm_stat', 'sysctl', 'defaults', 'mdfind', 'plutil',
 ])
 /** Never read-only, even with a read verb after them (`rm list`, `sudo …`). */
-const WRITERS = new Set(['rm', 'rmdir', 'mv', 'cp', 'dd', 'chmod', 'chown', 'chgrp', 'ln', 'mkdir', 'touch', 'tee', 'kill', 'killall', 'pkill', 'sudo', 'su', 'doas', 'xargs', 'eval', 'exec', 'sh', 'bash', 'zsh', 'source', '.', 'truncate', 'shred', 'install', 'open', 'osascript', 'launchctl', 'crontab', 'reboot', 'shutdown', 'python', 'python3', 'node', 'ruby', 'perl', 'php', 'deno', 'npx', 'bunx', 'pipx'])
+const WRITERS = new Set(['rm', 'rmdir', 'mv', 'cp', 'dd', 'chmod', 'chown', 'chgrp', 'ln', 'mkdir', 'touch', 'tee', 'kill', 'killall', 'pkill', 'sudo', 'su', 'doas', 'xargs', 'eval', 'exec', 'sh', 'bash', 'zsh', 'source', '.', 'truncate', 'shred', 'install', 'open', 'osascript', 'launchctl', 'crontab', 'reboot', 'shutdown', 'node', 'ruby', 'perl', 'php', 'deno', 'npx', 'bunx', 'pipx'])
 /** Flags that make a reader write or run something. */
 const WRITE_FLAGS: Record<string, RegExp> = {
   find: /^-(exec|execdir|ok|okdir|delete|fprint|fprintf|fls)$/,
@@ -33,6 +33,29 @@ const WRITE_FLAGS: Record<string, RegExp> = {
   curl: /^(-X|--request|-d|--data|-F|--form|-T|--upload-file|-o|--output|-O|--remote-name)/,
   env: /./, // `env CMD` runs CMD; only bare `env` reads.
 }
+/**
+ * `python3 -c '<code>'` reads when the code only imports these modules and
+ * uses none of the names below, so it can't open files, run commands or
+ * reach other modules (`sys.modules`, `__import__`, `getattr`…).
+ */
+const PY_SAFE_MODULES = new Set(['json', 'sys', 're', 'collections', 'itertools', 'functools', 'datetime', 'math', 'statistics', 'textwrap', 'pprint', 'string', 'operator', 'csv', 'base64', 'hashlib', 'time', 'zoneinfo', 'decimal', 'fractions', 'unicodedata', 'html', 'urllib.parse'])
+const PY_UNSAFE = /\b(open|exec|eval|compile|getattr|setattr|delattr|globals|locals|vars|modules|breakpoint|input|exit|quit|help|memoryview|stdout\.buffer|platform|path|executable|argv)\b|__|\bsys\.(?!stdin\b|stdout\b|stderr\b)|\bcsv\.writer|\bjson\.dump\b/
+
+function readOnlyPython(args: string[]): boolean {
+  // Flags before -c may only be isolation and quiet flags: `-I`, `-S`, `-E`, `-s`, `-B`, `-u`.
+  const c = args.indexOf('-c')
+  if (c < 0 || !args.slice(0, c).every(a => /^-[ISEsBu]+$/.test(a))) return false
+  const body: string[] = []
+  for (const stmt of (args[c + 1] ?? '').split(/[;\n]/)) {
+    const m = /^\s*(?:import\s+([\w., ]+)|from\s+([\w.]+)\s+import\b)/.exec(stmt)
+    if (!m) { body.push(stmt); continue }
+    const mods = (m[1] ?? m[2]!).split(',').map(x => x.trim().split(/\s+as\s+/)[0]!)
+    if (!mods.every(mod => PY_SAFE_MODULES.has(mod))) return false
+  }
+  const rest = body.join('\n')
+  return !/\bimport\b/.test(rest) && !PY_UNSAFE.test(rest)
+}
+
 /** git, the commonest case, by subcommand. */
 const GIT_READ = new Set(['status', 'log', 'diff', 'show', 'branch', 'remote', 'fetch', 'blame', 'ls-files', 'ls-tree', 'rev-parse', 'describe', 'shortlog', 'reflog', 'grep', 'config', 'tag', 'stash'])
 const GIT_WRITE_FLAGS = /^(-d|-D|--delete|-m|-M|--move|-c|-C|--copy|--set-upstream-to|-u|--unset|--add|--replace-all|--edit|-e|-f|--force)$/
@@ -77,7 +100,15 @@ function splitCommand(command: string): string[][] | undefined {
     const c = command[i]!
     const rest = command.slice(i)
     if (quote === "'") { if (c === "'") quote = undefined; else word += c; continue }
-    if (c === '`' || rest.startsWith('$(')) return undefined
+    if (c === '`' || rest.startsWith('$(')) {
+      // Substitution is fine when what it runs is itself read-only.
+      const end = c === '`' ? command.indexOf('`', i + 1) : closingParen(command, i + 2)
+      if (end < 0 || !readOnlyCommand(command.slice(i + (c === '`' ? 1 : 2), end))) return undefined
+      word += command.slice(i, end + 1)
+      quoted = true
+      i = end
+      continue
+    }
     if (quote === '"') {
       if (c === '"') quote = undefined
       else if (c === '\\' && i + 1 < command.length) word += command[++i]
@@ -103,6 +134,21 @@ function splitCommand(command: string): string[][] | undefined {
   if (quote) return undefined
   endSegment()
   return segments
+}
+
+/** Index of the `)` closing a `$(` whose contents start at `from`, or -1. Quote-aware. */
+function closingParen(command: string, from: number): number {
+  let depth = 1
+  let quote: string | undefined
+  for (let i = from; i < command.length; i++) {
+    const c = command[i]!
+    if (quote) { if (c === quote) quote = undefined; else if (c === '\\' && quote === '"') i++; continue }
+    if (c === "'" || c === '"') quote = c
+    else if (c === '\\') i++
+    else if (c === '(') depth++
+    else if (c === ')' && --depth === 0) return i
+  }
+  return -1
 }
 
 /** Shell keywords that wrap a command: `do ls`, `then cat x`, `if grep -q …`. */
@@ -137,6 +183,7 @@ function readOnlySegment(words: string[], vars: Map<string, string>): boolean {
   const args = words.slice(1)
   if (!cmd || WRITERS.has(cmd)) return false
   if (cmd === 'git') return readOnlyGit(args)
+  if (/^python3?(\.\d+)?$/.test(cmd)) return readOnlyPython(args)
   if (READERS.has(cmd)) {
     const bad = WRITE_FLAGS[cmd]
     return !bad || !args.some(a => bad.test(a))
