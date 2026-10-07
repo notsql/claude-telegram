@@ -65,6 +65,7 @@ import { createSkillApplier } from './skills/apply.ts'
 import { createSkillTools } from './skills/tools.ts'
 import { listSkills, parseSkillsArgs, skillAction, type SkillAction } from './skills/commands.ts'
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
+import { createAgentUsage } from './agents/usage.ts'
 import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
@@ -231,6 +232,7 @@ const skillApplier = createSkillApplier({
 
 const skillTools = createSkillTools(skillStoreFor, skillApplier)
 const skillUsage = createSkillUsage(join(STATE_DIR, 'skills-usage.json'))
+const agentUsage = createAgentUsage(join(STATE_DIR, 'agents-usage.json'))
 const isLearnedSkill = (key: string, name: string) => skillStoreFor(key).read(name)?.metadata.source === 'tg'
 
 /** 006 FR7, FR8: record outcomes; a skill that keeps failing gets a refinement proposal for approval (AC6). */
@@ -355,6 +357,12 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'post-tool-use': (payload, key) => {
     const name = invokedSkill(payload)
     if (name && isLearnedSkill(key, name)) skillUsage.invoked(name)
+  },
+  // 009 FR5, FR7: per-agent counts and durations.
+  'subagent-start': payload => { agentUsage.start(payload) },
+  'subagent-stop': (payload, key) => {
+    const run = agentUsage.stop(payload)
+    if (run) log(`subagent ${run.type} for ${key} took ${Math.round(run.ms / 1000)}s`)
   },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
   'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
