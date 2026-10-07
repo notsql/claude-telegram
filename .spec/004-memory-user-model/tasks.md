@@ -1,7 +1,7 @@
 # 004 — Tasks
 Depends on: 001, 002, 003 (policy scopes, tool registry)
 
-- [ ] **T401** Spike, recorded in plan.md:
+- [x] **T401** Spike, recorded in plan.md:
   - (a) Does `claude -p` in the workspace cwd load that project's auto-memory?
   - (b) Does `SessionStart`/`UserPromptSubmit` `additionalContext` reach the model in `-p` mode, including on `--resume`?
   - (c) Does the `Stop` hook input include `transcript_path`?

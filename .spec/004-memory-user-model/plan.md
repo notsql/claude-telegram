@@ -57,3 +57,8 @@ This block is returned as `additionalContext` from the **`SessionStart`** hook, 
 - **Reflection recursion or cost**: one-shots run without daemon hooks, and use Haiku with debounce and a daily cap.
 - **Hook latency**: the `SessionStart` and `UserPromptSubmit` handlers must answer in under 200ms. Indexes are cached in memory and invalidated by fs watch.
 - **Privacy in groups**: memory is shared by design, so anything learned in a group is visible to the bot in every chat (owner decision 2026-10-07). User-model files for group participants are only written when the group policy is `autoLearn != off`; set `memoryScope: none` on a chat that should neither read nor add to memory.
+
+## Spike results (T401, Claude Code 2.1.292, 2026-10-07)
+- **(a) Yes.** `claude -p` in a cwd loads that project's auto-memory from `~/.claude/projects/<sanitised cwd>/memory/MEMORY.md` and the model can read the linked files. Sanitisation replaces every non-alphanumeric character of the real path (`pwd -P`) with `-`, so `/private/tmp/x.y` → `-private-tmp-x-y`.
+- **(b) Yes**, for both `SessionStart` (command hook) and `UserPromptSubmit` `additionalContext`, on a fresh session and on `--resume`. `SessionStart` input has `source: "startup"` or `"resume"`. Context injected on earlier turns stays in the resumed transcript, so re-injecting the same block on every resume duplicates it: `inject.ts` should send the full block on `startup` only and, on `resume`, just the delta since the last injection (same mtime check as `UserPromptSubmit`).
+- **(c) Yes.** `Stop` input includes `transcript_path` (the session JSONL), plus `session_id`, `cwd`, `last_assistant_message` and `stop_hook_active`.
