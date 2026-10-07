@@ -8,7 +8,7 @@ Depends on: 002 (sessions.json, inbound wrapper), 003 (historyScope)
   *Verify:* fixture tests.
 - [x] **T504** `indexer.ts`: offset tailing, watcher plus poll fallback, throttled backfill, removal of deleted files.
   *Verify:* AC3, and FR9.
-- [ ] **T505** `search.ts`: FTS query escaping, scope filter, bm25, snippets.
+- [x] **T505** `search.ts`: FTS query escaping, scope filter, bm25, snippets.
   *Verify:* AC2.
 - [ ] **T506** `summarize.ts` (a Haiku one-shot through the `claude` CLI) and the `history_search` MCP tool.
   *Verify:* AC1.
