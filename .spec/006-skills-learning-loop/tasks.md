@@ -7,11 +7,11 @@ Depends on: 004 (reflection worker, guard), 005 (similar-request lookup), 003 (a
   *Verify:* unit tests for create, patch, undo.
 - [x] **T603** Extend the reflection schema and prompt with the skills section and trigger heuristics.
   *Verify:* the proposal JSON is logged for a 10-tool-call task.
-- [ ] **T604** `skills/apply.ts`: confidence threshold, patch-over-create matching, protection of non-hermes skills (diff proposal only), per-turn cap.
+- [x] **T604** `skills/apply.ts`: confidence threshold, patch-over-create matching, protection of non-hermes skills (diff proposal only), per-turn cap.
   *Verify:* AC1, AC4.
-- [ ] **T605** `autoLearn` modes and the propose UI (✅ / ✏️ / ✖).
+- [x] **T605** `autoLearn` modes and the propose UI (✅ / ✏️ / ✖).
   *Verify:* AC5.
-- [ ] **T606** Notices with Show and Undo.
+- [x] **T606** Notices with Show and Undo.
   *Verify:* FR10.
 - [ ] **T607** `skills/tools.ts`: `skill_create/patch/list/read` registered with policy gating.
 - [ ] **T608** `skills/usage.ts`: `PostToolUse` hook handler (matcher `Skill`) records invocations, and reflection records outcomes.

@@ -56,6 +56,14 @@ import { createReflectionWorker } from './reflection/worker.ts'
 import { createApplier } from './reflection/apply.ts'
 import { ProposalsSchema } from './reflection/prompt.ts'
 import { runOneShot } from './agent/oneshot.ts'
+import { createSkillStore, type SkillStore } from './skills/store.ts'
+import { skillsRoot, takenNames } from './skills/paths.ts'
+import { createSkillApplier } from './skills/apply.ts'
+import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
+import { skillsContext } from './reflection/prompt.ts'
+import { toolCalls } from './reflection/transcript.ts'
+import { search } from './history/search.ts'
+import { scopeFor } from './history/tools.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
@@ -170,6 +178,43 @@ function sawUser(key: string, userId: string): void {
 const participants = (key: string) =>
   [...seenUsers.get(key) ?? []].filter(([, t]) => Date.now() - t < ACTIVE_MS).map(([id]) => id).reverse()
 
+// 006: learned skills, one store per root (user, or a chat's project cwd).
+const skillStores = new Map<string, SkillStore>()
+const skillStoreFor = (key: string) => {
+  const root = skillsRoot(policyOf(key))
+  let st = skillStores.get(root)
+  if (!st) skillStores.set(root, st = createSkillStore(root))
+  return st
+}
+const skillNotices = createSkillNotices(bot.api)
+const skillApplier = createSkillApplier({
+  store: skillStoreFor,
+  taken: st => takenNames(st.root, [config.cwd]),
+  policy: policyOf,
+  sessionOf: key => sessions.current(key),
+  notify: (key, change) => void skillNotices.notify(key, change),
+  ask: (key, text, id, kind) => {
+    const target = parseKey(key)
+    const buttons = kind === 'diff'
+      ? [{ text: '✅ Apply', callback_data: `skl:save:${id}` }, { text: '✖ Skip', callback_data: `skl:skip:${id}` }]
+      : [{ text: '✅ Save', callback_data: `skl:save:${id}` }, { text: '✏️ Edit', callback_data: `skl:edit:${id}` }, { text: '✖ Skip', callback_data: `skl:skip:${id}` }]
+    void bot.api.sendMessage(target.chatId, text.length > 4000 ? `${text.slice(0, 4000)}\n…` : text, {
+      ...threadOpts(target),
+      reply_markup: { inline_keyboard: [buttons] },
+    }).catch(() => {})
+  },
+  log,
+})
+
+/** 006 FR2: earlier user requests like this turn's first one, as hints that the task repeats. */
+function similarRequests(key: string, delta: string, sessionId: unknown): string[] {
+  const first = /^USER: ([\s\S]*?)(?:\n\n(?:USER|AGENT): |$)/.exec(delta)?.[1]?.replace(/<[^>]*>/g, ' ').trim()
+  const scope = first && scopeFor(policyOf(key), key, sessions)
+  if (!scope) return []
+  return search(historyDb, first!, { scope, limit: 10, ...(typeof sessionId === 'string' && { excludeSessionId: sessionId }) })
+    .filter(h => h.role === 'user').slice(0, 3).map(h => h.snippet.replace(/\s+/g, ' '))
+}
+
 // 004 FR6: learn from each finished turn.
 const applier = createApplier({
   store: memory,
@@ -199,7 +244,16 @@ const reflection = createReflectionWorker({
     }
     return lines.join('\n')
   },
-  apply: (key, proposals) => applier.apply(key, proposals),
+  skills: (key, delta, payload) => {
+    const p = policyOf(key)
+    if (!p.autoLearn || p.autoLearn === 'off') return null
+    const hermes = skillStoreFor(key).list().filter(s => s.metadata.source === 'hermes')
+    return skillsContext(hermes, toolCalls(delta), similarRequests(key, delta, payload.session_id))
+  },
+  apply: (key, proposals) => {
+    applier.apply(key, proposals)
+    skillApplier.apply(key, proposals)
+  },
   log,
 })
 
@@ -513,6 +567,60 @@ bot.callbackQuery(/^mem:(save|skip):([0-9a-f]+)$/, async ctx => {
 const isApprover = (key: string, userId: number) =>
   (resolvePolicy(loadAccess(), key, chatTypeOf(key)).approvers ?? []).includes(String(userId))
 
+// 006 FR6: Save / Edit / Skip on a proposed skill, or Apply / Skip on a diff. The key's approvers decide (AC5).
+const skillEdits = new Map<string, string>()
+bot.callbackQuery(/^skl:(save|skip|edit):([0-9a-f]+)$/, async ctx => {
+  const [, action, id] = ctx.match as unknown as [string, 'save' | 'skip' | 'edit', string]
+  const p = skillApplier.pending(id!)
+  if (!p) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  if (!isApprover(p.key, ctx.from.id)) return ctx.answerCallbackQuery({ text: 'Not authorised to approve.' }).catch(() => {})
+  if (action === 'edit') {
+    const target = parseKey(p.key)
+    const sent = await bot.api.sendMessage(target.chatId, p.draft, { ...threadOpts(target), reply_markup: { force_reply: true, input_field_placeholder: 'Reply with the edited skill' } }).catch(() => undefined)
+    if (sent) skillEdits.set(`${target.chatId}:${sent.message_id}`, id!)
+    return ctx.answerCallbackQuery({ text: 'Reply to the draft with your edited version.' }).catch(() => {})
+  }
+  const r = skillApplier.decide(id!, action === 'save')!
+  await ctx.answerCallbackQuery({ text: r.error ?? (r.change ? 'Saved' : 'Skipped') }).catch(() => {})
+  if (r.change) await ctx.editMessageText(skillNoticeText(r.change), { reply_markup: skillNotices.keyboard(p.key, r.change) }).catch(() => {})
+  else if (!r.error) await ctx.deleteMessage().catch(() => {})
+})
+
+/** ✏️ Edit: an approver's reply to the draft saves the edited skill. True if it was one. */
+async function skillEditReply(ctx: Context, text: string): Promise<boolean> {
+  const replyTo = ctx.message?.reply_to_message?.message_id
+  const editKey = replyTo != null && `${ctx.chat!.id}:${replyTo}`
+  const id = editKey && skillEdits.get(editKey)
+  const p = id && skillApplier.pending(id)
+  if (!id || !p || !isApprover(p.key, ctx.from!.id)) return false
+  const r = skillApplier.edit(id, text)!
+  if (r.error) {
+    await ctx.reply(`Not saved: ${r.error}`).catch(() => {})
+    return true
+  }
+  skillEdits.delete(editKey as string)
+  if (r.change) void skillNotices.notify(p.key, r.change)
+  return true
+}
+
+// 006 FR10: Show and Undo on a skill notice.
+bot.callbackQuery(/^skl:(show|undo):([0-9a-f]+)$/, async ctx => {
+  const [, action, id] = ctx.match as unknown as [string, 'show' | 'undo', string]
+  const key = skillNotices.keyOf(id!)
+  if (!key || !isApprover(key, ctx.from.id)) return ctx.answerCallbackQuery({ text: key ? 'Not authorised.' : 'Gone.' }).catch(() => {})
+  if (action === 'show') {
+    await ctx.answerCallbackQuery().catch(() => {})
+    const target = parseKey(key)
+    await bot.api.sendMessage(target.chatId, skillNotices.show(id!)!, threadOpts(target)).catch(() => {})
+    return
+  }
+  const label = skillNotices.undo(id!)
+  if (!label) return ctx.answerCallbackQuery({ text: 'Nothing to undo.' }).catch(() => {})
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  const msg = ctx.callbackQuery.message
+  if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`).catch(() => {})
+})
+
 // Approval buttons: `perm:<allow|deny|always|more>:<id>` (003 FR2). Only the
 // key's approvers may answer (FR3); the first tap wins.
 bot.on('callback_query:data', async ctx => {
@@ -614,6 +722,7 @@ async function handleInbound(
   downloadImage: (() => Promise<string | undefined>) | undefined,
   attachment?: AttachmentMeta,
 ): Promise<void> {
+  if (ctx.from && ctx.chat && await skillEditReply(ctx, text)) return
   const result = gate(ctx)
   const bufferContext = () => {
     topicNames.learn(ctx.msg!)
