@@ -16,6 +16,7 @@ import { chatTypeOf, resolvePolicy } from '../policy/resolve.ts'
 import type { MemoryTools } from '../memory/tools.ts'
 import type { HistoryTools } from '../history/tools.ts'
 import type { SkillTools } from '../skills/tools.ts'
+import type { AgentTools } from '../agents/tools.ts'
 import type { SessionTools } from '../agent/sessionTools.ts'
 import type { ScheduleTools } from '../scheduler/tools.ts'
 
@@ -27,6 +28,7 @@ export type McpServerOpts = {
   memory: MemoryTools
   history?: HistoryTools
   skills?: SkillTools
+  agents?: AgentTools
   session?: SessionTools
   scheduler?: ScheduleTools
   /** 0 picks a free port. */
@@ -54,8 +56,8 @@ export function startMcpServer(opts: McpServerOpts): { port: number; stop: () =>
       const mcp = new Server({ name: 'tg', version: '1.0.0' }, { capabilities: { tools: {} } })
       const policy = resolvePolicy(loadAccess(), key, chatTypeOf(key))
       registerTelegramTools(mcp, opts.api, opts.botToken, key, policy, {
-        list: () => [...opts.memory.list(policy), ...opts.history?.list(policy) ?? [], ...opts.skills?.list(policy) ?? [], ...opts.session?.list() ?? [], ...opts.scheduler?.list(policy) ?? []],
-        call: (name, args) => opts.memory.call(name, args, key, policy) ?? opts.skills?.call(name, args, key, policy) ?? opts.session?.call(name, args, key, policy) ?? opts.history?.call(name, args, key, policy) ?? opts.scheduler?.call(name, args, key, policy),
+        list: () => [...opts.memory.list(policy), ...opts.history?.list(policy) ?? [], ...opts.skills?.list(policy) ?? [], ...opts.agents?.list(policy) ?? [], ...opts.session?.list() ?? [], ...opts.scheduler?.list(policy) ?? []],
+        call: (name, args) => opts.memory.call(name, args, key, policy) ?? opts.skills?.call(name, args, key, policy) ?? opts.agents?.call(name, args, key, policy) ?? opts.session?.call(name, args, key, policy) ?? opts.history?.call(name, args, key, policy) ?? opts.scheduler?.call(name, args, key, policy),
       })
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
