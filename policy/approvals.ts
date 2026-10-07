@@ -148,7 +148,30 @@ function heading(p: Pick<Pending, 'toolName' | 'input'>): string {
   const i = p.input
   const what = [i.description, i.file_path, i.notebook_path, i.url, i.query, i.pattern, i.prompt]
     .find((v): v is string => typeof v === 'string' && v.trim() !== '')
-  return `🔐 Permission: ${p.toolName}${what ? `\n${what.trim().slice(0, 300)}` : ''}`
+  return `🔐 Permission: ${toolLabel(p.toolName)}${what ? `\n${what.trim().slice(0, 300)}` : ''}`
+}
+
+/**
+ * A readable tool name: `WebFetch` → `Web Fetch`,
+ * `mcp__claude_ai_Notion__notion-query-data-sources` → `Notion · Notion Query Data Sources`,
+ * `mcp__claude_ai_Atlassian_Rovo__getJiraIssue` → `Atlassian Rovo · Get Jira Issue`.
+ */
+export function toolLabel(toolName: string): string {
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(toolName)
+  if (!mcp) return words(toolName)
+  const server = mcp[1]!.replace(/^claude_ai_/, '').replace(/[_-]+/g, ' ')
+  return `${server} · ${words(mcp[2]!)}`
+}
+
+/** Splits snake, kebab, camel and Pascal case into Title Case words; acronyms (`URL`) stay whole. */
+function words(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map(w => w[0]!.toUpperCase() + w.slice(1))
+    .join(' ')
 }
 
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
