@@ -34,7 +34,7 @@ const GROUP_READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 
 /** Defaults by chat type (FR8). `approvers` defaults to the owner IDs, filled in at resolve time. */
 export function defaultPolicy(type: ChatType): Policy {
   return type === 'private'
-    ? { permissionMode: 'default', memoryScope: 'global', historyScope: 'all', autoLearn: 'auto' }
+    ? { permissionMode: 'default', memoryScope: 'global', historyScope: 'all', autoLearn: 'auto', schedulerAllowed: true }
     : {
         permissionMode: 'default',
         allowedTools: GROUP_READ_ONLY_TOOLS,
