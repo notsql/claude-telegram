@@ -25,11 +25,18 @@ export function slug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/, '')
 }
 
+/** Why `text` must not be saved because it holds a secret, or null. Shared with 006 skills. */
+export function secretRefusal(text: string, where = 'memory'): string | null {
+  for (const [re, what] of SECRET_PATTERNS) {
+    if (re.test(text)) return `looks like it contains a ${what}; secrets are never saved to ${where}`
+  }
+  return null
+}
+
 /** Why a write must be refused, or null. `text` is the whole rendered file. */
 export function refusal(text: string): string | null {
-  for (const [re, what] of SECRET_PATTERNS) {
-    if (re.test(text)) return `looks like it contains a ${what}; secrets are never saved to memory`
-  }
+  const secret = secretRefusal(text)
+  if (secret) return secret
   const bytes = new TextEncoder().encode(text).length
   if (bytes > MAX_FILE_BYTES) return `memory file is ${bytes} bytes, over the ${MAX_FILE_BYTES}-byte limit; keep it to one short fact`
   return null

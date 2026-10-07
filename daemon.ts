@@ -56,6 +56,17 @@ import { createReflectionWorker } from './reflection/worker.ts'
 import { createApplier } from './reflection/apply.ts'
 import { ProposalsSchema } from './reflection/prompt.ts'
 import { runOneShot } from './agent/oneshot.ts'
+import { createSkillStore, skillEvents, type SkillStore } from './skills/store.ts'
+import { skillsRoot, takenNames } from './skills/paths.ts'
+import { createSkillApplier } from './skills/apply.ts'
+import { createSkillTools } from './skills/tools.ts'
+import { createSkillUsage, invokedSkill } from './skills/usage.ts'
+import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
+import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
+import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
+import { toolCalls } from './reflection/transcript.ts'
+import { search } from './history/search.ts'
+import { scopeFor } from './history/tools.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
@@ -170,6 +181,79 @@ function sawUser(key: string, userId: string): void {
 const participants = (key: string) =>
   [...seenUsers.get(key) ?? []].filter(([, t]) => Date.now() - t < ACTIVE_MS).map(([id]) => id).reverse()
 
+// 006: learned skills, one store per root (user, or a chat's project cwd).
+const skillStores = new Map<string, SkillStore>()
+const skillStoreFor = (key: string) => {
+  const root = skillsRoot(policyOf(key))
+  let st = skillStores.get(root)
+  if (!st) skillStores.set(root, st = createSkillStore(root))
+  return st
+}
+const skillNotices = createSkillNotices(bot.api)
+// 006 T611: 008's menu (T808) refreshes on this; until then it is only logged.
+skillEvents.on('skills-changed', ({ name }: { name: string }) => log(`skills-changed: ${name}`))
+const skillApplier = createSkillApplier({
+  store: skillStoreFor,
+  taken: st => takenNames(st.root, [config.cwd]),
+  policy: policyOf,
+  sessionOf: key => sessions.current(key),
+  notify: (key, change) => void skillNotices.notify(key, change),
+  ask: (key, text, id, kind) => {
+    const target = parseKey(key)
+    const buttons = kind === 'diff'
+      ? [{ text: '✅ Apply', callback_data: `skl:save:${id}` }, { text: '✖ Skip', callback_data: `skl:skip:${id}` }]
+      : [{ text: '✅ Save', callback_data: `skl:save:${id}` }, { text: '✏️ Edit', callback_data: `skl:edit:${id}` }, { text: '✖ Skip', callback_data: `skl:skip:${id}` }]
+    void bot.api.sendMessage(target.chatId, text.length > 4000 ? `${text.slice(0, 4000)}\n…` : text, {
+      ...threadOpts(target),
+      reply_markup: { inline_keyboard: [buttons] },
+    }).catch(() => {})
+  },
+  log,
+})
+
+const skillTools = createSkillTools(skillStoreFor, skillApplier)
+const skillUsage = createSkillUsage(join(STATE_DIR, 'skills-usage.json'))
+const isHermesSkill = (key: string, name: string) => skillStoreFor(key).read(name)?.metadata.source === 'hermes'
+
+/** 006 FR7, FR8: record outcomes; a skill that keeps failing gets a refinement proposal for approval (AC6). */
+async function skillOutcomes(key: string, outcomes: Proposals['skill_outcomes'], delta: string): Promise<void> {
+  for (const { name, outcome } of outcomes) {
+    if (!isHermesSkill(key, name) || !skillUsage.outcome(name, outcome)) continue
+    log(`skills: refining ${name} after repeated failures`)
+    const p = await runOneShot(undefined, refinementInput(skillStoreFor(key).text(name)!, delta), RefinementSchema)
+    skillApplier.one(key, { ...p, op: 'patch', name, confidence: 1 }, true)
+  }
+}
+
+// 006 FR8: weekly archive proposals to the owners, for the skills their DMs learn into.
+const MAX_PRUNE_PROPOSALS = 5
+const archiveAsks = new Map<string, { key: string; name: string }>()
+function proposeArchives(): void {
+  if (!pruneDue(join(STATE_DIR, 'skills-prune.json'))) return
+  for (const owner of loadAccess().allowFrom) {
+    for (const name of staleSkills(skillStoreFor(owner), skillUsage).slice(0, MAX_PRUNE_PROPOSALS)) {
+      const id = randomBytes(6).toString('hex')
+      archiveAsks.set(id, { key: owner, name })
+      void bot.api.sendMessage(owner, `📦 Skill ${name} hasn't been used in ${STALE_DAYS} days. Archive it?`, {
+        reply_markup: { inline_keyboard: [[
+          { text: '📦 Archive', callback_data: `skl:arch:${id}` },
+          { text: 'Keep', callback_data: `skl:keep:${id}` },
+        ]] },
+      }).catch(() => {})
+    }
+  }
+}
+setInterval(proposeArchives, 24 * 60 * 60 * 1000).unref()
+
+/** 006 FR2: earlier user requests like this turn's first one, as hints that the task repeats. */
+function similarRequests(key: string, delta: string, sessionId: unknown): string[] {
+  const first = /^USER: ([\s\S]*?)(?:\n\n(?:USER|AGENT): |$)/.exec(delta)?.[1]?.replace(/<[^>]*>/g, ' ').trim()
+  const scope = first && scopeFor(policyOf(key), key, sessions)
+  if (!scope) return []
+  return search(historyDb, first!, { scope, limit: 10, ...(typeof sessionId === 'string' && { excludeSessionId: sessionId }) })
+    .filter(h => h.role === 'user').slice(0, 3).map(h => h.snippet.replace(/\s+/g, ' '))
+}
+
 // 004 FR6: learn from each finished turn.
 const applier = createApplier({
   store: memory,
@@ -199,11 +283,21 @@ const reflection = createReflectionWorker({
     }
     return lines.join('\n')
   },
-  apply: (key, proposals) => applier.apply(key, proposals),
+  skills: (key, delta, payload) => {
+    const p = policyOf(key)
+    if (!p.autoLearn || p.autoLearn === 'off') return null
+    const hermes = skillStoreFor(key).list().filter(s => s.metadata.source === 'hermes')
+    return skillsContext(hermes, toolCalls(delta), similarRequests(key, delta, payload.session_id))
+  },
+  apply: async (key, proposals, delta) => {
+    applier.apply(key, proposals)
+    skillApplier.apply(key, proposals)
+    await skillOutcomes(key, proposals.skill_outcomes, delta)
+  },
   log,
 })
 
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools })
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -220,6 +314,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'session-start': (payload, key) => injector.sessionStart(payload, policyOf(key), participants(key)),
   'user-prompt-submit': (payload, key) => {
     memoryTools.startTurn(key)
+    skillTools.startTurn(key)
     const policy = policyOf(key)
     const out = injector.userPromptSubmit(payload, policy, participants(key))
     const t = performance.now()
@@ -228,6 +323,10 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
     return withContext(out, 'UserPromptSubmit', recalled)
   },
   'stop': (payload, key) => { reflection.enqueue(key, payload) },
+  'post-tool-use': (payload, key) => {
+    const name = invokedSkill(payload)
+    if (name && isHermesSkill(key, name)) skillUsage.invoked(name)
+  },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
   'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
 } })
@@ -513,6 +612,74 @@ bot.callbackQuery(/^mem:(save|skip):([0-9a-f]+)$/, async ctx => {
 const isApprover = (key: string, userId: number) =>
   (resolvePolicy(loadAccess(), key, chatTypeOf(key)).approvers ?? []).includes(String(userId))
 
+// 006 FR6: Save / Edit / Skip on a proposed skill, or Apply / Skip on a diff. The key's approvers decide (AC5).
+const skillEdits = new Map<string, string>()
+bot.callbackQuery(/^skl:(save|skip|edit):([0-9a-f]+)$/, async ctx => {
+  const [, action, id] = ctx.match as unknown as [string, 'save' | 'skip' | 'edit', string]
+  const p = skillApplier.pending(id!)
+  if (!p) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  if (!isApprover(p.key, ctx.from.id)) return ctx.answerCallbackQuery({ text: 'Not authorised to approve.' }).catch(() => {})
+  if (action === 'edit') {
+    const target = parseKey(p.key)
+    const sent = await bot.api.sendMessage(target.chatId, p.draft, { ...threadOpts(target), reply_markup: { force_reply: true, input_field_placeholder: 'Reply with the edited skill' } }).catch(() => undefined)
+    if (sent) skillEdits.set(`${target.chatId}:${sent.message_id}`, id!)
+    return ctx.answerCallbackQuery({ text: 'Reply to the draft with your edited version.' }).catch(() => {})
+  }
+  const r = skillApplier.decide(id!, action === 'save')!
+  await ctx.answerCallbackQuery({ text: r.error ?? (r.change ? 'Saved' : 'Skipped') }).catch(() => {})
+  if (r.change) await ctx.editMessageText(skillNoticeText(r.change), { reply_markup: skillNotices.keyboard(p.key, r.change) }).catch(() => {})
+  else if (!r.error) await ctx.deleteMessage().catch(() => {})
+})
+
+/** ✏️ Edit: an approver's reply to the draft saves the edited skill. True if it was one. */
+async function skillEditReply(ctx: Context, text: string): Promise<boolean> {
+  const replyTo = ctx.message?.reply_to_message?.message_id
+  const editKey = replyTo != null && `${ctx.chat!.id}:${replyTo}`
+  const id = editKey && skillEdits.get(editKey)
+  const p = id && skillApplier.pending(id)
+  if (!id || !p || !isApprover(p.key, ctx.from!.id)) return false
+  const r = skillApplier.edit(id, text)!
+  if (r.error) {
+    await ctx.reply(`Not saved: ${r.error}`).catch(() => {})
+    return true
+  }
+  skillEdits.delete(editKey as string)
+  if (r.change) void skillNotices.notify(p.key, r.change)
+  return true
+}
+
+// 006 FR8: Archive or Keep a stale skill.
+bot.callbackQuery(/^skl:(arch|keep):([0-9a-f]+)$/, async ctx => {
+  const a = archiveAsks.get(ctx.match[2]!)
+  if (!a) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  archiveAsks.delete(ctx.match[2]!)
+  let label = `Kept ${a.name}`
+  if (ctx.match[1] === 'arch') {
+    try { skillStoreFor(a.key).archive(a.name); label = `📦 Archived ${a.name}` } catch (err) { label = (err as Error).message }
+  }
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  await ctx.editMessageText(label).catch(() => {})
+})
+
+// 006 FR10: Show and Undo on a skill notice.
+bot.callbackQuery(/^skl:(show|undo):([0-9a-f]+)$/, async ctx => {
+  const [, action, id] = ctx.match as unknown as [string, 'show' | 'undo', string]
+  const key = skillNotices.keyOf(id!)
+  if (!key || !isApprover(key, ctx.from.id)) return ctx.answerCallbackQuery({ text: key ? 'Not authorised.' : 'Gone.' }).catch(() => {})
+  if (action === 'show') {
+    await ctx.answerCallbackQuery().catch(() => {})
+    const target = parseKey(key)
+    await bot.api.sendMessage(target.chatId, skillNotices.show(id!)!, threadOpts(target)).catch(() => {})
+    return
+  }
+  const label = skillNotices.undo(id!)
+  if (!label) return ctx.answerCallbackQuery({ text: 'Nothing to undo.' }).catch(() => {})
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  const msg = ctx.callbackQuery.message
+  if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`).catch(() => {})
+})
+
 // Approval buttons: `perm:<allow|deny|always|more>:<id>` (003 FR2). Only the
 // key's approvers may answer (FR3); the first tap wins.
 bot.on('callback_query:data', async ctx => {
@@ -614,6 +781,7 @@ async function handleInbound(
   downloadImage: (() => Promise<string | undefined>) | undefined,
   attachment?: AttachmentMeta,
 ): Promise<void> {
+  if (ctx.from && ctx.chat && await skillEditReply(ctx, text)) return
   const result = gate(ctx)
   const bufferContext = () => {
     topicNames.learn(ctx.msg!)

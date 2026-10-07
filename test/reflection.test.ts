@@ -4,10 +4,10 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { createMemoryStore } from '../memory/store'
 import { userDir } from '../memory/paths'
-import { readDelta } from '../reflection/transcript'
+import { readDelta, toolCalls } from '../reflection/transcript'
 import { createReflectionWorker } from '../reflection/worker'
 import { createApplier } from '../reflection/apply'
-import type { Proposals } from '../reflection/prompt'
+import { ProposalsSchema, reflectionInput, skillsContext, type Proposals } from '../reflection/prompt'
 
 const dir = () => mkdtempSync(join(tmpdir(), 'tg-refl-'))
 const line = (o: object) => JSON.stringify(o) + '\n'
@@ -34,7 +34,7 @@ test('Stop is debounced per key, PreCompact runs at once, and policy off skips',
   const inputs: string[] = []
   let learning = true
   const w = createReflectionWorker({
-    reflect: async input => { inputs.push(input); return { memory: [], user_model: [] } },
+    reflect: async input => { inputs.push(input); return { memory: [], user_model: [], skills: [], skill_outcomes: [] } },
     existing: () => (learning ? 'prefers-pnpm (feedback): uses pnpm' : null),
     apply: () => {},
     debounceMs: 20,
@@ -73,6 +73,8 @@ function applier(autoLearn: 'auto' | 'propose' | 'off') {
 const pref = (name: string, description: string): Proposals => ({
   memory: [{ op: 'create', type: 'feedback', name, description, body: 'Use pnpm.', reason: 'said so' }],
   user_model: [],
+  skills: [],
+  skill_outcomes: [],
 })
 
 test('the same preference three times is one file (AC5)', () => {
@@ -96,6 +98,8 @@ test('user-model proposals land under users/<id>; secrets and extras are dropped
       { op: 'create', user_id: '42', name: 'name', description: 'Preferred name', body: 'Kai', reason: '' },
       { op: 'create', user_id: '../x', name: 'evil', description: 'x', body: 'x', reason: '' },
     ],
+    skills: [],
+    skill_outcomes: [],
   })
   expect(store.list()).toEqual([])
   expect(createMemoryStore(userDir(store.dir, '42')).read('name')).toMatchObject({ type: 'user', body: 'Kai', metadata: { user_id: '42' } })
@@ -116,4 +120,37 @@ test('propose asks first; Save writes, Skip does not; off does nothing', () => {
   const off = applier('off')
   off.a.apply('1', pref('x', 'y'))
   expect(off.store.list()).toEqual([])
+})
+
+test('tool calls carry an arg preview and are counted without Telegram replies (006 FR2)', () => {
+  const path = join(dir(), 't.jsonl')
+  writeFileSync(path, agent([
+    { type: 'tool_use', name: 'Bash', input: { command: 'pnpm build' } },
+    { type: 'tool_use', name: 'Bash', input: { command: 'x'.repeat(300) } },
+    { type: 'tool_use', name: 'mcp__tg__reply', input: { text: 'done' } },
+  ]))
+  const { text } = readDelta(path, 0)
+  expect(text).toContain('[tool Bash {"command":"pnpm build"}]')
+  expect(text).toContain('…]')
+  expect(toolCalls(text)).toBe(2)
+})
+
+test('the skills block goes into the input only when skill learning is on', async () => {
+  const path = join(dir(), 't.jsonl')
+  writeFileSync(path, user('deploy the blog'))
+  const inputs: string[] = []
+  const applied: string[] = []
+  const w = createReflectionWorker({
+    reflect: async input => { inputs.push(input); return { memory: [], user_model: [], skills: [], skill_outcomes: [] } },
+    existing: () => null,
+    skills: (_k, delta) => skillsContext([{ name: 'deploy-blog', description: 'Deploy the blog' }], toolCalls(delta), ['deploy blog again']),
+    apply: (_k, _p, delta) => { applied.push(delta) },
+  })
+  await w.enqueue('1', { transcript_path: path }, true)
+  expect(inputs[0]).toContain('<skills_context>')
+  expect(inputs[0]).toContain('- deploy-blog: Deploy the blog')
+  expect(inputs[0]).toContain('memory is off for this chat')
+  expect(applied).toEqual(['USER: deploy the blog'])
+  expect(reflectionInput('', 'x')).toContain('Skills are off for this chat')
+  expect(ProposalsSchema.parse({ memory: [], user_model: [], skill_outcomes: [], skills: [{ op: 'create', name: 'a', description: 'b', sections: { Steps: '1.' }, reason: '', confidence: 0.9 }] }).skills).toHaveLength(1)
 })

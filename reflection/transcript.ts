@@ -11,6 +11,16 @@ import { closeSync, openSync, readSync, statSync } from 'fs'
 /** About 8k tokens of dialogue; the newest part wins. */
 export const MAX_DELTA_CHARS = 32_000
 
+const PREVIEW_CHARS = 160
+const preview = (input: Record<string, unknown>) => {
+  const s = JSON.stringify(input)
+  return s.length > PREVIEW_CHARS ? `${s.slice(0, PREVIEW_CHARS)}…` : s
+}
+
+/** Tool calls in a delta, Telegram replies and reactions aside (006 FR2 trigger). */
+export const toolCalls = (delta: string) =>
+  (delta.match(/\[tool (?!mcp__tg__(reply|react|edit_message)\b)/g) ?? []).length
+
 type Block = { type?: string; text?: string; name?: string; input?: Record<string, unknown> }
 
 function lineText(line: string): string | undefined {
@@ -25,8 +35,10 @@ function lineText(line: string): string | undefined {
     else if (b.type === 'tool_use') {
       // Telegram replies are the agent's real answer in daemon turns.
       // Memory calls show what the agent already saved, so reflection doesn't repeat it.
+      // Other tools get a short arg preview, so 006 can read the procedure from the trace.
       const said = b.name?.endsWith('__reply') && typeof b.input?.text === 'string' ? `: ${b.input.text}`
-        : b.name?.includes('__memory_') ? ` ${JSON.stringify(b.input)}` : ''
+        : b.name?.includes('__memory_') ? ` ${JSON.stringify(b.input)}`
+        : b.input && Object.keys(b.input).length ? ` ${preview(b.input)}` : ''
       parts.push(`[tool ${b.name}${said}]`)
     }
   }
