@@ -10,18 +10,27 @@ export const chatTypeOf = (key: string): ChatType => (key.startsWith('-') ? 'gro
  * falls back to the owner IDs in `allowFrom` (FR3).
  */
 export function resolvePolicy(access: Access, key: string, type: ChatType): Policy {
-  const chatKey = key.split(':')[0]
+  const chatKey = policyKey(key)
   const chat = access.chats?.[chatKey]?.policy
   const topic = key === chatKey ? undefined : access.chats?.[key]?.policy
+  const always = [...new Set([...(chat?.alwaysAllow ?? []), ...(topic?.alwaysAllow ?? [])])]
   return {
     approvers: access.allowFrom,
     ...defaultPolicy(type),
     ...chat,
     ...topic,
+    // Always rules add up: a topic's own rules never hide the group's.
+    ...(always.length && { alwaysAllow: always }),
   }
 }
 
-/** Adds an Always rule (US2) to the key's own `alwaysAllow`, once. Mutates `access`. */
+/**
+ * Where Telegram-side policy writes land (Always, `/policy`): the whole chat,
+ * so every topic in a group shares them. Topic overrides are terminal-only.
+ */
+export const policyKey = (key: string) => key.split(':')[0]!
+
+/** Adds an Always rule (US2) to `alwaysAllow` under `key`, once. Mutates `access`. */
 export function addAlwaysAllow(access: Access, key: string, rule: string): void {
   const chats = access.chats ??= {}
   const policy = (chats[key] ??= {}).policy ??= {}

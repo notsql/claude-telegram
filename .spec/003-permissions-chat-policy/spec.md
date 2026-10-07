@@ -21,7 +21,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
 - **FR3**: The prompt goes to the **originating session target** (chat and topic). Only users in `policy.approvers` can answer (default: owner IDs from `allowFrom`). Taps from anyone else get an "not authorised" toast.
 - **FR4**: If nobody answers within `approvalTimeoutSec` (default 60), the call is denied and the message is edited to "⌛ Expired". The `PermissionRequest` hook's `timeout` is generated as `approvalTimeoutSec` + 30s (the http hook default of 600s already allows this), so an expiry is a clean deny and never a hook error.
 - **FR5**: The text fallback `yes xxxxx` / `no xxxxx` still works (reuse `PERMISSION_REPLY_RE`).
-- **FR6**: A per-session-key policy is stored in `access.json` → `chats[key].policy`, resolved in this order: topic key → chat key → defaults for the chat type.
+- **FR6**: A per-session-key policy is stored in `access.json` → `chats[key].policy`, resolved in this order: topic key → chat key → defaults for the chat type. Telegram-side writes (Always, `/policy`) go to the chat key, so all topics in a group share them; `alwaysAllow` rules from chat and topic add up. Topic-level overrides are set from the terminal skill.
 - **FR7**: Policy fields:
   - `permissionMode`: `default | acceptEdits | plan | bypassPermissions`
   - `allowedTools[]`, `disallowedTools[]`: Claude Code permission-rule syntax, e.g. `Bash(git status:*)`. These are also passed as `--allowedTools`/`--disallowedTools`.

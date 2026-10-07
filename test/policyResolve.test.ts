@@ -51,3 +51,11 @@ test('canStartTurn: owners always, others only with allowOthersOnSubscription (F
   expect(canStartTurn(opted, '-100:7', '2')).toBe(true)
   expect(canStartTurn(access, '5', '5')).toBe(true)
 })
+
+test('alwaysAllow unions chat and topic rules; policyKey is the chat', async () => {
+  const { policyKey } = await import('../policy/resolve.ts')
+  const a = { ...access, chats: { '-100': { policy: { alwaysAllow: ['Bash(ls *)'] } }, '-100:7': { policy: { alwaysAllow: ['WebSearch'] } } } }
+  expect(resolvePolicy(a, '-100:7', 'group').alwaysAllow).toEqual(['Bash(ls *)', 'WebSearch'])
+  expect(resolvePolicy(a, '-100:9', 'group').alwaysAllow).toEqual(['Bash(ls *)'])
+  expect(policyKey('-100:7')).toBe('-100')
+})

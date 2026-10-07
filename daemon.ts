@@ -19,7 +19,7 @@ import {
   gate, groupVerdict, dmCommandGate, checkApprovals, saveAccess,
 } from './access.ts'
 import { createApprovals, parseTextReply } from './policy/approvals.ts'
-import { addAlwaysAllow, canStartTurn, chatTypeOf, resolvePolicy } from './policy/resolve.ts'
+import { addAlwaysAllow, canStartTurn, chatTypeOf, policyKey, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
 import { applyPolicyEdit, policyKeyboard, renderPolicy } from './telegram/policyUi.ts'
@@ -138,7 +138,7 @@ const approvals = createApprovals({
   timeoutSec: APPROVAL_TIMEOUT_SEC,
   saveRule: (key, rule) => {
     const access = loadAccess()
-    addAlwaysAllow(access, key, rule)
+    addAlwaysAllow(access, policyKey(key), rule)
     saveAccess(access)
   },
 })
@@ -376,14 +376,14 @@ const showPolicy = (key: string) => {
 
 bot.command('policy', async ctx => {
   if (!isOwner(ctx)) return
-  const [text, opts] = showPolicy(sessionKey(ctx.msg!))
+  const [text, opts] = showPolicy(policyKey(sessionKey(ctx.msg!)))
   await ctx.reply(text, opts)
 })
 
 bot.callbackQuery(/^pol:(\w+):(\w+)$/, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
-  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
   const [, field, value] = ctx.match
   const access = loadAccess()
   try {

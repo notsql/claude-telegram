@@ -119,9 +119,9 @@ What the bot may do in a chat is separate from who can reach it. Policies live i
 - **DMs**: the normal permission prompts, global memory, all history.
 - **Groups**: only owners (`allowFrom`) start turns; other members' messages are kept as context for the owner's next turn. `allowOthersOnSubscription: true`, set from the terminal, lets them trigger turns on your subscription. Read-only tools run without asking; Bash, edits and file paths outside the chat's workspace show an approval prompt. Chat-scoped memory and history, no scheduler.
 
-When the agent wants a tool that no rule allows, the chat gets **See more / ✅ Allow / ❌ Deny / ♾ Always (this chat)** buttons. Only `approvers` (default: `allowFrom`) can answer; `yes abcde` / `no abcde` also works, in groups without an @mention (with privacy mode on, send it as a reply to the prompt so the bot receives it). Unanswered prompts deny after 1 minute. **Always** saves a rule such as `Bash(npm test *)` to that chat's `alwaysAllow`.
+When the agent wants a tool that no rule allows, the chat gets **See more / ✅ Allow / ❌ Deny / ♾ Always (this chat)** buttons. Only `approvers` (default: `allowFrom`) can answer; `yes abcde` / `no abcde` also works, in groups without an @mention (with privacy mode on, send it as a reply to the prompt so the bot receives it). Unanswered prompts deny after 1 minute. **Always** saves Claude Code's suggested rule (for example `Bash(npm test *)`) to the chat's `alwaysAllow`. In a group it applies to every topic.
 
-The owner can also edit common fields with `/policy` in the chat. `bypassPermissions`, `cwd` and `trustedDirs` can only be set from the terminal. Policy changes and approval decisions are logged to `audit.log` in the state directory.
+The owner can also edit common fields with `/policy` in the chat; in a group the edit applies to all topics (topic-only overrides are set from the terminal). `bypassPermissions`, `cwd` and `trustedDirs` can only be set from the terminal. Policy changes and approval decisions are logged to `audit.log` in the state directory.
 
 ## Config file
 
