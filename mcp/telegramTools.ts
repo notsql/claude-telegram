@@ -179,7 +179,7 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
           return { content: [{ type: 'text', text: 'reacted' }] }
         }
         case 'download_attachment': {
-          const path = await downloadAttachment(bot.api, TOKEN, args.file_id as string)
+          const path = await downloadAttachment(api, token, args.file_id as string)
           return { content: [{ type: 'text', text: path }] }
         }
         case 'edit_message': {
