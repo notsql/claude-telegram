@@ -5,7 +5,7 @@ Depends on: 001 (hook endpoint T006, MCP server T005), 002 (session keys)
   *Verify:* an existing `access.json` loads without changes.
 - [x] **T302** `policy/resolve.ts` with a topic → chat → default merge.
   *Verify:* unit tests.
-- [ ] **T303** `policy/rules.ts`: derive "Always" rules (command prefix with ` *`, dir globs).
+- [x] **T303** `policy/rules.ts`: derive "Always" rules (command prefix with ` *`, dir globs).
   *Verify:* unit tests for `Bash(npm test *)`, `Edit(~/proj/**)` and bare `WebSearch`.
 - [ ] **T304** `approvals.ts`: `PermissionRequest` http hook handler, a long-held request until decision, pending map, timeout, deny-on-expiry, `updatedPermissions` for Always.
   *Verify:* AC1, AC4, and killing the daemon mid-turn makes the tool call deny.
