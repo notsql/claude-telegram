@@ -70,6 +70,7 @@ import { availableAgents, setPolicyAgent } from './agents/available.ts'
 import { AUTHOR, createAgentTools } from './agents/tools.ts'
 import { createAgentApplier, learnedAgents } from './agents/apply.ts'
 import { staleSkills, STALE_DAYS } from './skills/prune.ts'
+import { archiveAgent, evalTargets, skillCreatorInstalled, staleAgents } from './agents/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
 import { toolCalls } from './reflection/transcript.ts'
@@ -290,7 +291,22 @@ function proposeArchives(): void {
       }).catch(() => {})
     }
   }
+  // 009 T911: unused learned agents, kept under the 12-agent description budget.
+  const owner = loadAccess().allowFrom[0]
+  if (!owner) return
+  const dir = join(claudeDir(), 'agents')
+  for (const name of staleAgents(dir, agentUsage.all()).slice(0, MAX_PRUNE_PROPOSALS)) {
+    const id = randomBytes(6).toString('hex')
+    agentArchiveAsks.set(id, { dir, name })
+    void bot.api.sendMessage(owner, `📦 Agent ${name} hasn't been used in ${STALE_DAYS} days. Archive it?`, {
+      reply_markup: { inline_keyboard: [[
+        { text: '📦 Archive', callback_data: `agt:arch:${id}` },
+        { text: 'Keep', callback_data: `agt:keep:${id}` },
+      ]] },
+    }).catch(() => {})
+  }
 }
+const agentArchiveAsks = new Map<string, { dir: string; name: string }>()
 
 /** 006 FR2: earlier user requests like this turn's first one, as hints that the task repeats. */
 function similarRequests(key: string, delta: string, sessionId: unknown): string[] {
@@ -598,6 +614,22 @@ try {
 // 007 FR10: weekly maintenance, kept out of jobs.json and the agent's schedule_list.
 const SYS_PREFIX = 'sys:'
 const CONSOLIDATE_PROMPT = 'Run the weekly memory consolidation pass: merge duplicate or overlapping memories, drop stale ones, and keep the index within its line limit.'
+  + ` Then do the same for each tg agent's own memory under ${join(claudeDir(), 'agent-memory')}/tg-*/ (MEMORY.md index plus fact files), if any exist.`
+const evalPrompt = (t: { agents: string[]; skills: string[] }) =>
+  'Run the weekly evals with the skill-creator plugin against these tg agents and skills, which have enough usage: '
+  + [...t.agents.map(a => `agent ${a}`), ...t.skills.map(k => `skill ${k}`)].join(', ')
+  + '. For any that underperform, delegate a fix to tg-skill-author with the eval results. Reply with a short summary of results and proposals.'
+
+/** 009 FR12: skill-creator evals, only when that plugin is installed and something has enough runs. */
+async function runEvals(): Promise<void> {
+  const owner = loadAccess().allowFrom[0]
+  if (!owner || !skillCreatorInstalled(claudeDir())) return
+  const targets = evalTargets(agentUsage.all(), skillUsage.all())
+  if (!targets.agents.length && !targets.skills.length) return
+  const prompt = renderInbound(evalPrompt(targets), { origin: 'scheduler', chat_id: owner, job_title: 'Weekly evals', ts: new Date().toISOString() })
+  const outcome = await jobTurn({ mode: 'fresh', sessionKey: owner } as Job, prompt, policyOf(owner), () => {})
+  log(`evals: ${outcome.refused?.join('; ') ?? (outcome.result?.is_error ? 'error' : 'done')}`)
+}
 
 /** 004 FR8: a fresh turn in the first owner's DM, run as tg-curator (009). */
 async function consolidateMemory(): Promise<void> {
@@ -611,7 +643,7 @@ async function consolidateMemory(): Promise<void> {
 async function fireSystemJob(id: SystemJobId): Promise<void> {
   if (turnAbort.signal.aborted) return
   if (id === 'memory-consolidation') await consolidateMemory()
-  else proposeArchives()
+  else { proposeArchives(); await runEvals() }
 }
 
 const systemJobs = startSystemJobs({
@@ -977,6 +1009,20 @@ bot.callbackQuery(/^skl:(arch|keep):([0-9a-f]+)$/, async ctx => {
   let label = `Kept ${a.name}`
   if (ctx.match[1] === 'arch') {
     try { skillStoreFor(a.key).archive(a.name); label = `📦 Archived ${a.name}` } catch (err) { label = (err as Error).message }
+  }
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  await ctx.editMessageText(label).catch(() => {})
+})
+
+// 009 T911: Archive or Keep an unused learned agent.
+bot.callbackQuery(/^agt:(arch|keep):([0-9a-f]+)$/, async ctx => {
+  const a = agentArchiveAsks.get(ctx.match[2]!)
+  if (!a) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  agentArchiveAsks.delete(ctx.match[2]!)
+  let label = `Kept ${a.name}`
+  if (ctx.match[1] === 'arch') {
+    try { archiveAgent(a.dir, a.name); label = `📦 Archived ${a.name}` } catch (err) { label = (err as Error).message }
   }
   await ctx.answerCallbackQuery({ text: label }).catch(() => {})
   await ctx.editMessageText(label).catch(() => {})

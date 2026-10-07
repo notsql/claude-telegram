@@ -28,4 +28,4 @@ Depends on: 001 (runner, http hooks), 003 (policy), 004/006 (reflection, skill s
   *Verify:* AC5.
 - [x] **T910** Upgrade the 006 SKILL.md template and validator for the FR10 fields, including validation of `!` commands against a read-only allowlist.
   *Verify:* AC6.
-- [ ] **T911** Weekly maintenance (007): curator pass over agent memory, archive unused agents, skill-creator evals if installed.
+- [x] **T911** Weekly maintenance (007): curator pass over agent memory, archive unused agents, skill-creator evals if installed.
