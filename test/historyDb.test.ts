@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtempSync } from 'fs'
+import { mkdtempSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { openHistoryDb } from '../history/db'
@@ -32,4 +32,10 @@ test('reopening a file db keeps data and does not re-run migrations', () => {
   const b = openHistoryDb(path)
   expect((b.query('PRAGMA user_version').get() as any).user_version).toBe(1)
   expect(match(b, 'persisted')).toHaveLength(1)
+})
+
+test('the db file is owner-only', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'tg-hist-')), 'history.db')
+  openHistoryDb(path).close()
+  expect(statSync(path).mode & 0o777).toBe(0o600)
 })

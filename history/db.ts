@@ -5,7 +5,7 @@
  */
 
 import { Database } from 'bun:sqlite'
-import { mkdirSync } from 'fs'
+import { chmodSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 
 const MIGRATIONS = [
@@ -29,6 +29,8 @@ const MIGRATIONS = [
 export function openHistoryDb(path: string): Database {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
   const db = new Database(path, { create: true })
+  // Transcript text: owner-only, like the other state files.
+  if (path !== ':memory:') chmodSync(path, 0o600)
   db.exec('PRAGMA journal_mode = WAL')
   const version = (db.query('PRAGMA user_version').get() as { user_version: number }).user_version
   for (let v = version; v < MIGRATIONS.length; v++) {
