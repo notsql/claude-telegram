@@ -7,7 +7,7 @@ Depends on: 001 (runner, budget), 002 (session targets, semaphore), 003 (policy 
   *Verify:* a job fires in a test with a short interval.
 - [x] **T703** `run.ts`: fresh vs. session mode, `origin="scheduler"` wrapper, header, fallback post, status bookkeeping.
   *Verify:* AC1.
-- [ ] **T704** `describe.ts`: human-readable cron text and the next 3 runs.
+- [x] **T704** `describe.ts`: human-readable cron text and the next 3 runs.
   *Verify:* AC2.
 - [ ] **T705** `tools.ts`: `schedule_*` tools gated by `schedulerAllowed`, with narrowing-only `policyOverride`.
   *Verify:* AC3, AC6.
