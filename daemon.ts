@@ -519,18 +519,18 @@ commands.push({ name: 'search', description: 'Search past conversations: /search
 const memoryReply = async (ctx: Context, r: CommandResult) =>
   ctx.reply(r.text, r.change ? { reply_markup: notices.undoKeyboard(r.change) } : {})
 
-commands.push({ name: 'remember', description: 'Remember something: /remember <text>', menu: ['private'], handler: async (ctx, args) => {
+commands.push({ name: 'remember', description: 'Remember something: /remember <text>', menu: ['private', 'group'], handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
   await memoryReply(ctx, remember(memory, args, key, policyOf(key)))
 } })
 
-commands.push({ name: 'forget', description: 'Forget a memory: /forget <name or words>', menu: ['private'], requiresApprover: true, handler: async (ctx, args) => {
+commands.push({ name: 'forget', description: 'Forget a memory: /forget <name or words>', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   await memoryReply(ctx, forget(memory, args, policyOf(sessionKey(ctx.msg!))))
 } })
 
-commands.push({ name: 'memory', description: 'Show what I remember', menu: ['private'], handler: async ctx => {
+commands.push({ name: 'memory', description: 'Show what I remember', menu: ['private', 'group'], handler: async ctx => {
   if (!isOwner(ctx)) return
   await memoryReply(ctx, showMemory(memory, userStore(String(ctx.from!.id)), policyOf(sessionKey(ctx.msg!))))
 } })
@@ -539,7 +539,7 @@ commands.push({ name: 'memory', description: 'Show what I remember', menu: ['pri
 const canChange = (ctx: Context, key: string, isGroup: boolean) =>
   authorised({ requiresApprover: true }, isGroup, isApprover(key, ctx.from!.id), isOwner(ctx))
 
-commands.push({ name: 'skills', description: 'List skills: /skills [show|rm] <name>', menu: ['private'], handler: async (ctx, args) => {
+commands.push({ name: 'skills', description: 'List skills: /skills [show|rm] <name>', menu: ['private', 'group'], handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
   const parsed = parseSkillsArgs(args)
@@ -568,12 +568,12 @@ bot.callbackQuery(/^skc:(show|arch|rm):([a-z0-9-]{1,48})$/, async ctx => {
   }
 })
 
-commands.push({ name: 'sessions', description: 'List past sessions', menu: ['private'], handler: async ctx => {
+commands.push({ name: 'sessions', description: 'List past sessions', menu: ['private', 'group'], handler: async ctx => {
   if (!isOwner(ctx)) return
   await ctx.reply(formatSessions(lifecycle.list(sessionKey(ctx.msg!))))
 } })
 
-commands.push({ name: 'resume', description: 'Resume a past session: /resume <n>', menu: ['private'], handler: async (ctx, args) => {
+commands.push({ name: 'resume', description: 'Resume a past session: /resume <n>', menu: ['private', 'group'], handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
   const arg = args.trim()
@@ -592,7 +592,7 @@ commands.push({ name: 'resume', description: 'Resume a past session: /resume <n>
 // 008 FR1, US4: bare /model opens a picker; the choice lasts for this session.
 const modelKeyboard = () => ({ inline_keyboard: [[...MODELS, 'default'].map(m => ({ text: m, callback_data: `mdl:${m}` }))] })
 
-commands.push({ name: 'model', description: 'Pick the model for this session', menu: ['private'], requiresApprover: true, handler: async (ctx, args) => {
+commands.push({ name: 'model', description: 'Pick the model for this session', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {
   const key = sessionKey(ctx.msg!)
   if (!args) {
     await ctx.reply(`Model: ${lifecycle.model(key) ?? policyOf(key).model ?? 'default'}. Pick one for this session:`, { reply_markup: modelKeyboard() })
@@ -619,7 +619,7 @@ bot.callbackQuery(/^mdl:(\w+)$/, async ctx => {
 })
 
 // Claude Code compacts on its own; this forces it in the key's session.
-commands.push({ name: 'compact', description: "Compact this session's context", menu: ['private'], handler: async ctx => {
+commands.push({ name: 'compact', description: "Compact this session's context", menu: ['private', 'group'], handler: async ctx => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
   if (!sessions.current(key)) {
@@ -630,7 +630,7 @@ commands.push({ name: 'compact', description: "Compact this session's context", 
   await ctx.reply('Compacting this session.')
 } })
 
-commands.push({ name: 'cost', description: 'What this session has cost', menu: ['private'], handler: async ctx => {
+commands.push({ name: 'cost', description: 'What this session has cost', menu: ['private', 'group'], handler: async ctx => {
   if (!isOwner(ctx)) return
   await ctx.reply(formatCost(lifecycle.stats(sessionKey(ctx.msg!))))
 } })
@@ -664,7 +664,7 @@ const showPolicy = (key: string) => {
   return [renderPolicy(key, p), { reply_markup: policyKeyboard(p) }] as const
 }
 
-commands.push({ name: 'policy', description: "View or edit this chat's policy", menu: ['private', 'admin'], requiresApprover: true, handler: async ctx => {
+commands.push({ name: 'policy', description: "View or edit this chat's policy", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
   if (!isOwner(ctx)) return
   const [text, opts] = showPolicy(policyKey(sessionKey(ctx.msg!)))
   await ctx.reply(text, opts)
