@@ -179,6 +179,10 @@ const bot = new Bot(TOKEN)
 // throttler keeps sends under those limits; a 429 that still happens is retried.
 bot.api.config.use(apiThrottler())
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 60 }))
+// Optimistic buttons: a tap is handled off the sequential update loop, so it
+// never waits behind another update's throttled reply. Handlers answer the
+// tap with the expected result first and only change it if the work fails.
+bot.on('callback_query', (ctx, next) => { void next().catch(err => log(`callback handler error: ${err}`)) })
 if (!STATIC) setInterval(() => checkApprovals(bot.api), 5000).unref()
 
 // FR10: a missing login is reported, not fatal; the owner can log in without a restart.
@@ -729,8 +733,9 @@ bot.callbackQuery(MEMORY_CALLBACK, async ctx => {
   const edit = (r: CommandResult) => ctx.editMessageText(r.text, r.keyboard ? { reply_markup: r.keyboard } : {}).catch(() => {})
   if (action === 'd') {
     if (!canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+    void ctx.answerCallbackQuery({ text: '🧠 Forgotten' }).catch(() => {})
     const r = forget(memory, arg, policy)
-    await ctx.answerCallbackQuery({ text: r.text.slice(0, 200) }).catch(() => {})
+    if (!r.change) return failed(ctx, r.text)
     await edit(memoryView(memory, policy))
     if (r.change) await bot.api.sendMessage(msg.chat.id, r.text, { ...threadOpts(parseKey(key)), reply_markup: notices.undoKeyboard(r.change) }).catch(() => {})
     return
@@ -806,9 +811,13 @@ bot.callbackQuery(SKILLS_CALLBACK, async ctx => {
     }
     case 'a':
     case 'd': {
-      if (action === 'a') store.archive(skill.name)
-      else store.remove(skill.name)
-      await ctx.answerCallbackQuery({ text: action === 'a' ? `📦 Archived ${skill.name}` : `🗑 Removed ${skill.name}` }).catch(() => {})
+      void ctx.answerCallbackQuery({ text: action === 'a' ? `📦 Archived ${skill.name}` : `🗑 Removed ${skill.name}` }).catch(() => {})
+      try {
+        if (action === 'a') store.archive(skill.name)
+        else store.remove(skill.name)
+      } catch (err) {
+        return failed(ctx, err instanceof Error ? err.message : String(err))
+      }
       return void await edit(skillsView(allSkills()))
     }
   }
@@ -971,17 +980,17 @@ bot.callbackQuery(CRON_CALLBACK, async ctx => {
   if (!canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
   const [, action, id] = ctx.match as unknown as [string, CronAction, string]
   if (!chatJobs(STATE_DIR, key).some(j => j.id === id)) return ctx.answerCallbackQuery({ text: 'Job is gone.' }).catch(() => {})
-  let label: string
-  if (action === 'run') {
-    queueJob(id)
-    label = '▶️ Running now'
-  } else {
-    if (action === 'del') deleteJob(STATE_DIR, id)
-    else setJobEnabled(STATE_DIR, id, action === 'resume')
-    scheduler.reload()
-    label = { del: '🗑 Deleted', pause: '⏸ Paused', resume: '▶ Resumed' }[action]
+  void ctx.answerCallbackQuery({ text: { run: '▶️ Running now', del: '🗑 Deleted', pause: '⏸ Paused', resume: '▶ Resumed' }[action] }).catch(() => {})
+  try {
+    if (action === 'run') queueJob(id)
+    else {
+      if (action === 'del') deleteJob(STATE_DIR, id)
+      else setJobEnabled(STATE_DIR, id, action === 'resume')
+      scheduler.reload()
+    }
+  } catch (err) {
+    return failed(ctx, err instanceof Error ? err.message : String(err))
   }
-  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
   const { text, keyboard } = cronView(chatJobs(STATE_DIR, key))
   await ctx.editMessageText(text, keyboard ? { reply_markup: keyboard } : {}).catch(() => {})
 })
@@ -999,21 +1008,30 @@ bot.callbackQuery(/^mem:undo:([0-9a-f]+)$/, async ctx => {
 // 004 FR6: Save or Skip a proposed memory (autoLearn: propose).
 bot.callbackQuery(/^mem:(save|skip):([0-9a-f]+)$/, async ctx => {
   if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
-  const r = applier.decide(ctx.match[2]!, ctx.match[1] === 'save')
-  if (!r) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
-  await ctx.answerCallbackQuery({ text: r.error ?? (r.change ? 'Saved' : 'Skipped') }).catch(() => {})
+  const save = ctx.match[1] === 'save'
+  void ctx.answerCallbackQuery({ text: save ? '✅ Saved' : 'Skipped' }).catch(() => {})
+  const r = applier.decide(ctx.match[2]!, save)
+  if (!r || r.error) return failed(ctx, r?.error ?? 'already decided')
   if (r.change) await ctx.editMessageText(noticeText(r.change), { reply_markup: notices.undoKeyboard(r.change) }).catch(() => {})
-  else if (!r.error) await ctx.deleteMessage().catch(() => {})
+  else await ctx.deleteMessage().catch(() => {})
 })
+
+/** An optimistic tap that didn't work out: the message says why and keeps its buttons. */
+async function failed(ctx: Context, reason: string): Promise<void> {
+  const msg = ctx.callbackQuery?.message
+  if (!msg || !('text' in msg) || !msg.text) return
+  await ctx.editMessageText(`${msg.text}\n\n⚠️ Not done: ${reason}`, { entities: msg.entities, reply_markup: msg.reply_markup }).catch(() => {})
+}
 
 // 009 FR8: Save or Skip a proposed learned agent.
 bot.callbackQuery(/^agt:(save|skip):([0-9a-f]+)$/, async ctx => {
   if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
-  const r = agentApplier.decide(ctx.match[2]!, ctx.match[1] === 'save')
-  if (!r) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
-  await ctx.answerCallbackQuery({ text: r.error ?? (r.text ? 'Saved' : 'Skipped') }).catch(() => {})
+  const save = ctx.match[1] === 'save'
+  void ctx.answerCallbackQuery({ text: save ? '✅ Saved' : 'Skipped' }).catch(() => {})
+  const r = agentApplier.decide(ctx.match[2]!, save)
+  if (!r || r.error) return failed(ctx, r?.error ?? 'already decided')
   if (r.text) await ctx.editMessageText(r.text).catch(() => {})
-  else if (!r.error) await ctx.deleteMessage().catch(() => {})
+  else await ctx.deleteMessage().catch(() => {})
 })
 
 const isApprover = (key: string, userId: number) =>
@@ -1032,10 +1050,11 @@ bot.callbackQuery(/^skl:(save|skip|edit):([0-9a-f]+)$/, async ctx => {
     if (sent) skillEdits.set(`${target.chatId}:${sent.message_id}`, id!)
     return ctx.answerCallbackQuery({ text: 'Reply to the draft with your edited version.' }).catch(() => {})
   }
-  const r = skillApplier.decide(id!, action === 'save')!
-  await ctx.answerCallbackQuery({ text: r.error ?? (r.change ? 'Saved' : 'Skipped') }).catch(() => {})
+  void ctx.answerCallbackQuery({ text: action === 'save' ? '✅ Saved' : 'Skipped' }).catch(() => {})
+  const r = skillApplier.decide(id!, action === 'save')
+  if (!r || r.error) return failed(ctx, r?.error ?? 'already decided')
   if (r.change) await ctx.editMessageText(skillNoticeText(r.change), { reply_markup: skillNotices.keyboard(p.key, r.change) }).catch(() => {})
-  else if (!r.error) await ctx.deleteMessage().catch(() => {})
+  else await ctx.deleteMessage().catch(() => {})
 })
 
 /** ✏️ Edit: an approver's reply to the draft saves the edited skill. True if it was one. */
@@ -1118,9 +1137,9 @@ bot.on('callback_query:data', async ctx => {
     await ctx.editMessageText(approvals.details(id)!, { reply_markup: kb, parse_mode: 'HTML' }).catch(() => {})
     return ctx.answerCallbackQuery().catch(() => {})
   }
-  if (!approvals.decide(id, action, String(ctx.from.id))) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
   const label = { allow: '✅ Allowed for this session', deny: '❌ Denied', always: '♾ Always allowed' }[action]
-  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  void ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  if (!approvals.decide(id, action, String(ctx.from.id))) return failed(ctx, 'already decided')
   const msg = ctx.callbackQuery.message
   // Appending keeps the existing entities' offsets valid, so a See more code block stays formatted.
   if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`, { entities: msg.entities }).catch(() => {})
