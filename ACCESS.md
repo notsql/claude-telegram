@@ -6,7 +6,7 @@ By default, a DM from an unknown sender triggers **pairing**: the bot replies wi
 
 All state lives in `~/.claude/channels/telegram/access.json`. The `/telegram:access` skill commands edit this file; the server re-reads it on every inbound message, so changes take effect without a restart. Set `TELEGRAM_ACCESS_MODE=static` to pin config to what was on disk at boot (pairing is unavailable in static mode since it requires runtime writes).
 
-In daemon mode (`bun run start:daemon`, see the README) the same file and gate apply. With the plugin disabled (see the README), run `/telegram-access` from any Claude Code session on the daemon host; it takes the same arguments as `/telegram:access`, and the daemon picks up the change on the next message. Only users in `allowFrom` can use `/stop`.
+In daemon mode (`bun run start:daemon`, see the README) the same file and gate apply. With the plugin disabled (see the README), run `/telegram-access` from any Claude Code session on the daemon host; it takes the same arguments as `/telegram:access`, and the daemon picks up the change on the next message. Only users in `allowFrom` can use the bot commands.
 
 ## At a glance
 
@@ -122,6 +122,10 @@ What the bot may do in a chat is separate from who can reach it. Policies live i
 When the agent wants a tool that no rule allows, the chat gets **See more / ✅ Allow / ❌ Deny / ♾ Always (this chat)** buttons. Only `approvers` (default: `allowFrom`) can answer; `yes abcde` / `no abcde` also works, in groups without an @mention (with privacy mode on, send it as a reply to the prompt so the bot receives it). Unanswered prompts deny after 1 minute. **Always** saves Claude Code's suggested rule (for example `Bash(npm test *)`) to the chat's `alwaysAllow`. In a group it applies to every topic.
 
 The owner can also edit common fields with `/policy` in the chat; in a group the edit applies to all topics (topic-only overrides are set from the terminal). `bypassPermissions`, `cwd` and `trustedDirs` can only be set from the terminal. Policy changes and approval decisions are logged to `audit.log` in the state directory.
+
+## Commands
+
+Bot commands (see the README's command table) only answer senders in `allowFrom`. Commands that change state (`/model`, `/forget`, `/policy`, and removing or archiving a skill from `/skills`) also need the chat's `approvers` in groups; others get a refusal. Commands addressed to another bot (`/new@otherbot`) are ignored, and an unknown `/foo` goes to the agent as a normal message.
 
 ## Config file
 

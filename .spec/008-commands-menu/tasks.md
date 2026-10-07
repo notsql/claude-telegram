@@ -17,4 +17,4 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
 - [x] **T809** Skill command invocation with args.
   *Verify:* AC3.
 - [x] **T810** Move `/start /help /status` from `server.ts` and update the `/help` text to explain that plain language works for everything.
-- [ ] **T811** Document the parity table in README and ACCESS.md.
+- [x] **T811** Document the parity table in README and ACCESS.md.
