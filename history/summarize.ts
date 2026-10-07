@@ -1,6 +1,6 @@
 /**
  * Condense search hits into a cited answer (005 FR5). A one-shot model call
- * (001 `oneshot.ts`); it uses haiku until 009 ships the `tg-summarizer` agent.
+ * (001 `oneshot.ts`) run as the `tg-summarizer` agent (009).
  */
 
 import type { Database } from 'bun:sqlite'
@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { runOneShot } from '../agent/oneshot.ts'
 
 export const AnswerSchema = z.object({ answer: z.string() })
-export type RunOneShot = (agent: string | undefined, input: string, schema: typeof AnswerSchema) => Promise<z.infer<typeof AnswerSchema>>
+export type RunOneShot = (agent: 'tg-summarizer', input: string, schema: typeof AnswerSchema) => Promise<z.infer<typeof AnswerSchema>>
 
 /** `numbered` is the hit list as the tool shows it: `[n] date · session · title` then the snippet. */
 export async function summarizeHits(question: string, numbered: string, run: RunOneShot = runOneShot): Promise<string> {
@@ -16,11 +16,11 @@ export async function summarizeHits(question: string, numbered: string, run: Run
     'Answer the question using only these excerpts from past conversations. ' +
     'Cite excerpts as [n] with their date. If they do not answer it, say so.\n\n' +
     `Question: ${question}\n\nExcerpts:\n${numbered}`
-  return (await run(undefined, input, AnswerSchema)).answer
+  return (await run('tg-summarizer', input, AnswerSchema)).answer
 }
 
 export const SummarySchema = z.object({ summary: z.string() })
-type RunSummary = (agent: string | undefined, input: string, schema: typeof SummarySchema) => Promise<z.infer<typeof SummarySchema>>
+type RunSummary = (agent: 'tg-summarizer', input: string, schema: typeof SummarySchema) => Promise<z.infer<typeof SummarySchema>>
 
 const SESSION_MAX_CHARS = 24_000
 
@@ -43,5 +43,5 @@ export async function summarizeSession(db: Database, sessionId: string, run: Run
   const input =
     'Summarise this conversation for whoever picks it up next: decisions made, work done, open threads and ' +
     'stated preferences. Be concrete and brief; leave out small talk.\n\n' + lines.join('\n')
-  return (await run(undefined, input, SummarySchema)).summary
+  return (await run('tg-summarizer', input, SummarySchema)).summary
 }

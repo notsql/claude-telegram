@@ -238,7 +238,7 @@ async function skillOutcomes(key: string, outcomes: Proposals['skill_outcomes'],
   for (const { name, outcome } of outcomes) {
     if (!isLearnedSkill(key, name) || !skillUsage.outcome(name, outcome)) continue
     log(`skills: refining ${name} after repeated failures`)
-    const p = await runOneShot(undefined, refinementInput(skillStoreFor(key).text(name)!, delta), RefinementSchema)
+    const p = await runOneShot('tg-reflector', refinementInput(skillStoreFor(key).text(name)!, delta), RefinementSchema)
     skillApplier.one(key, { ...p, op: 'patch', name, confidence: 1 }, true)
   }
 }
@@ -291,7 +291,7 @@ const applier = createApplier({
   log,
 })
 const reflection = createReflectionWorker({
-  reflect: input => runOneShot(undefined, input, ProposalsSchema),
+  reflect: input => runOneShot('tg-reflector', input, ProposalsSchema),
   existing: key => {
     const p = policyOf(key)
     if (p.memoryScope === 'none' || !p.autoLearn || p.autoLearn === 'off') return null

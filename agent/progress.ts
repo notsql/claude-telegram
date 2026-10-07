@@ -1,7 +1,7 @@
 /**
  * US4 progress UX for one turn: "typing…" every `typingMs` while the child is
  * alive, and a "⏳ Working…" message posted after `delayMs` without a `reply`,
- * edited from tool-use events at most once per `editMs`. `finish()` deletes it,
+ * edited from tool-use and subagent events (009 FR5) at most once per `editMs`. `finish()` deletes it,
  * so the answer the agent sends is always a new message (and a push).
  */
 
@@ -61,20 +61,37 @@ export function startProgress(
     msg = api.sendMessage(chat_id, text, threadOpts(target)).then(m => m.message_id, () => undefined)
   }, delayMs)
 
+  const show = (next: string) => {
+    text = next
+    if (!msg || editTimer) return
+    editTimer = setTimeout(flush, Math.max(0, lastEdit + editMs - Date.now()))
+  }
+
+  // 009 FR5: subagent type per `Agent` tool_use id, from `system/task_started` (T901).
+  const subagents = new Map<string, string>()
+
   return {
     onEvent(ev: StreamEvent): void {
-      if (done || ev.kind !== 'assistant') return
+      if (done) return
+      if (ev.kind === 'unknown' && ev.type === 'system/task_started') {
+        const { subagent_type: type, tool_use_id: id } = ev.raw
+        if (typeof type !== 'string') return
+        if (typeof id === 'string') subagents.set(id, type)
+        show(`🔎 ${type}…`)
+        return
+      }
+      if (ev.kind !== 'assistant') return
+      const sub = ev.event.parent_tool_use_id ? subagents.get(ev.event.parent_tool_use_id) : undefined
       for (const tool of toolUses(ev.event)) {
-        if (tool.name === REPLY_TOOL) {
+        if (!sub && tool.name === REPLY_TOOL) {
           // The agent answered; drop the progress message so it can't trail the reply.
           replied = true
           dropMessage()
           return
         }
-        text = `⏳ Working… (${tool.name})`
+        text = sub ? `🔎 ${sub}… (${tool.name})` : `⏳ Working… (${tool.name})`
       }
-      if (!msg || editTimer) return
-      editTimer = setTimeout(flush, Math.max(0, lastEdit + editMs - Date.now()))
+      show(text)
     },
     finish(): void {
       done = true
