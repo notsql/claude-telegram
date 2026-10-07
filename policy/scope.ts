@@ -1,8 +1,8 @@
 /**
- * `PreToolUse` http hook handler (003 FR1): hard scope denies that permission
- * rules can't express. Telegram tools may only target the session's own chat,
- * and in groups file tools stay inside the turn's cwd, the trusted dirs and
- * the inbox. Anything else gets `{}` (no opinion).
+ * `PreToolUse` http hook handler (003 FR1): scope checks that permission rules
+ * can't express. Telegram tools may only target the session's own chat (hard
+ * deny). In groups, a file tool reaching outside the turn's cwd, the trusted
+ * dirs and the inbox needs an approver's OK first. Anything else gets `{}`.
  */
 
 import { parseKey } from '../sessions/key.ts'
@@ -15,9 +15,11 @@ export type ScopeOpts = {
   trustedDirs: () => string[]
   /** Always readable, e.g. the inbox where inbound photos land. */
   extraDirs: string[]
+  /** Asks the key's approvers; true if allowed. */
+  confirm: (key: string, toolName: string, input: Record<string, unknown>) => Promise<boolean>
 }
 
-export function scopeDecision(payload: Record<string, unknown>, key: string, opts: ScopeOpts) {
+export async function scopeDecision(payload: Record<string, unknown>, key: string, opts: ScopeOpts) {
   const tool = String(payload.tool_name ?? '')
   const input = (payload.tool_input ?? {}) as Record<string, unknown>
   const { chatId } = parseKey(key)
@@ -33,12 +35,17 @@ export function scopeDecision(payload: Record<string, unknown>, key: string, opt
       const cwd = String(payload.cwd ?? '/')
       const path = expandPath(raw, cwd)
       const roots = [cwd, ...opts.trustedDirs(), ...opts.extraDirs].map(d => expandPath(d, cwd))
-      if (!roots.some(r => isInside(path, r))) return deny(`${raw} is outside this chat's working directory.`)
+      if (!roots.some(r => isInside(path, r))) {
+        return (await opts.confirm(key, tool, input))
+          ? decide('allow', 'Approved on Telegram.')
+          : deny(`${raw} is outside this chat's working directory and was not approved.`)
+      }
     }
   }
   return {}
 }
 
-const deny = (permissionDecisionReason: string) => ({
-  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason },
+const decide = (permissionDecision: 'allow' | 'deny', permissionDecisionReason: string) => ({
+  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision, permissionDecisionReason },
 })
+const deny = (reason: string) => decide('deny', reason)

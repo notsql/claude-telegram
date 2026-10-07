@@ -41,7 +41,7 @@ The daemon's MCP tools (for example `memory_*` with a scope) read the policy of 
 If the daemon is unreachable, the http hook fails, the request goes unanswered, and `-p` denies it. The system fails closed (constitution IV). Confirm this in T003.
 
 ## Scope enforcement (PreToolUse http hook)
-`scope.ts` handles only what permission rules can't express: a `reply`/`edit` to a chat other than the bound one, `memory_*`/`history_search` outside the policy scope (also enforced inside the tools themselves), and, in groups, file tools outside `cwd` + `trustedDirs` + the inbox (the owner DM is not path-scoped). The memory/history checks land with the 004/005 tools. It returns `permissionDecision: "deny"` with a reason, or an empty object.
+`scope.ts` handles only what permission rules can't express: a `reply`/`edit` to a chat other than the bound one, `memory_*`/`history_search` outside the policy scope (also enforced inside the tools themselves), and, in groups, file tools outside `cwd` + `trustedDirs` + the inbox (the owner DM is not path-scoped). That last check asks the approvers from inside the hook (no Always button) and returns `allow` or `deny`: a PreToolUse `ask` counts as a deny in `-p` and never reaches `PermissionRequest` (tested on 2.1.292). The PreToolUse hook `timeout` is therefore also `approvalTimeoutSec` + 30s. The memory/history checks land with the 004/005 tools. It returns `permissionDecision: "deny"` with a reason, or an empty object.
 
 ## Tool filtering
 - Pass `--allowedTools`/`--disallowedTools` to `claude -p`, so Claude Code enforces them natively.

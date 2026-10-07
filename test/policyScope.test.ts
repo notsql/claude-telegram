@@ -3,28 +3,43 @@ import { homedir } from 'os'
 import { scopeDecision } from '../policy/scope.ts'
 import { isTrustedCwd } from '../policy/args.ts'
 
-const opts = { trustedDirs: () => ['~/infra'], extraDirs: ['/state/inbox'] }
+let answer = false
+const asked: string[] = []
+const opts = {
+  trustedDirs: () => ['~/infra'],
+  extraDirs: ['/state/inbox'],
+  confirm: async (key: string, tool: string) => { asked.push(`${key} ${tool}`); return answer },
+}
 const call = (tool_name: string, tool_input: object, key: string) =>
-  scopeDecision({ tool_name, tool_input, cwd: '/work' }, key, opts) as any
+  scopeDecision({ tool_name, tool_input, cwd: '/work' }, key, opts) as Promise<any>
 
 describe('scopeDecision', () => {
-  test('reply to another chat is denied', () => {
-    expect(call('mcp__tg__reply', { chat_id: '999', text: 'x' }, '-100:7').hookSpecificOutput.permissionDecision).toBe('deny')
-    expect(call('mcp__tg__reply', { chat_id: '-100', text: 'x' }, '-100:7')).toEqual({})
+  test('reply to another chat is denied', async () => {
+    expect((await call('mcp__tg__reply', { chat_id: '999', text: 'x' }, '-100:7')).hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(await call('mcp__tg__reply', { chat_id: '-100', text: 'x' }, '-100:7')).toEqual({})
   })
 
-  test('group file tools stay inside cwd, trusted dirs and inbox', () => {
-    expect(call('Read', { file_path: '/work/a.txt' }, '-100')).toEqual({})
-    expect(call('Read', { file_path: 'sub/a.txt' }, '-100')).toEqual({})
-    expect(call('Read', { file_path: '~/infra/x.yaml' }, '-100')).toEqual({})
-    expect(call('Read', { file_path: '/state/inbox/p.jpg' }, '-100')).toEqual({})
-    expect(call('Read', { file_path: '/etc/passwd' }, '-100').hookSpecificOutput.permissionDecision).toBe('deny')
-    expect(call('Grep', { pattern: 'x', path: '../' }, '-100').hookSpecificOutput.permissionDecision).toBe('deny')
-    expect(call('Glob', { pattern: '**' }, '-100')).toEqual({})
+  test('group file tools inside cwd, trusted dirs and inbox pass without asking', async () => {
+    asked.length = 0
+    expect(await call('Read', { file_path: '/work/a.txt' }, '-100')).toEqual({})
+    expect(await call('Read', { file_path: 'sub/a.txt' }, '-100')).toEqual({})
+    expect(await call('Read', { file_path: '~/infra/x.yaml' }, '-100')).toEqual({})
+    expect(await call('Read', { file_path: '/state/inbox/p.jpg' }, '-100')).toEqual({})
+    expect(await call('Glob', { pattern: '**' }, '-100')).toEqual({})
+    expect(asked).toEqual([])
   })
 
-  test('owner DM file tools are not scoped', () => {
-    expect(call('Read', { file_path: '/etc/passwd' }, '5')).toEqual({})
+  test('group file tools outside scope ask the approvers', async () => {
+    asked.length = 0
+    answer = true
+    expect((await call('Read', { file_path: '/etc/passwd' }, '-100:7')).hookSpecificOutput.permissionDecision).toBe('allow')
+    answer = false
+    expect((await call('Grep', { pattern: 'x', path: '../' }, '-100')).hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(asked).toEqual(['-100:7 Read', '-100 Grep'])
+  })
+
+  test('owner DM file tools are not scoped', async () => {
+    expect(await call('Read', { file_path: '/etc/passwd' }, '5')).toEqual({})
   })
 })
 
@@ -44,7 +59,6 @@ test('policyArgs maps the policy to CLI flags', async () => {
   expect(policyArgs({ model: 'sonnet', agent: 'hermes-x', allowedTools: ['Read', 'mcp__tg'] })).toEqual([
     '--model', 'sonnet', '--allowedTools', 'mcp__tg', 'Read', '--agent', 'hermes-x',
   ])
-  // AC5: group defaults deny edits natively, with no prompt.
-  const group = policyArgs(defaultPolicy('group'))
-  expect(group.slice(group.indexOf('--disallowedTools'))).toContain('Edit')
+  // Groups ask rather than block: nothing is disallowed by default.
+  expect(policyArgs(defaultPolicy('group'))).not.toContain('--disallowedTools')
 })

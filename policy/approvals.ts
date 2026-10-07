@@ -55,16 +55,17 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
     return id
   }
 
-  const keyboard = (id: string) => new InlineKeyboard()
-    .text('See more', `perm:more:${id}`)
-    .text('✅ Allow', `perm:allow:${id}`)
-    .text('❌ Deny', `perm:deny:${id}`)
-    .row()
-    .text('♾ Always (this chat)', `perm:always:${id}`)
+  /** `always: false` drops the Always button, for prompts no rule could cover. */
+  const keyboard = (id: string, always = true) => {
+    const kb = new InlineKeyboard()
+      .text('See more', `perm:more:${id}`)
+      .text('✅ Allow', `perm:allow:${id}`)
+      .text('❌ Deny', `perm:deny:${id}`)
+    return always ? kb.row().text('♾ Always (this chat)', `perm:always:${id}`) : kb
+  }
 
-  async function handle(payload: Record<string, unknown>, key: string) {
-    const toolName = String(payload.tool_name ?? '')
-    const input = (payload.tool_input ?? {}) as Record<string, unknown>
+  /** Sends the prompt to the key's chat and waits for a decision or expiry. Audited. */
+  async function ask(key: string, toolName: string, input: Record<string, unknown>, always = true) {
     const target = parseKey(key)
     const id = newId()
     let by: string | undefined
@@ -76,19 +77,37 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
         if (p.messageId != null) void api.editMessageText(p.chatId, p.messageId, `${title(p)}\n\n⌛ Expired`).catch(() => {})
       }, timeoutSec * 1000)
       p.resolve = d => { clearTimeout(timer); pending.delete(id); by = p.by; resolve(d) }
-      void api.sendMessage(target.chatId, title(p), { ...threadOpts(target), reply_markup: keyboard(id) })
+      void api.sendMessage(target.chatId, title(p), { ...threadOpts(target), reply_markup: keyboard(id, always) })
         .then(m => { p.messageId = m.message_id })
         .catch(err => process.stderr.write(`telegram daemon: permission prompt send failed: ${err}\n`))
     })
     pending.delete(id)
+    return { decision, by }
+  }
+
+  async function handle(payload: Record<string, unknown>, key: string) {
+    const toolName = String(payload.tool_name ?? '')
+    const input = (payload.tool_input ?? {}) as Record<string, unknown>
+    const { decision, by } = await ask(key, toolName, input)
     let rule: string | undefined
     const out = hookOutput(decision, toolName, input, r => { rule = r; saveRule(key, r) })
     audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }), ...(rule && { rule }) })
     return out
   }
 
+  /**
+   * A one-off prompt from the PreToolUse hook (`ask` there is a deny in -p).
+   * No Always: rules can't widen the scope check.
+   */
+  async function confirm(key: string, toolName: string, input: Record<string, unknown>): Promise<boolean> {
+    const { decision, by } = await ask(key, toolName, input, false)
+    audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }) })
+    return decision === 'allow' || decision === 'always'
+  }
+
   return {
     handle,
+    confirm,
     /** Answers a pending request; false if it is unknown or already decided. */
     decide(id: string, d: Decision, by?: string): boolean {
       const p = pending.get(id)

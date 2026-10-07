@@ -36,7 +36,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
   - `approvers[]`
 - **FR8**: Defaults by chat type:
   - Owner DM: `permissionMode: default`, broad tools, `memoryScope: global`, `historyScope: all`, `autoLearn: auto`.
-  - Groups and topics: only the owner can trigger turns (FR12), read-only tools (`Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch` and the Telegram tools), `memoryScope: chat`, `historyScope: chat`, `autoLearn: propose`, `schedulerAllowed: false`.
+  - Groups and topics: only the owner can trigger turns (FR12), read-only tools pre-approved (`Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch` and the Telegram tools); anything else, and any file path outside the chat's cwd, asks an approver instead of being blocked, `memoryScope: chat`, `historyScope: chat`, `autoLearn: propose`, `schedulerAllowed: false`.
 - **FR9**: `bypassPermissions` can only be set from the terminal skill, never from Telegram.
 - **FR10**: Every policy change and every approval decision is appended to `audit.log` (JSONL).
 - **FR11**: Policy, memory and history scopes are enforced **in code** (tool filtering and query filters), not only through prompt instructions.
@@ -53,7 +53,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
 - **AC2** (FR2, FR6): After tapping Always on `Bash(ls:*)`, the next `ls` runs without a prompt in that chat, but still prompts in another chat.
 - **AC3** (FR3): A non-approver group member taps Allow and nothing happens. A toast appears.
 - **AC4** (FR4): An ignored prompt expires and the tool is denied.
-- **AC5** (FR8, FR11): In a default group, a request to edit a file is denied without a prompt, and `memory_search` returns no global or owner memories.
+- **AC5** (FR8, FR11): In a default group, a request to edit a file or read outside the chat's cwd shows an approval prompt and runs only if allowed, and `memory_search` returns no global or owner memories.
 - **AC6** (FR9): Telegram `/policy` does not offer `bypassPermissions`.
 - **AC7** (FR12): In a default group, a non-owner mentioning the bot gets no model turn. The text still appears in the context of the owner's next turn.
 

@@ -144,7 +144,7 @@ const approvals = createApprovals({
 })
 const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'permission-request': approvals.handle,
-  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR] }),
+  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 

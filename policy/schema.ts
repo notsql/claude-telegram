@@ -28,8 +28,6 @@ export type ChatEntry = z.infer<typeof ChatEntrySchema>
 export type ChatType = 'private' | 'group'
 
 const GROUP_READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'mcp__tg']
-/** Denied outright in groups, so a write never even reaches an approval prompt (AC5). */
-const GROUP_DENIED_TOOLS = ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit']
 
 /** Defaults by chat type (FR8). `approvers` defaults to the owner IDs, filled in at resolve time. */
 export function defaultPolicy(type: ChatType): Policy {
@@ -38,7 +36,6 @@ export function defaultPolicy(type: ChatType): Policy {
     : {
         permissionMode: 'default',
         allowedTools: GROUP_READ_ONLY_TOOLS,
-        disallowedTools: GROUP_DENIED_TOOLS,
         memoryScope: 'chat',
         historyScope: 'chat',
         autoLearn: 'propose',

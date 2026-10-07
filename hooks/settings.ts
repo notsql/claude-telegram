@@ -46,7 +46,8 @@ export function renderHookSettings({ port, approvalTimeoutSec }: HookSettingsOpt
         command: `curl -sf -H "Authorization: Bearer $TG_HOOK_TOKEN" -H "X-TG-Session-Key: $TG_SESSION_KEY" --data-binary @- ${url('SessionStart')}`,
       }] }],
       UserPromptSubmit: http('UserPromptSubmit', { timeout: 30 }),
-      PreToolUse: http('PreToolUse'),
+      // Out-of-scope paths in groups wait for an approver here too (003 scope.ts).
+      PreToolUse: http('PreToolUse', { timeout: approvalTimeoutSec + 30 }),
       PermissionRequest: http('PermissionRequest', { timeout: approvalTimeoutSec + 30 }),
       ...Object.fromEntries(ASYNC.map(e => [e, http(e, { async: true })])),
     },

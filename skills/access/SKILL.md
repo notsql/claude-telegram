@@ -116,8 +116,8 @@ Per-chat policy (spec 003). `<key>` is a chat id, or `<chatId>:<threadId>`
 for a forum topic. Show `chats[<key>].policy` and, for a topic, the chat's
 entry it inherits from. Unset fields fall back to the chat-type defaults:
 DMs get `memoryScope: global`, `historyScope: all`, `autoLearn: auto`;
-groups get read-only tools (`Read Glob Grep WebSearch WebFetch mcp__tg`),
-`Bash`/`Edit`/`Write` denied, `memoryScope: chat`, `historyScope: chat`,
+groups get read-only tools (`Read Glob Grep WebSearch WebFetch mcp__tg`)
+pre-approved (anything else prompts), `memoryScope: chat`, `historyScope: chat`,
 `autoLearn: propose`, `schedulerAllowed: false`.
 
 ### `policy <key> <field> <value>`

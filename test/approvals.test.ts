@@ -125,3 +125,13 @@ test('createAudit appends JSONL', async () => {
   expect(lines[0]).toMatchObject({ event: 'policy', field: 'model', value: 'sonnet' })
   expect(typeof lines[0].ts).toBe('string')
 })
+
+test('confirm prompts without Always and resolves to a boolean', async () => {
+  const { api, sent } = fakeApi()
+  const a = createApprovals({ api, timeoutSec: 60, saveRule: () => {} })
+  const res = a.confirm('-100', 'Read', { file_path: '/etc/hosts' })
+  await tick()
+  expect(JSON.stringify(sent[0]!.opts.reply_markup)).not.toContain('always')
+  a.decide(idOf(sent[0]!.opts), 'allow')
+  expect(await res).toBe(true)
+})
