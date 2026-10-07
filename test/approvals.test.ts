@@ -99,3 +99,29 @@ test('parseTextReply', async () => {
   expect(parseTextReply('yes')).toBeUndefined()
   expect(parseTextReply('yes hello there')).toBeUndefined()
 })
+
+test('decisions are audited with key, user, tool and decision', async () => {
+  const { api, sent } = fakeApi()
+  const entries: any[] = []
+  const a = createApprovals({ api, timeoutSec: 60, saveRule: () => {}, audit: e => entries.push(e) })
+  const res = a.handle({ tool_name: 'Bash', tool_input: { command: 'ls' } }, '5')
+  await tick()
+  a.decide(idOf(sent[0]!.opts), 'always', '42')
+  await res
+  expect(entries).toEqual([{ event: 'approval', key: '5', tool: 'Bash', decision: 'always', user: '42', rule: 'Bash(ls *)' }])
+})
+
+test('createAudit appends JSONL', async () => {
+  const { createAudit } = await import('../policy/audit.ts')
+  const { mkdtempSync, readFileSync } = await import('fs')
+  const { join } = await import('path')
+  const { tmpdir } = await import('os')
+  const file = join(mkdtempSync(join(tmpdir(), 'audit-')), 'audit.log')
+  const audit = createAudit(file)
+  audit({ event: 'policy', key: '5', user: '1', field: 'model', value: 'sonnet' })
+  audit({ event: 'approval', key: '5', tool: 'Bash', decision: 'expired' })
+  const lines = readFileSync(file, 'utf8').trim().split('\n').map(l => JSON.parse(l))
+  expect(lines).toHaveLength(2)
+  expect(lines[0]).toMatchObject({ event: 'policy', field: 'model', value: 'sonnet' })
+  expect(typeof lines[0].ts).toBe('string')
+})

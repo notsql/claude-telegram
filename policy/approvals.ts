@@ -10,6 +10,7 @@ import { randomInt } from 'crypto'
 import { parseKey } from '../sessions/key.ts'
 import { threadOpts } from '../telegram/send.ts'
 import { deriveRule } from './rules.ts'
+import type { AuditEntry } from './audit.ts'
 
 /** 5 lowercase letters without 'l', the alphabet of the `yes xxxxx` text reply (FR5). */
 const ID_ALPHABET = 'abcdefghijkmnopqrstuvwxyz'
@@ -32,6 +33,8 @@ type Pending = {
   chatId: string
   messageId?: number
   resolve: (d: Decision | 'expired') => void
+  /** Telegram user id that answered. */
+  by?: string
 }
 
 export type ApprovalsOpts = {
@@ -39,9 +42,10 @@ export type ApprovalsOpts = {
   timeoutSec: number
   /** Persists an Always rule to the key's `alwaysAllow` so later turns get it natively. */
   saveRule: (key: string, rule: string) => void
+  audit?: (entry: AuditEntry) => void
 }
 
-export function createApprovals({ api, timeoutSec, saveRule }: ApprovalsOpts) {
+export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsOpts) {
   const pending = new Map<string, Pending>()
 
   const newId = () => {
@@ -63,6 +67,7 @@ export function createApprovals({ api, timeoutSec, saveRule }: ApprovalsOpts) {
     const input = (payload.tool_input ?? {}) as Record<string, unknown>
     const target = parseKey(key)
     const id = newId()
+    let by: string | undefined
     const decision = await new Promise<Decision | 'expired'>(resolve => {
       const p: Pending = { key, toolName, input, chatId: target.chatId, resolve }
       pending.set(id, p)
@@ -70,21 +75,25 @@ export function createApprovals({ api, timeoutSec, saveRule }: ApprovalsOpts) {
         resolve('expired')
         if (p.messageId != null) void api.editMessageText(p.chatId, p.messageId, `${title(p)}\n\n⌛ Expired`).catch(() => {})
       }, timeoutSec * 1000)
-      p.resolve = d => { clearTimeout(timer); pending.delete(id); resolve(d) }
+      p.resolve = d => { clearTimeout(timer); pending.delete(id); by = p.by; resolve(d) }
       void api.sendMessage(target.chatId, title(p), { ...threadOpts(target), reply_markup: keyboard(id) })
         .then(m => { p.messageId = m.message_id })
         .catch(err => process.stderr.write(`telegram daemon: permission prompt send failed: ${err}\n`))
     })
     pending.delete(id)
-    return hookOutput(decision, toolName, input, rule => saveRule(key, rule))
+    let rule: string | undefined
+    const out = hookOutput(decision, toolName, input, r => { rule = r; saveRule(key, r) })
+    audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }), ...(rule && { rule }) })
+    return out
   }
 
   return {
     handle,
     /** Answers a pending request; false if it is unknown or already decided. */
-    decide(id: string, d: Decision): boolean {
+    decide(id: string, d: Decision, by?: string): boolean {
       const p = pending.get(id)
       if (!p) return false
+      p.by = by
       p.resolve(d)
       return true
     },

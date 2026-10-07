@@ -21,6 +21,7 @@ import {
 import { createApprovals, parseTextReply } from './policy/approvals.ts'
 import { addAlwaysAllow, chatTypeOf, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
+import { createAudit } from './policy/audit.ts'
 import { expandPath, isTrustedCwd, policyArgs } from './policy/args.ts'
 import { homedir } from 'os'
 import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
@@ -129,8 +130,10 @@ if (!isLoggedIn()) {
 const mcpToken = randomBytes(32).toString('hex')
 const hookToken = randomBytes(32).toString('hex')
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN })
+const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
+  audit,
   timeoutSec: APPROVAL_TIMEOUT_SEC,
   saveRule: (key, rule) => {
     const access = loadAccess()
@@ -383,7 +386,7 @@ bot.on('callback_query:data', async ctx => {
     await ctx.editMessageText(approvals.details(id)!, { reply_markup: kb }).catch(() => {})
     return ctx.answerCallbackQuery().catch(() => {})
   }
-  if (!approvals.decide(id, action)) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  if (!approvals.decide(id, action, String(ctx.from.id))) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
   const label = { allow: '✅ Allowed', deny: '❌ Denied', always: '♾ Always allowed in this chat' }[action]
   await ctx.answerCallbackQuery({ text: label }).catch(() => {})
   const msg = ctx.callbackQuery.message
@@ -481,7 +484,7 @@ async function handleInbound(
   // FR5: `yes abcde` answers a pending approval through the same resolver as the buttons.
   const reply = parseTextReply(text)
   const replyKey = reply && approvals.keyOf(reply.id)
-  if (reply && replyKey && isApprover(replyKey, from.id) && approvals.decide(reply.id, reply.decision)) {
+  if (reply && replyKey && isApprover(replyKey, from.id) && approvals.decide(reply.id, reply.decision, String(from.id))) {
     if (msgId != null) void setReaction(chat_id, msgId, reply.decision === 'allow' ? '👍' : '👎')
     return
   }
