@@ -61,6 +61,7 @@ import { skillsRoot, takenNames } from './skills/paths.ts'
 import { createSkillApplier } from './skills/apply.ts'
 import { createSkillTools } from './skills/tools.ts'
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
+import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
 import { toolCalls } from './reflection/transcript.ts'
@@ -221,6 +222,26 @@ async function skillOutcomes(key: string, outcomes: Proposals['skill_outcomes'],
     skillApplier.one(key, { ...p, op: 'patch', name, confidence: 1 }, true)
   }
 }
+
+// 006 FR8: weekly archive proposals to the owners, for the skills their DMs learn into.
+const MAX_PRUNE_PROPOSALS = 5
+const archiveAsks = new Map<string, { key: string; name: string }>()
+function proposeArchives(): void {
+  if (!pruneDue(join(STATE_DIR, 'skills-prune.json'))) return
+  for (const owner of loadAccess().allowFrom) {
+    for (const name of staleSkills(skillStoreFor(owner), skillUsage).slice(0, MAX_PRUNE_PROPOSALS)) {
+      const id = randomBytes(6).toString('hex')
+      archiveAsks.set(id, { key: owner, name })
+      void bot.api.sendMessage(owner, `📦 Skill ${name} hasn't been used in ${STALE_DAYS} days. Archive it?`, {
+        reply_markup: { inline_keyboard: [[
+          { text: '📦 Archive', callback_data: `skl:arch:${id}` },
+          { text: 'Keep', callback_data: `skl:keep:${id}` },
+        ]] },
+      }).catch(() => {})
+    }
+  }
+}
+setInterval(proposeArchives, 24 * 60 * 60 * 1000).unref()
 
 /** 006 FR2: earlier user requests like this turn's first one, as hints that the task repeats. */
 function similarRequests(key: string, delta: string, sessionId: unknown): string[] {
@@ -624,6 +645,20 @@ async function skillEditReply(ctx: Context, text: string): Promise<boolean> {
   if (r.change) void skillNotices.notify(p.key, r.change)
   return true
 }
+
+// 006 FR8: Archive or Keep a stale skill.
+bot.callbackQuery(/^skl:(arch|keep):([0-9a-f]+)$/, async ctx => {
+  const a = archiveAsks.get(ctx.match[2]!)
+  if (!a) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  archiveAsks.delete(ctx.match[2]!)
+  let label = `Kept ${a.name}`
+  if (ctx.match[1] === 'arch') {
+    try { skillStoreFor(a.key).archive(a.name); label = `📦 Archived ${a.name}` } catch (err) { label = (err as Error).message }
+  }
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  await ctx.editMessageText(label).catch(() => {})
+})
 
 // 006 FR10: Show and Undo on a skill notice.
 bot.callbackQuery(/^skl:(show|undo):([0-9a-f]+)$/, async ctx => {

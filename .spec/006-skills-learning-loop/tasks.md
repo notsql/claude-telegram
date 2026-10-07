@@ -18,6 +18,6 @@ Depends on: 004 (reflection worker, guard), 005 (similar-request lookup), 003 (a
   *Verify:* the counts increase.
 - [x] **T609** Refinement trigger on repeated failures or corrections.
   *Verify:* AC3, AC6.
-- [ ] **T610** Archive pruning, registered as a weekly system job with 007.
+- [x] **T610** Archive pruning, registered as a weekly system job with 007.
 - [ ] **T611** Emit `skills-changed` for the 008 menu refresh.
   *Verify:* AC2.
