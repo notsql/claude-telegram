@@ -135,3 +135,18 @@ test('confirm prompts without Always and resolves to a boolean', async () => {
   a.decide(idOf(sent[0]!.opts), 'allow')
   expect(await res).toBe(true)
 })
+
+test('Always prefers the CLI suggestions, e.g. a Read rule for a path outside cwd', async () => {
+  const { api, sent } = fakeApi()
+  const saved: string[] = []
+  const a = createApprovals({ api, timeoutSec: 60, saveRule: (_k, r) => saved.push(r) })
+  const res = a.handle({
+    tool_name: 'Bash',
+    tool_input: { command: 'ls ~/Development' },
+    permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Read', ruleContent: '//Users/me/Development/**' }], behavior: 'allow', destination: 'session' }],
+  }, '5')
+  await tick()
+  a.decide(idOf(sent[0]!.opts), 'always')
+  expect((await res).hookSpecificOutput.decision.updatedPermissions[0].rules).toEqual([{ toolName: 'Read', ruleContent: '//Users/me/Development/**' }])
+  expect(saved).toEqual(['Read(//Users/me/Development/**)'])
+})

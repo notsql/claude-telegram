@@ -89,9 +89,9 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
     const toolName = String(payload.tool_name ?? '')
     const input = (payload.tool_input ?? {}) as Record<string, unknown>
     const { decision, by } = await ask(key, toolName, input)
-    let rule: string | undefined
-    const out = hookOutput(decision, toolName, input, r => { rule = r; saveRule(key, r) })
-    audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }), ...(rule && { rule }) })
+    const rules: string[] = []
+    const out = hookOutput(decision, toolName, input, payload.permission_suggestions, r => { rules.push(r); saveRule(key, r) })
+    audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }), ...(rules.length && { rule: rules.join(' ') }) })
     return out
   }
 
@@ -130,22 +130,44 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
 
 const title = (p: Pick<Pending, 'toolName'>) => `🔐 Permission: ${p.toolName}`
 
-export function hookOutput(d: Decision | 'expired', toolName: string, input: Record<string, unknown>, saveRule: (rule: string) => void) {
+type RuleValue = { toolName: string; ruleContent?: string }
+
+const ruleString = (r: RuleValue) => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName)
+
+/**
+ * The allow rules Claude Code itself suggests for this call
+ * (`permission_suggestions`). They cover what our derived rule can miss, such
+ * as the `Read(//dir/**)` a Bash command needs for a path outside the cwd.
+ */
+function suggestedRules(suggestions: unknown): RuleValue[] {
+  if (!Array.isArray(suggestions)) return []
+  return suggestions.flatMap(s =>
+    s?.type === 'addRules' && s.behavior === 'allow' && Array.isArray(s.rules)
+      ? s.rules.filter((r: RuleValue) => typeof r?.toolName === 'string')
+      : [])
+}
+
+export function hookOutput(
+  d: Decision | 'expired',
+  toolName: string,
+  input: Record<string, unknown>,
+  suggestions: unknown,
+  saveRule: (rule: string) => void,
+) {
   if (d === 'deny' || d === 'expired') {
     const message = d === 'deny' ? 'Denied by the user on Telegram.' : 'No answer on Telegram before the approval timed out.'
     return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message } } }
   }
   const decision: Record<string, unknown> = { behavior: 'allow' }
   if (d === 'always') {
-    const rule = deriveRule(toolName, input)
-    saveRule(rule)
-    const m = /^([^(]+)\((.*)\)$/.exec(rule)
-    decision.updatedPermissions = [{
-      type: 'addRules',
-      rules: [m ? { toolName: m[1], ruleContent: m[2] } : { toolName: rule }],
-      behavior: 'allow',
-      destination: 'session',
-    }]
+    let rules = suggestedRules(suggestions)
+    if (!rules.length) {
+      const rule = deriveRule(toolName, input)
+      const m = /^([^(]+)\((.*)\)$/.exec(rule)
+      rules = [m ? { toolName: m[1]!, ruleContent: m[2] } : { toolName: rule }]
+    }
+    for (const r of rules) saveRule(ruleString(r))
+    decision.updatedPermissions = [{ type: 'addRules', rules, behavior: 'allow', destination: 'session' }]
   }
   return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } }
 }
