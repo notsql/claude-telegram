@@ -9,7 +9,7 @@ Each Claude session starts with almost no knowledge of the user. The agent shoul
 - **US3**: After a few weeks the agent knows my role, timezone, projects and communication style, and adapts to them without being asked.
 - **US4**: When the agent saves something, I see a small "🧠 Remembered: …" note with an Undo button.
 - **US5**: In a group, the agent learns group-specific facts (for example "this topic is about the infra repo"). They go into the same shared memory as everything else, tagged with where they came from, so every chat and the terminal can use them.
-- **US6**: Fallback: `/remember …`, `/forget …` and `/memory` let me curate memory by hand.
+- **US6**: Fallback: `/memory` buttons (see, add, forget) let me curate memory by hand (008 FR13).
 
 ## Functional requirements
 - **FR1**: Memory is stored in the Claude Code auto-memory format. Each fact is one markdown file with frontmatter `name`, `description` and `metadata.type ∈ {user, feedback, project, reference}`, plus a one-line pointer in `MEMORY.md`.

@@ -7,7 +7,7 @@
  */
 
 import { Bot, GrammyError, type Context } from 'grammy'
-import type { ReactionTypeEmoji } from 'grammy/types'
+import type { InlineKeyboardMarkup, ReactionTypeEmoji } from 'grammy/types'
 import { autoRetry } from '@grammyjs/auto-retry'
 import { apiThrottler } from '@grammyjs/transformer-throttler'
 import { readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } from 'fs'
@@ -51,7 +51,7 @@ import { recall, withContext } from './history/recall.ts'
 import { searchCommand } from './history/commands.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
-import { forget, remember, showMemory, type CommandResult } from './memory/commands.ts'
+import { aboutYou, entryView, forget, MEMORY_CALLBACK, memoryView, remember, type CommandResult } from './memory/commands.ts'
 import { createInjector } from './memory/inject.ts'
 import { bridgePaths, importEnabled } from './memory/bridge.ts'
 import { createNotices, noticeText } from './memory/notices.ts'
@@ -59,11 +59,11 @@ import { createReflectionWorker } from './reflection/worker.ts'
 import { createApplier } from './reflection/apply.ts'
 import { ProposalsSchema } from './reflection/prompt.ts'
 import { runOneShot } from './agent/oneshot.ts'
-import { createSkillStore, skillEvents, type SkillStore } from './skills/store.ts'
+import { createSkillStore, type SkillStore } from './skills/store.ts'
 import { skillsRoot, takenNames } from './skills/paths.ts'
 import { createSkillApplier } from './skills/apply.ts'
 import { createSkillTools } from './skills/tools.ts'
-import { listSkills, parseSkillsArgs, skillAction, type SkillAction } from './skills/commands.ts'
+import { parseSkillsArgs, SKILLS_CALLBACK, skillsView, skillView, type SkillAction, type SkillEntry } from './skills/commands.ts'
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { createAgentUsage } from './agents/usage.ts'
 import { availableAgents, setPolicyAgent } from './agents/available.ts'
@@ -79,7 +79,7 @@ import { registry, type Command } from './commands/registry.ts'
 import { authorised, route } from './commands/dispatch.ts'
 import { assign, discoverSkills, loadTable, saveTable } from './commands/skillMap.ts'
 import { START_TEXT, helpText, pairingStatus } from './commands/help.ts'
-import { buildMenus, createMenu, type MenuSkill } from './commands/menu.ts'
+import { buildMenus, createMenu } from './commands/menu.ts'
 import { scopeFor } from './history/tools.ts'
 import { createEngine } from './scheduler/engine.ts'
 import { failureNotice, runJob } from './scheduler/run.ts'
@@ -376,6 +376,7 @@ const approvals = createApprovals({
   api: bot.api,
   audit,
   timeoutSec: APPROVAL_TIMEOUT_SEC,
+  sessionRule: (key, rule) => lifecycle.allow(key, rule),
   saveRule: (key, rule) => {
     const access = loadAccess()
     addAlwaysAllow(access, policyKey(key), rule)
@@ -510,7 +511,7 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
     hookToken,
     cwd: policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd,
     maxTurns: policy.maxTurns ?? config.maxTurns,
-    policyArgs: policyArgs({ ...policy, model: lifecycle.model(key) ?? policy.model }),
+    policyArgs: policyArgs({ ...policy, model: lifecycle.model(key) ?? policy.model, alwaysAllow: [...policy.alwaysAllow ?? [], ...lifecycle.allowed(key)] }),
     signal: AbortSignal.any([turnAbort.signal, turn.signal]),
     onEvent: progress.onEvent,
   }).finally(() => {
@@ -708,54 +709,108 @@ commands.push({ name: 'search', description: 'Search past conversations: /search
 
 // 008 T805: memory curation over 004's command functions; writes get the Undo notice.
 const memoryReply = async (ctx: Context, r: CommandResult) =>
-  ctx.reply(r.text, r.change ? { reply_markup: notices.undoKeyboard(r.change) } : {})
+  ctx.reply(r.text, r.change ? { reply_markup: notices.undoKeyboard(r.change) } : r.keyboard ? { reply_markup: r.keyboard } : {})
 
-commands.push({ name: 'remember', description: 'Remember something: /remember <text>', menu: ['private', 'group'], handler: async (ctx, args) => {
+// 008 FR13: /memory is the one entry point; Add, Forget and About you are buttons.
+commands.push({ name: 'memory', description: 'See, add and forget what I remember', menu: ['private', 'group'], handler: async ctx => {
   if (!isOwner(ctx)) return
-  const key = sessionKey(ctx.msg!)
-  await memoryReply(ctx, remember(memory, args, key, policyOf(key)))
+  await memoryReply(ctx, memoryView(memory, policyOf(sessionKey(ctx.msg!))))
 } })
 
-commands.push({ name: 'forget', description: 'Forget a memory: /forget <name or words>', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {
-  if (!isOwner(ctx)) return
-  await memoryReply(ctx, forget(memory, args, policyOf(sessionKey(ctx.msg!))))
-} })
+/** Add prompts awaiting a reply, by `<chat>:<message id>`, to their session key. */
+const memoryAdds = new Map<string, string>()
 
-commands.push({ name: 'memory', description: 'Show what I remember', menu: ['private', 'group'], handler: async ctx => {
-  if (!isOwner(ctx)) return
-  await memoryReply(ctx, showMemory(memory, userStore(String(ctx.from!.id)), policyOf(sessionKey(ctx.msg!))))
-} })
+bot.callbackQuery(MEMORY_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg || !isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const policy = policyOf(key)
+  const [, action, arg] = ctx.match as unknown as [string, 'o' | 'd' | 'p' | 'a' | 'u', string]
+  const edit = (r: CommandResult) => ctx.editMessageText(r.text, r.keyboard ? { reply_markup: r.keyboard } : {}).catch(() => {})
+  if (action === 'd') {
+    if (!canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+    const r = forget(memory, arg, policy)
+    await ctx.answerCallbackQuery({ text: r.text.slice(0, 200) }).catch(() => {})
+    await edit(memoryView(memory, policy))
+    if (r.change) await bot.api.sendMessage(msg.chat.id, r.text, { ...threadOpts(parseKey(key)), reply_markup: notices.undoKeyboard(r.change) }).catch(() => {})
+    return
+  }
+  await ctx.answerCallbackQuery().catch(() => {})
+  if (action === 'o') return void await edit(entryView(memory, arg, policy))
+  if (action === 'p') return void await edit(memoryView(memory, policy, Number(arg)))
+  if (action === 'u') return void await edit(aboutYou(userStore(String(ctx.from.id)), policy))
+  const sent = await bot.api.sendMessage(msg.chat.id, '🧠 What should I remember? Reply to this message.', {
+    ...threadOpts(parseKey(key)),
+    reply_markup: { force_reply: true, selective: true, input_field_placeholder: 'Something to remember' },
+  }).catch(() => undefined)
+  if (sent) memoryAdds.set(`${msg.chat.id}:${sent.message_id}`, key)
+})
+
+/** A reply to an Add prompt; true when `ctx` was one and has been handled. */
+async function memoryAddReply(ctx: Context): Promise<boolean> {
+  const to = ctx.message?.reply_to_message
+  const id = to && `${ctx.chat!.id}:${to.message_id}`
+  const key = id && memoryAdds.get(id)
+  if (!key || !isOwner(ctx)) return false
+  memoryAdds.delete(id)
+  await memoryReply(ctx, remember(memory, ctx.message!.text ?? '', key, policyOf(key)))
+  return true
+}
 
 // 008 T806: the chat's skills; archive and remove need an approver (FR10).
 const canChange = (ctx: Context, key: string, isGroup: boolean) =>
   authorised({ requiresApprover: true }, isGroup, isApprover(key, ctx.from!.id), isOwner(ctx))
 
-commands.push({ name: 'skills', description: 'List skills: /skills [show|rm] <name>', menu: ['private', 'group'], handler: async (ctx, args) => {
+commands.push({ name: 'skills', description: 'Browse, run and manage skills', menu: ['private', 'group'], handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
-  const key = sessionKey(ctx.msg!)
   const parsed = parseSkillsArgs(args)
-  if (!parsed) return void await ctx.reply('Usage: /skills, /skills show <name>, /skills rm <name>')
   if (parsed === 'list') {
-    const r = listSkills(skillStoreFor(key))
+    const r = skillsView(allSkills())
     return void await ctx.reply(r.text, r.keyboard ? { reply_markup: r.keyboard } : {})
   }
-  if (parsed.action !== 'show' && !canChange(ctx, key, ctx.chat!.type !== 'private')) return void await ctx.reply('Only approvers can remove skills here.')
-  await ctx.reply(skillAction(skillStoreFor(key), parsed.action, parsed.name).text)
+  const skill = allSkills().find(s => s.command === parsed.command || s.name === parsed.command)
+  if (!skill) return void await ctx.reply(`No skill named ${parsed.command}. Send /skills to see them all.`)
+  await handleInbound(ctx, ctx.message!.text!, undefined, undefined, `/${skill.name}${parsed.args ? ` ${parsed.args}` : ''}`)
 } })
 
-bot.callbackQuery(/^skc:(show|arch|rm):([a-z0-9-]{1,48})$/, async ctx => {
+// 008 FR12: the /skills buttons. Run starts the skill as a turn in this chat; archive and remove need an approver (FR10).
+bot.callbackQuery(SKILLS_CALLBACK, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!msg || !isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
   const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
-  const action = ctx.match[1] as SkillAction
-  if (action !== 'show' && !canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
-  const r = skillAction(skillStoreFor(key), action, ctx.match[2]!)
-  await ctx.answerCallbackQuery(r.changes ? { text: r.text } : {}).catch(() => {})
-  if (r.changes) {
-    const list = listSkills(skillStoreFor(key))
-    await ctx.editMessageText(list.text, list.keyboard ? { reply_markup: list.keyboard } : {}).catch(() => {})
-  } else {
-    await bot.api.sendMessage(msg.chat.id, r.text, threadOpts(parseKey(key))).catch(() => {})
+  const [, action, arg] = ctx.match as unknown as [string, SkillAction | 'p', string]
+  const edit = (r: { text: string; keyboard?: InlineKeyboardMarkup }) =>
+    ctx.editMessageText(r.text, r.keyboard ? { reply_markup: r.keyboard } : {}).catch(() => {})
+  if (action === 'p') {
+    await ctx.answerCallbackQuery().catch(() => {})
+    return void await edit(skillsView(allSkills(), Number(arg)))
+  }
+  const skill = allSkills().find(s => s.command === arg)
+  if (!skill) return ctx.answerCallbackQuery({ text: 'That skill is gone.' }).catch(() => {})
+  const store = skillStoreFor(key)
+  const own = !!store.read(skill.name)
+  if ((action === 'a' || action === 'd') && (!own || !canChange(ctx, key, msg.chat.type !== 'private'))) {
+    return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  }
+  switch (action) {
+    case 'o':
+      await ctx.answerCallbackQuery().catch(() => {})
+      return void await edit(skillView(skill, own))
+    case 'r':
+      await ctx.answerCallbackQuery({ text: `▶️ Running ${skill.name}` }).catch(() => {})
+      return runSkillButton(msg, ctx.from, skill.name)
+    case 's': {
+      await ctx.answerCallbackQuery().catch(() => {})
+      const text = own ? store.text(skill.name) : readSkillFile(skill.name)
+      return void await bot.api.sendMessage(msg.chat.id, (text ?? 'Could not read that skill.').slice(0, 4000), threadOpts(parseKey(key))).catch(() => {})
+    }
+    case 'a':
+    case 'd': {
+      if (action === 'a') store.archive(skill.name)
+      else store.remove(skill.name)
+      await ctx.answerCallbackQuery({ text: action === 'a' ? `📦 Archived ${skill.name}` : `🗑 Removed ${skill.name}` }).catch(() => {})
+      return void await edit(skillsView(allSkills()))
+    }
   }
 })
 
@@ -1060,14 +1115,15 @@ bot.on('callback_query:data', async ctx => {
   if (action === 'more') {
     const kb = approvals.keyboard(id)
     kb.inline_keyboard[0]!.shift()
-    await ctx.editMessageText(approvals.details(id)!, { reply_markup: kb }).catch(() => {})
+    await ctx.editMessageText(approvals.details(id)!, { reply_markup: kb, parse_mode: 'HTML' }).catch(() => {})
     return ctx.answerCallbackQuery().catch(() => {})
   }
   if (!approvals.decide(id, action, String(ctx.from.id))) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
-  const label = { allow: '✅ Allowed', deny: '❌ Denied', always: '♾ Always allowed in this chat' }[action]
+  const label = { allow: '✅ Allowed for this session', deny: '❌ Denied', always: '♾ Always allowed in this chat' }[action]
   await ctx.answerCallbackQuery({ text: label }).catch(() => {})
   const msg = ctx.callbackQuery.message
-  if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`).catch(() => {})
+  // Appending keeps the existing entities' offsets valid, so a See more code block stays formatted.
+  if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`, { entities: msg.entities }).catch(() => {})
 })
 
 // 008 FR8, FR10, FR11: built-in, skill, ignored (another bot's) or plain text.
@@ -1075,23 +1131,50 @@ const builtins = registry(commands)
 
 // 008 T808: skills found on disk (narrowed to the ones turns report loaded), named for Telegram.
 const loadedSkills = new Set<string>()
-function menuSkills(): MenuSkill[] {
+function discovered() {
   const chats = Object.values(loadAccess().chats ?? {})
   const cwds = new Set([config.cwd, ...chats.flatMap(c => c.policy?.cwd ? [expandPath(c.policy.cwd, homedir())] : [])])
-  const found = discoverSkills(claudeDir(), [...cwds]).filter(s => !loadedSkills.size || loadedSkills.has(s.name))
+  return discoverSkills(claudeDir(), [...cwds]).filter(s => !loadedSkills.size || loadedSkills.has(s.name))
+}
+function allSkills(): SkillEntry[] {
+  const found = discovered()
   const table = assign(loadTable(COMMANDS_FILE), found.map(s => s.name), builtins.keys())
   saveTable(COMMANDS_FILE, table)
   const usage = skillUsage.all()
-  return found.map(s => ({ command: table[s.name]!, description: s.description, uses: usage[s.name]?.count ?? 0 }))
+  return found.map(s => ({ name: s.name, command: table[s.name]!, description: s.description, uses: usage[s.name]?.count ?? 0 }))
 }
+function readSkillFile(name: string): string | undefined {
+  const path = discovered().find(s => s.name === name)?.path
+  try { return path ? readFileSync(path, 'utf8') : undefined } catch { return undefined }
+}
+
+/** 008 FR12: the Run button, as if the owner had sent `/<skill>` in this chat. */
+function runSkillButton(msg: NonNullable<Context['callbackQuery']>['message'] & {}, from: Context['from'] & {}, name: string): void {
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const chat = msg.chat
+  const topic = topicNames.get(key)
+  const meta = {
+    chat_id: String(chat.id),
+    chat_type: chat.type,
+    ...('title' in chat && chat.title ? { chat_title: chat.title } : {}),
+    ...(topic ? { topic } : {}),
+    user: from.username ?? String(from.id),
+    user_id: String(from.id),
+    ts: new Date().toISOString(),
+  }
+  const skill = renderSkillInvocation(`/${name}`, meta)
+  skillContext.set(key, skill.context)
+  turns.enqueue(key, { prompt: skill.prompt, text: `/${name}` })
+}
+
+// 008 FR6: the / menu holds the built-ins only; skills live under /skills (FR12).
 const menu = createMenu(
-  () => buildMenus(commands, menuSkills()),
+  () => buildMenus(commands),
   (scope, cmds) => bot.api.setMyCommands(cmds, { scope: { type: scope } }),
 )
-// 006 T611 → FR7: a learned skill reaches the menu within a minute.
-skillEvents.on('skills-changed', () => menu.refresh(30_000))
 bot.on('message:text', async ctx => {
   const text = ctx.message.text
+  if (await memoryAddReply(ctx)) return
   const r = route(text, ctx.me.username, builtins, loadTable(COMMANDS_FILE))
   if (r.kind === 'ignore') return
   if (r.kind === 'skill') return handleInbound(ctx, text, undefined, undefined, r.text)
