@@ -37,6 +37,8 @@ export type Access = {
   pending: Record<string, PendingEntry>
   /** Per-session-key settings (003 FR6), keyed `chat_id` or `chat_id:thread_id`. */
   chats?: Record<string, ChatEntry>
+  /** Directories a chat `cwd` may point into (003 FR13). Set from the terminal skill only. */
+  trustedDirs?: string[]
   mentionPatterns?: string[]
   // delivery/UX config — optional, defaults live in the reply handler
   /** Emoji to react with on receipt. Empty string disables. Telegram only accepts its fixed whitelist. */
@@ -68,6 +70,7 @@ export function readAccessFile(): Access {
       groups: parsed.groups ?? {},
       pending: parsed.pending ?? {},
       ...(parsed.chats !== undefined && { chats: parseChats(parsed.chats) }),
+      ...(parsed.trustedDirs !== undefined && { trustedDirs: parsed.trustedDirs }),
       mentionPatterns: parsed.mentionPatterns,
       ackReaction: parsed.ackReaction,
       replyToMode: parsed.replyToMode,

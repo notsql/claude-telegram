@@ -20,7 +20,8 @@ import {
 } from './access.ts'
 import { createApprovals } from './policy/approvals.ts'
 import { addAlwaysAllow } from './policy/resolve.ts'
-import { type AttachmentMeta, safeName, downloadPhoto } from './telegram/attachments.ts'
+import { scopeDecision } from './policy/scope.ts'
+import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
@@ -135,7 +136,10 @@ const approvals = createApprovals({
     saveAccess(access)
   },
 })
-const hookServer = startHookServer({ authToken: hookToken, log, handlers: { 'permission-request': approvals.handle } })
+const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
+  'permission-request': approvals.handle,
+  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR] }),
+} })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 
 const sessions = createSessionStore(join(STATE_DIR, 'sessions.json'))
