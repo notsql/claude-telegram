@@ -23,12 +23,12 @@ Docs checked 2026-10-03 against CLI 2.1.288: [sub-agents](https://code.claude.co
 
   | Agent | Model | Tools | Memory | Role |
   |---|---|---|---|---|
-  | `tg-reflector` | haiku | none (outputs JSON) | — | Post-turn reflection for 004/006, run as `claude -p --agent tg-reflector --json-schema …` |
+  | `tg-reflector` | haiku | `StructuredOutput` only (T901) | — | Post-turn reflection for 004/006, run as `claude -p --agent tg-reflector --json-schema …` |
   | `tg-curator` | sonnet | Read, Glob, Grep, `mcp__tg__memory_*` | — | Weekly memory consolidation (004 FR8, through 007) |
   | `tg-skill-author` | sonnet | Read, Glob, Grep, `mcp__tg__skill_*`, `mcp__tg__agent_*` | `user` | Drafts and patches skills and agents (006, FR8) with preloaded `skill-authoring` guidance |
   | `tg-researcher` | sonnet | WebSearch, WebFetch, Read, Grep, Glob | `user` | Delegated research. Returns a summary with sources |
   | `tg-job-runner` | inherit | per job policy | — | Default agent for scheduled jobs (007). `maxTurns` bound |
-  | `tg-summarizer` | haiku | none | — | History summaries and session-rotation summaries (005) |
+  | `tg-summarizer` | haiku | `StructuredOutput` only | — | History summaries and session-rotation summaries (005) |
 
 - **FR2**: Descriptions are short and trigger-oriented ("Use proactively when…"), stay within the combined description budget, and are tested with delegation evals (FR12).
 
@@ -38,7 +38,7 @@ Docs checked 2026-10-03 against CLI 2.1.288: [sub-agents](https://code.claude.co
 
 ### Subagent use inside turns
 - **FR5**: The main session may delegate to any installed subagent. This is native Claude Code behaviour. The daemon:
-  - streams subagent progress into the progress message (using `parent_tool_use_id` and `--forward-subagent-text`)
+  - streams subagent progress into the progress message (using the `system/task_*` events and `parent_tool_use_id`; see the T901 findings in the plan)
   - logs each subagent's type and duration
   - counts subagent work toward the usage budget
 - **FR6**: Background subagents are allowed. `claude -p` stays open until they finish, up to `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS` (set to 15 minutes for daemon turns). The chat gets the final result as a new message.

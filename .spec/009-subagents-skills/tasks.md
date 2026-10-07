@@ -1,7 +1,7 @@
 # 009 — Tasks
 Depends on: 001 (runner, http hooks), 003 (policy), 004/006 (reflection, skill store). The shipped agents can land in P2. Learned agents land with 006 (P4).
 
-- [ ] **T901** Spike against the installed CLI:
+- [x] **T901** Spike against the installed CLI:
   - `claude -p --agent <name>`
   - `--json-schema` → `structured_output`
   - `--forward-subagent-text` and `parent_tool_use_id` in stream-json
@@ -9,6 +9,7 @@ Depends on: 001 (runner, http hooks), 003 (policy), 004/006 (reflection, skill s
   - `memory: user` path
   - background subagent wait behaviour in `-p`
   - `/skill-name args` expansion in a `-p` prompt
+  Findings recorded in plan.md (CLI spike findings).
 - [ ] **T902** Write the shipped agents (`assets/agents/tg-*.md`) and guidance skills (`assets/skills/tg-*`).
   *Verify:* `claude plugin validate ~/.claude/agents/` passes after install.
 - [ ] **T903** `agents/install.ts`: checksum-aware install and upgrade.
