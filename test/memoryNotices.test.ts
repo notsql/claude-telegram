@@ -10,7 +10,7 @@ test('a write sends a notice whose Undo removes the file and its index line (AC6
   const sent: any[] = []
   const notices = createNotices({ sendMessage: async (...a: any[]) => { sent.push(a); return {} as any } } as any)
   const store = createMemoryStore(mkdtempSync(join(tmpdir(), 'tg-mem-')))
-  const tools = createMemoryTools(store, (k, c) => void notices.notify(k, c))
+  const tools = createMemoryTools(store, () => store, (k, c) => void notices.notify(k, c))
   tools.call('memory_write', { type: 'feedback', name: 'prefers-pnpm', description: 'pnpm preference', body: 'pnpm' }, '-100:5', { memoryScope: 'global' })
 
   const [chatId, text, opts] = sent[0]

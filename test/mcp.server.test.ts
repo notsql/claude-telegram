@@ -7,7 +7,7 @@ import { startMcpServer } from '../mcp/server'
 import { createMemoryStore } from '../memory/store'
 import { createMemoryTools } from '../memory/tools'
 
-const srv = startMcpServer({ authToken: 'secret', api: new Api('0:x'), botToken: '0:x', memory: createMemoryTools(createMemoryStore(mkdtempSync(join(tmpdir(), 'tg-mem-')))) })
+const srv = startMcpServer({ authToken: 'secret', api: new Api('0:x'), botToken: '0:x', memory: createMemoryTools(createMemoryStore(mkdtempSync(join(tmpdir(), 'tg-mem-'))), () => { throw new Error('unused') }) })
 const url = `http://127.0.0.1:${srv.port}/mcp?key=123`
 afterAll(() => srv.stop())
 

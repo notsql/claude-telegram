@@ -143,7 +143,7 @@ const hookToken = randomBytes(32).toString('hex')
 const memory = createMemoryStore(memoryRoot(config.cwd))
 const userStore = (id: string) => createMemoryStore(userDir(memory.dir, id))
 const notices = createNotices(bot.api)
-const memoryTools = createMemoryTools(memory, (key, change) => void notices.notify(key, change))
+const memoryTools = createMemoryTools(memory, userStore, (key, change) => void notices.notify(key, change))
 const injector = createInjector({ store: memory, userStore })
 const policyOf = (key: string) => resolvePolicy(loadAccess(), key, chatTypeOf(key))
 

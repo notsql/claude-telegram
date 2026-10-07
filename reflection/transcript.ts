@@ -24,7 +24,9 @@ function lineText(line: string): string | undefined {
     if (b.type === 'text' && b.text) parts.push(b.text)
     else if (b.type === 'tool_use') {
       // Telegram replies are the agent's real answer in daemon turns.
-      const said = b.name?.endsWith('__reply') && typeof b.input?.text === 'string' ? `: ${b.input.text}` : ''
+      // Memory calls show what the agent already saved, so reflection doesn't repeat it.
+      const said = b.name?.endsWith('__reply') && typeof b.input?.text === 'string' ? `: ${b.input.text}`
+        : b.name?.includes('__memory_') ? ` ${JSON.stringify(b.input)}` : ''
       parts.push(`[tool ${b.name}${said}]`)
     }
   }

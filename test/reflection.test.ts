@@ -23,6 +23,9 @@ test('reads only the new, complete dialogue lines', () => {
   const b = readDelta(path, a.offset)
   expect(b.text).toBe('USER: I use pnpm')
   expect(readDelta(path, b.offset).text).toBe('')
+  const mem = join(dir(), 'm.jsonl')
+  writeFileSync(mem, agent([{ type: 'tool_use', name: 'mcp__tg__memory_write', input: { name: 'prefers-pnpm' } }]))
+  expect(readDelta(mem, 0).text).toBe('AGENT: [tool mcp__tg__memory_write {"name":"prefers-pnpm"}]')
 })
 
 test('Stop is debounced per key, PreCompact runs at once, and policy off skips', async () => {

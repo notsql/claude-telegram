@@ -21,7 +21,7 @@ Depends on: 001, 002, 003 (policy scopes, tool registry)
   *Verify:* AC5.
 - [x] **T409** Write notices with an Undo callback.
   *Verify:* AC6.
-- [ ] **T410** User model: `users/<id>/` files, injected for the sender and for active group participants.
+- [x] **T410** User model: `users/<id>/` files, injected for the sender and for active group participants.
   *Verify:* the agent addresses the user by their preferred name or style after one session.
 - [ ] **T411** CLI bridge opt-in: (a) an `@import` line in `~/.claude/CLAUDE.md` and/or (b) the `SessionStart` memory hook in `~/.claude/settings.json`. Both need confirmation and are reversible.
   *Verify:* AC3.

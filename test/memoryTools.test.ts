@@ -4,11 +4,12 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { createMemoryStore } from '../memory/store'
 import { createMemoryTools, type MemoryChange } from '../memory/tools'
+import { userDir } from '../memory/paths'
 
 function setup() {
   const store = createMemoryStore(mkdtempSync(join(tmpdir(), 'tg-mem-')))
   const changes: [string, MemoryChange][] = []
-  const tools = createMemoryTools(store, (key, c) => changes.push([key, c]))
+  const tools = createMemoryTools(store, id => createMemoryStore(userDir(store.dir, id)), (key, c) => changes.push([key, c]))
   return { store, tools, changes }
 }
 const on = { memoryScope: 'global' as const }
@@ -53,4 +54,14 @@ test('refuses secrets and more than 3 writes per turn', () => {
   expect(out(tools.call('memory_write', { ...fact, name: 'd' }, '1', on))).toContain('limit of 3')
   tools.startTurn('1')
   expect(out(tools.call('memory_write', { ...fact, name: 'd' }, '1', on))).toBe('saved d')
+})
+
+test('user_id targets that person\'s user model (T410)', () => {
+  const { store, tools } = setup()
+  expect(out(tools.call('memory_write', { type: 'feedback', name: 'name', description: 'Preferred name', body: 'Kai', user_id: '42' }, '-100:1', on))).toBe('saved name')
+  expect(store.list()).toEqual([])
+  const u = createMemoryStore(userDir(store.dir, '42')).read('name')!
+  expect(u).toMatchObject({ type: 'user', metadata: { user_id: '42', session_key: '-100:1' } })
+  expect(out(tools.call('memory_search', { query: 'name', user_id: '42' }, '1', on))).toContain('Preferred name')
+  expect(tools.call('memory_read', { name: 'x', user_id: '../1' }, '1', on)!.isError).toBe(true)
 })
