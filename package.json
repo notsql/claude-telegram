@@ -8,7 +8,8 @@
     "start": "bun install --no-summary 1>&2 && bun server.ts",
     "start:daemon": "bun daemon.ts",
     "test:contract": "bun test test/stream.contract.test.ts",
-    "install-service": "bun service/install.ts"
+    "install-service": "bun service/install.ts",
+    "reindex": "bun history/reindex.ts"
   },
   "dependencies": {
     "@grammyjs/auto-retry": "^2.0.2",

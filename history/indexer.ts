@@ -2,7 +2,10 @@
  * Transcript indexer (005 FR3, FR9). Tails `<projects>/<dir>/<sessionId>.jsonl`
  * from the byte offset stored in `files`, so restarts only read new content.
  * Each chunk's rows and its new offset commit in one transaction, so a kill
- * mid-index never duplicates rows (AC3). Only complete lines are consumed.
+ * mid-index never duplicates rows (AC3). The transaction is IMMEDIATE and
+ * first checks the stored offset is still the one this pass read from, so a
+ * concurrent indexer (the daemon during `reindex`) can't insert a chunk twice.
+ * Only complete lines are consumed.
  * Subagent transcripts (`<sessionId>/subagents/`) are not indexed.
  *
  * Runs on `fs.watch` events (debounced) with a 60s poll as the fallback for
@@ -19,6 +22,8 @@ const CHUNK_BYTES = 1 << 20
 const POLL_MS = 60_000
 const DEBOUNCE_MS = 1_000
 
+const storedOffset = (db: Database, path: string) =>
+  (db.query('SELECT offset FROM files WHERE path = ?').get(path) as { offset: number } | null)?.offset ?? 0
 const sessionIdOf = (path: string) => basename(path, '.jsonl')
 const yieldLoop = () => new Promise(r => setTimeout(r, 0))
 
@@ -35,7 +40,7 @@ function dropFile(db: Database, path: string): void {
 export async function indexFile(db: Database, path: string): Promise<number> {
   let size: number, mtime: number
   try { ({ size, mtimeMs: mtime } = statSync(path)) } catch { return 0 }
-  let offset = (db.query('SELECT offset FROM files WHERE path = ?').get(path) as { offset: number } | null)?.offset ?? 0
+  let offset = storedOffset(db, path)
   // Rewritten or truncated: start over.
   if (size < offset) { dropFile(db, path); offset = 0 }
   if (size === offset) return 0
@@ -64,17 +69,22 @@ export async function indexFile(db: Database, path: string): Promise<number> {
         end = n // one line longer than a chunk: skip it
       }
       const lines = buf.toString('utf8', 0, end).split('\n')
-      db.transaction(() => {
+      const rows = db.transaction(() => {
+        if (storedOffset(db, path) !== offset) return -1 // another indexer moved on
+        let n = 0
         for (const line of lines) {
           const p = parseLine(line)
           if (!p) continue
           if (p.kind === 'title') { setTitle.run(p.sessionId, project, p.title); continue }
           upsertSession.run(p.sessionId, project, p.ts || null)
           insertMsg.run(p.sessionId, p.role, p.ts, p.tg?.chat ?? null, p.tg?.thread ?? null, p.tg?.msg ?? null, p.text)
-          added++
+          n++
         }
         setOffset.run(path, offset + end, mtime)
-      })()
+        return n
+      }).immediate()
+      if (rows < 0) break
+      added += rows
       offset += end
       await yieldLoop()
     }

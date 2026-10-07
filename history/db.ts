@@ -31,7 +31,8 @@ export function openHistoryDb(path: string): Database {
   const db = new Database(path, { create: true })
   // Transcript text: owner-only, like the other state files.
   if (path !== ':memory:') chmodSync(path, 0o600)
-  db.exec('PRAGMA journal_mode = WAL')
+  // The daemon and `reindex` may write at once; wait for the lock instead of failing.
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000')
   const version = (db.query('PRAGMA user_version').get() as { user_version: number }).user_version
   for (let v = version; v < MIGRATIONS.length; v++) {
     db.transaction(() => {

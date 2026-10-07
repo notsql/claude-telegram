@@ -14,7 +14,7 @@ Depends on: 002 (sessions.json, inbound wrapper), 003 (historyScope)
   *Verify:* AC1.
 - [x] **T507** `recall.ts`: `UserPromptSubmit` hook handler for auto-recall on fresh or rotated sessions, with a threshold, token cap and a latency under 200ms.
   *Verify:* a fresh session referring to earlier work gets a `<recalled>` block (debug log).
-- [ ] **T508** `bun run reindex`.
+- [x] **T508** `bun run reindex`.
   *Verify:* AC4.
 - [ ] **T509** Expose functions for 008 `/search`, with `t.me/c/...` links.
   *Verify:* AC5.
