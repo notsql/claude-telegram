@@ -41,6 +41,8 @@ export type TurnOutcome = {
   exitCode: number
 }
 
+const BG_WAIT_CEILING_MS = 15 * 60 * 1000
+
 type Killable = { kill(signal: NodeJS.Signals): void; exited: Promise<number> }
 
 /**
@@ -70,6 +72,8 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     'claude', '-p', prompt,
     ...(opts.resume ? ['--resume', opts.resume] : []),
     '--output-format', 'stream-json', '--verbose',
+    // 009 FR5: subagent text in the stream (T901: present without it in 2.1.292).
+    '--forward-subagent-text',
     '--settings', opts.settingsFile,
     '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key)),
     '--append-system-prompt', TELEGRAM_INSTRUCTIONS,
@@ -80,7 +84,8 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'inherit',
-    env: { ...env, TG_SESSION_KEY: key, TG_MCP_TOKEN: opts.mcpToken, TG_HOOK_TOKEN: opts.hookToken },
+    // 009 FR6: background subagents keep `-p` open until they finish, up to this ceiling.
+    env: { ...env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: String(BG_WAIT_CEILING_MS), TG_SESSION_KEY: key, TG_MCP_TOKEN: opts.mcpToken, TG_HOOK_TOKEN: opts.hookToken },
   })
 
   const onAbort = () => interruptChild(child)

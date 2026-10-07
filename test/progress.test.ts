@@ -41,6 +41,24 @@ describe('startProgress', () => {
     expect(api.calls.length).toBe(n)
   })
 
+  test('shows subagent progress lines (009 FR5)', async () => {
+    const api = fakeApi()
+    const p = startProgress(api, { chatId: '1' }, opts)
+    await sleep(60)
+    p.onEvent({ kind: 'unknown', type: 'system/task_started', raw: { subagent_type: 'tg-researcher', tool_use_id: 'a1' } })
+    await sleep(50)
+    p.onEvent({
+      kind: 'assistant',
+      event: { type: 'assistant', parent_tool_use_id: 'a1', message: { content: [{ type: 'tool_use', id: 'w', name: 'WebSearch', input: {} }] } },
+    } as unknown as StreamEvent)
+    await sleep(50)
+    p.finish()
+    expect(api.calls.filter(c => c.startsWith('edit'))).toEqual([
+      'edit 7 🔎 tg-researcher…',
+      'edit 7 🔎 tg-researcher… (WebSearch)',
+    ])
+  })
+
   test('posts nothing when the agent replies before the delay', async () => {
     const api = fakeApi()
     const p = startProgress(api, { chatId: '1' }, opts)
