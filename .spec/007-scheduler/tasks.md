@@ -17,3 +17,5 @@ Depends on: 001 (runner, budget), 002 (session targets, semaphore), 003 (policy 
   *Verify:* AC5.
 - [x] **T708** `system.ts`: register the weekly memory consolidation (004) and skill pruning (006) jobs.
 - [x] **T709** Expose functions for the 008 `/cron` inline manager.
+- [x] **T710** Fix: `schedule_*` calls never reached the scheduler, because the MCP server's `??` chain stopped at the async history handler's Promise. Each handler is now awaited in turn.
+  *Verify:* the `test/mcp.server.test.ts` regression test passes (and fails without the fix).

@@ -57,7 +57,14 @@ export function startMcpServer(opts: McpServerOpts): { port: number; stop: () =>
       const policy = resolvePolicy(loadAccess(), key, chatTypeOf(key))
       registerTelegramTools(mcp, opts.api, opts.botToken, key, policy, {
         list: () => [...opts.memory.list(policy), ...opts.history?.list(policy) ?? [], ...opts.skills?.list(policy) ?? [], ...opts.agents?.list(policy) ?? [], ...opts.session?.list() ?? [], ...opts.scheduler?.list(policy) ?? []],
-        call: (name, args) => opts.memory.call(name, args, key, policy) ?? opts.skills?.call(name, args, key, policy) ?? opts.agents?.call(name, args, key, policy) ?? opts.session?.call(name, args, key, policy) ?? opts.history?.call(name, args, key, policy) ?? opts.scheduler?.call(name, args, key, policy),
+        // Each handler is awaited in turn: an async one returns a Promise even for names it doesn't own,
+        // which a `??` chain would take as handled (007: schedule_* never reached the scheduler).
+        call: async (name, args) => {
+          for (const tools of [opts.memory, opts.skills, opts.agents, opts.session, opts.history, opts.scheduler]) {
+            const r = await tools?.call(name, args, key, policy)
+            if (r) return r
+          }
+        },
       })
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
