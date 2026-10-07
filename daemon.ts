@@ -41,6 +41,11 @@ import { createTopicNames } from './sessions/topics.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
+import { memoryRoot, userDir } from './memory/paths.ts'
+import { createMemoryStore } from './memory/store.ts'
+import { createMemoryTools } from './memory/tools.ts'
+import { createInjector } from './memory/inject.ts'
+import { createNotices } from './memory/notices.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
@@ -130,7 +135,27 @@ if (!isLoggedIn()) {
 
 const mcpToken = randomBytes(32).toString('hex')
 const hookToken = randomBytes(32).toString('hex')
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN })
+// 004: one shared memory, the workspace project's auto-memory dir (FR2).
+const memory = createMemoryStore(memoryRoot(config.cwd))
+const userStore = (id: string) => createMemoryStore(userDir(memory.dir, id))
+const notices = createNotices(bot.api)
+const memoryTools = createMemoryTools(memory, (key, change) => void notices.notify(key, change))
+const injector = createInjector({ store: memory, userStore })
+const policyOf = (key: string) => resolvePolicy(loadAccess(), key, chatTypeOf(key))
+
+// 004 FR3: whose user model to inject: the latest sender first, then others active recently.
+const ACTIVE_MS = 2 * 60 * 60 * 1000
+const seenUsers = new Map<string, Map<string, number>>()
+function sawUser(key: string, userId: string): void {
+  const m = seenUsers.get(key) ?? new Map<string, number>()
+  m.delete(userId)
+  m.set(userId, Date.now())
+  seenUsers.set(key, m)
+}
+const participants = (key: string) =>
+  [...seenUsers.get(key) ?? []].filter(([, t]) => Date.now() - t < ACTIVE_MS).map(([id]) => id).reverse()
+
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -144,6 +169,11 @@ const approvals = createApprovals({
 })
 const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'permission-request': approvals.handle,
+  'session-start': (payload, key) => injector.sessionStart(payload, policyOf(key), participants(key)),
+  'user-prompt-submit': (payload, key) => {
+    memoryTools.startTurn(key)
+    return injector.userPromptSubmit(payload, policyOf(key), participants(key))
+  },
   'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
@@ -398,6 +428,16 @@ bot.callbackQuery(/^pol:(\w+):(\w+)$/, async ctx => {
   await ctx.answerCallbackQuery({ text: `${field} → ${value}` }).catch(() => {})
 })
 
+// 004 FR9: Undo on a memory notice.
+bot.callbackQuery(/^mem:undo:([0-9a-f]+)$/, async ctx => {
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const label = notices.undo(ctx.match[1]!)
+  if (!label) return ctx.answerCallbackQuery({ text: 'Nothing to undo.' }).catch(() => {})
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  const msg = ctx.callbackQuery.message
+  if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`).catch(() => {})
+})
+
 const isApprover = (key: string, userId: number) =>
   (resolvePolicy(loadAccess(), key, chatTypeOf(key)).approvers ?? []).includes(String(userId))
 
@@ -505,6 +545,7 @@ async function handleInbound(
   const result = gate(ctx)
   const bufferContext = () => {
     topicNames.learn(ctx.msg!)
+    sawUser(sessionKey(ctx.msg!), String(ctx.from!.id))
     groupBuffer.push(sessionKey(ctx.msg!), {
       ts: ctx.msg!.date * 1000,
       user: ctx.from!.username ?? String(ctx.from!.id),
@@ -537,6 +578,7 @@ async function handleInbound(
   }
 
   topicNames.learn(ctx.msg!)
+  sawUser(key, String(from.id))
   void bot.api.sendChatAction(chat_id, 'typing', threadOpts(parseKey(key))).catch(() => {})
   if (access.ackReaction && msgId != null) {
     void bot.api

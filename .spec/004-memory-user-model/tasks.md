@@ -9,9 +9,9 @@ Depends on: 001, 002, 003 (policy scopes, tool registry)
   *Verify:* unit tests for create, update, delete and index sync.
 - [x] **T403** `memory/guard.ts`: secret patterns, size limits, slugging.
   *Verify:* AC7.
-- [ ] **T404** `memory/tools.ts` on the shared store, stamping `session_key`; refused when the policy has `memoryScope: none`.
+- [x] **T404** `memory/tools.ts` on the shared store, stamping `session_key`; refused when the policy has `memoryScope: none`.
   *Verify:* AC4.
-- [ ] **T405** `memory/inject.ts` with a token budget and mtime caching, wired to the `SessionStart` and `UserPromptSubmit` hook handlers (under 200ms).
+- [x] **T405** `memory/inject.ts` with a token budget and mtime caching, wired to the `SessionStart` and `UserPromptSubmit` hook handlers (under 200ms).
   *Verify:* AC2.
 - [ ] **T406** Memory guidance in `TELEGRAM_INSTRUCTIONS` (when to save, curate and recall).
   *Verify:* AC1.
@@ -19,7 +19,7 @@ Depends on: 001, 002, 003 (policy scopes, tool registry)
   *Verify:* a log shows proposals after a turn, and the one-shot does not trigger another reflection.
 - [ ] **T408** `reflection/apply.ts`: dedup/merge, `autoLearn` modes, and propose buttons (✅ Save / ✖ Skip).
   *Verify:* AC5.
-- [ ] **T409** Write notices with an Undo callback.
+- [x] **T409** Write notices with an Undo callback.
   *Verify:* AC6.
 - [ ] **T410** User model: `users/<id>/` files, injected for the sender and for active group participants.
   *Verify:* the agent addresses the user by their preferred name or style after one session.

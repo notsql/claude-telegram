@@ -1,8 +1,13 @@
 import { afterAll, expect, test } from 'bun:test'
 import { Api } from 'grammy'
+import { mkdtempSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { startMcpServer } from '../mcp/server'
+import { createMemoryStore } from '../memory/store'
+import { createMemoryTools } from '../memory/tools'
 
-const srv = startMcpServer({ authToken: 'secret', api: new Api('0:x'), botToken: '0:x' })
+const srv = startMcpServer({ authToken: 'secret', api: new Api('0:x'), botToken: '0:x', memory: createMemoryTools(createMemoryStore(mkdtempSync(join(tmpdir(), 'tg-mem-')))) })
 const url = `http://127.0.0.1:${srv.port}/mcp?key=123`
 afterAll(() => srv.stop())
 
@@ -27,9 +32,12 @@ test('rejects a malformed session key', async () => {
   expect(res.status).toBe(400)
 })
 
-test('lists the telegram tools with the token', async () => {
+test('lists the telegram and memory tools with the token', async () => {
   const res = await listTools({ authorization: 'Bearer secret' })
   expect(res.status).toBe(200)
   const body = await res.json() as { result: { tools: { name: string }[] } }
-  expect(body.result.tools.map(t => t.name)).toEqual(['reply', 'react', 'download_attachment', 'edit_message'])
+  expect(body.result.tools.map(t => t.name)).toEqual([
+    'reply', 'react', 'download_attachment', 'edit_message',
+    'memory_write', 'memory_update', 'memory_search', 'memory_read', 'memory_delete',
+  ])
 })

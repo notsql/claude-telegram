@@ -21,7 +21,13 @@ import type { Policy } from '../policy/schema.ts'
  * chat land in its forum topic (002 FR4). The stdio channel passes none.
  * `policy` is the session's resolved policy; tools it doesn't allow are hidden.
  */
-export function registerTelegramTools(mcp: Server, api: Api, token: string, key?: string, policy: Policy = {}): void {
+/** More tools on the same server (004 memory); `call` returns undefined for names it doesn't own. */
+export type ExtraTools = {
+  list: () => object[]
+  call: (name: string, args: Record<string, unknown>) => Promise<unknown> | unknown
+}
+
+export function registerTelegramTools(mcp: Server, api: Api, token: string, key?: string, policy: Policy = {}, extra?: ExtraTools): void {
   const bound = key ? parseKey(key) : undefined
   mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: visibleTools([
@@ -94,11 +100,13 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
           required: ['chat_id', 'message_id', 'text'],
         },
       },
-    ], policy),
+    ], policy).concat(extra?.list() ?? []),
   }))
 
   mcp.setRequestHandler(CallToolRequestSchema, async req => {
     const args = (req.params.arguments ?? {}) as Record<string, unknown>
+    const handled = await extra?.call(req.params.name, args)
+    if (handled) return handled as never
     try {
       switch (req.params.name) {
         case 'reply': {
