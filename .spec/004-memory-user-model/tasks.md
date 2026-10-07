@@ -13,7 +13,7 @@ Depends on: 001, 002, 003 (policy scopes, tool registry)
   *Verify:* AC4.
 - [x] **T405** `memory/inject.ts` with a token budget and mtime caching, wired to the `SessionStart` and `UserPromptSubmit` hook handlers (under 200ms).
   *Verify:* AC2.
-- [ ] **T406** Memory guidance in `TELEGRAM_INSTRUCTIONS` (when to save, curate and recall).
+- [x] **T406** Memory guidance in `TELEGRAM_INSTRUCTIONS` (when to save, curate and recall).
   *Verify:* AC1.
 - [ ] **T407** `reflection/worker.ts`: fed by the `Stop` hook (debounced) and the `PreCompact` hook (immediate). Reads the transcript delta, runs `agent/oneshot.ts` (Haiku, no tools, no hooks), and validates the output with zod.
   *Verify:* a log shows proposals after a turn, and the one-shot does not trigger another reflection.
