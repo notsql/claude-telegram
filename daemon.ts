@@ -67,6 +67,7 @@ import { listSkills, parseSkillsArgs, skillAction, type SkillAction } from './sk
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { createAgentUsage } from './agents/usage.ts'
 import { availableAgents, setPolicyAgent } from './agents/available.ts'
+import { AUTHOR, createAgentTools } from './agents/tools.ts'
 import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
@@ -234,6 +235,10 @@ const skillApplier = createSkillApplier({
 const skillTools = createSkillTools(skillStoreFor, skillApplier)
 const skillUsage = createSkillUsage(join(STATE_DIR, 'skills-usage.json'))
 const agentUsage = createAgentUsage(join(STATE_DIR, 'agents-usage.json'))
+// 009 T908: agent_* tools work only while tg-skill-author runs for the key, as a subagent or the main agent.
+const authorRuns = new Map<string, Set<string>>()
+const agentTools = createAgentTools(join(claudeDir(), 'agents'),
+  key => policyOf(key).agent === AUTHOR || !!authorRuns.get(key)?.size)
 const isLearnedSkill = (key: string, name: string) => skillStoreFor(key).read(name)?.metadata.source === 'tg'
 
 /** 006 FR7, FR8: record outcomes; a skill that keeps failing gets a refinement proposal for approval (AC6). */
@@ -325,7 +330,7 @@ const lifecycle = createSessionLifecycle(sessions, key => runningTurns.get(key)?
 // 008 FR9: the agent's parity path for /new, /resume, /model and /status.
 const sessionDeps = { lifecycle, title: (key: string) => sessions.title(key), running: (key: string) => runningTurns.has(key) }
 const sessionTools = createSessionTools(sessionDeps)
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, session: sessionTools })
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -345,6 +350,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'user-prompt-submit': (payload, key) => {
     memoryTools.startTurn(key)
     skillTools.startTurn(key)
+    agentTools.startTurn(key)
     const policy = policyOf(key)
     const out = injector.userPromptSubmit(payload, policy, participants(key))
     const t = performance.now()
@@ -360,8 +366,12 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
     if (name && isLearnedSkill(key, name)) skillUsage.invoked(name)
   },
   // 009 FR5, FR7: per-agent counts and durations.
-  'subagent-start': payload => { agentUsage.start(payload) },
+  'subagent-start': (payload, key) => {
+    agentUsage.start(payload)
+    if (payload.agent_type === AUTHOR) (authorRuns.get(key) ?? authorRuns.set(key, new Set()).get(key)!).add(String(payload.agent_id))
+  },
   'subagent-stop': (payload, key) => {
+    authorRuns.get(key)?.delete(String(payload.agent_id))
     const run = agentUsage.stop(payload)
     if (run) log(`subagent ${run.type} for ${key} took ${Math.round(run.ms / 1000)}s`)
   },

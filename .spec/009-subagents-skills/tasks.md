@@ -22,7 +22,7 @@ Depends on: 001 (runner, http hooks), 003 (policy), 004/006 (reflection, skill s
   *Verify:* counts per agent increase.
 - [x] **T907** Policy `agent` field, its validation, and the `/agent` command (008).
   *Verify:* AC3.
-- [ ] **T908** `agents/validate.ts` guardrails and `agents/tools.ts` (skill-author only).
+- [x] **T908** `agents/validate.ts` guardrails and `agents/tools.ts` (skill-author only).
   *Verify:* the AC5 rejection case.
 - [ ] **T909** Extend the reflection schema and apply with the `agents` section and the 005-backed recurrence check.
   *Verify:* AC5.
