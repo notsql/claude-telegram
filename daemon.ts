@@ -33,7 +33,8 @@ import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from '.
 import { parseKey, sessionKey } from './sessions/key.ts'
 import { threadOpts } from './telegram/send.ts'
 import { createSessionStore } from './sessions/store.ts'
-import { createSessionLifecycle, formatSessions } from './sessions/lifecycle.ts'
+import { createSessionLifecycle, formatCost, formatSessions, MODELS } from './sessions/lifecycle.ts'
+import { createSessionTools, sessionStatus } from './agent/sessionTools.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
 import { renderInbound } from './agent/inbound.ts'
@@ -301,7 +302,14 @@ const reflection = createReflectionWorker({
   log,
 })
 
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools })
+// FR8: each key's running turn, so /stop or a new message (with the flag) can interrupt it.
+const runningTurns = new Map<string, AbortController>()
+const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
+const lifecycle = createSessionLifecycle(sessions, key => runningTurns.get(key)?.abort())
+// 008 FR9: the agent's parity path for /new, /resume, /model and /status.
+const sessionDeps = { lifecycle, title: (key: string) => sessions.title(key), running: (key: string) => runningTurns.has(key) }
+const sessionTools = createSessionTools(sessionDeps)
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, session: sessionTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -356,10 +364,6 @@ async function runInSession(key: string, prompt: string, firstMessage: string, o
 }
 
 const turnAbort = new AbortController()
-// FR8: each key's running turn, so /stop or a new message (with the flag) can interrupt it.
-const runningTurns = new Map<string, AbortController>()
-const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
-const lifecycle = createSessionLifecycle(sessions, key => runningTurns.get(key)?.abort())
 // FR10: set when a turn hits a usage limit; queued turns wait until then.
 let pausedUntil = 0
 const budget = createTurnBudget(config.dailyTurnBudget)
@@ -426,13 +430,14 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
     hookToken,
     cwd: policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd,
     maxTurns: policy.maxTurns ?? config.maxTurns,
-    policyArgs: policyArgs(policy),
+    policyArgs: policyArgs({ ...policy, model: lifecycle.model(key) ?? policy.model }),
     signal: AbortSignal.any([turnAbort.signal, turn.signal]),
     onEvent: progress.onEvent,
   }).finally(() => {
     progress.finish()
     if (runningTurns.get(key) === turn) runningTurns.delete(key)
   })
+  if (outcome.result) lifecycle.recordTurn(outcome.result.session_id, outcome.result.total_cost_usd)
   if (turn.signal.aborted && !turnAbort.signal.aborted) {
     await notify('Stopped.')
   }
@@ -520,6 +525,52 @@ commands.push({ name: 'resume', handler: async (ctx, args) => {
   }
 } })
 
+// 008 FR1, US4: bare /model opens a picker; the choice lasts for this session.
+const modelKeyboard = () => ({ inline_keyboard: [[...MODELS, 'default'].map(m => ({ text: m, callback_data: `mdl:${m}` }))] })
+
+commands.push({ name: 'model', requiresApprover: true, handler: async (ctx, args) => {
+  const key = sessionKey(ctx.msg!)
+  if (!args) {
+    await ctx.reply(`Model: ${lifecycle.model(key) ?? policyOf(key).model ?? 'default'}. Pick one for this session:`, { reply_markup: modelKeyboard() })
+    return
+  }
+  try {
+    lifecycle.setModel(key, args.toLowerCase())
+    await ctx.reply(`Model for this session: ${args.toLowerCase()}.`)
+  } catch (err) {
+    await ctx.reply((err as Error).message)
+  }
+} })
+
+bot.callbackQuery(/^mdl:(\w+)$/, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg) return ctx.answerCallbackQuery().catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  if (!authorised({ requiresApprover: true }, msg.chat.type !== 'private', isApprover(key, ctx.from.id), isOwner(ctx))) {
+    return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  }
+  lifecycle.setModel(key, ctx.match[1]!)
+  await ctx.editMessageText(`Model for this session: ${ctx.match[1]}.`).catch(() => {})
+  await ctx.answerCallbackQuery().catch(() => {})
+})
+
+// Claude Code compacts on its own; this forces it in the key's session.
+commands.push({ name: 'compact', handler: async ctx => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  if (!sessions.current(key)) {
+    await ctx.reply('No session to compact yet.')
+    return
+  }
+  turns.enqueue(key, { prompt: '/compact', text: '/compact' })
+  await ctx.reply('Compacting this session.')
+} })
+
+commands.push({ name: 'cost', handler: async ctx => {
+  if (!isOwner(ctx)) return
+  await ctx.reply(formatCost(lifecycle.stats(sessionKey(ctx.msg!))))
+} })
+
 // The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
 
 commands.push({ name: 'start', handler: async ctx => {
@@ -549,12 +600,18 @@ commands.push({ name: 'help', handler: async ctx => {
 } })
 
 commands.push({ name: 'status', handler: async ctx => {
+  const key = sessionKey(ctx.msg!)
+  // 008 FR1: in groups, owners get this chat's session status.
+  if (ctx.chat!.type !== 'private') {
+    if (isOwner(ctx)) await ctx.reply(sessionStatus(sessionDeps, key, policyOf(key)))
+    return
+  }
   const gated = dmCommandGate(ctx)
   if (!gated) return
   const { access, senderId } = gated
   if (access.allowFrom.includes(senderId)) {
     const name = ctx.from!.username ? `@${ctx.from!.username}` : senderId
-    await ctx.reply(`Paired as ${name}.`)
+    await ctx.reply(`Paired as ${name}.\n\n${sessionStatus(sessionDeps, key, policyOf(key))}`)
     return
   }
   for (const [code, p] of Object.entries(access.pending)) {

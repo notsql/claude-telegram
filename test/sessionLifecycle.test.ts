@@ -3,7 +3,7 @@ import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createSessionStore } from '../sessions/store'
-import { createSessionLifecycle, formatSessions } from '../sessions/lifecycle'
+import { createSessionLifecycle, formatCost, formatSessions, formatStatus } from '../sessions/lifecycle'
 
 const setup = () => {
   const store = createSessionStore(join(mkdtempSync(join(tmpdir(), 'lc-')), 'sessions.json'), () => 0)
@@ -45,5 +45,32 @@ describe('session lifecycle (002 FR9)', () => {
     expect(formatSessions([])).toBe('No earlier sessions here.')
     expect(formatSessions([{ sessionId: 'a', startedAt: 0, title: 'Infra' }, { sessionId: 'b', startedAt: 0, title: '' }]))
       .toBe('1. Infra (1970-01-01)\n2. (untitled) (1970-01-01)')
+  })
+})
+
+describe('008 session controls', () => {
+  test('a session model lasts until new; tools skip the interrupt', () => {
+    const { store, interrupted, life } = setup()
+    life.setModel('1', 'opus')
+    expect(life.model('1')).toBe('opus')
+    expect(() => life.setModel('1', 'gpt')).toThrow('Unknown model gpt')
+    life.new('1', { interrupt: false })
+    expect(life.model('1')).toBeUndefined()
+    expect(interrupted).toEqual([])
+    store.record('1', 's1', 'q')
+    life.setModel('1', 'haiku')
+    life.setModel('1', 'default')
+    expect(life.model('1')).toBeUndefined()
+  })
+
+  test('cost and status count turns of the current session', () => {
+    const { store, life } = setup()
+    expect(formatCost(life.stats('1'))).toBe('No turns in this session since the daemon started.')
+    store.record('1', 's1', 'q')
+    life.recordTurn('s1', 0.1)
+    life.recordTurn('s1', 0.25)
+    expect(formatStatus({ session: 'q', policyModel: 'sonnet', running: true, stats: life.stats('1') })).toBe(
+      'Session: q\nModel: sonnet (policy)\nTurn: running\nThis session: 2 turns, $0.35 at API prices (covered by the subscription).',
+    )
   })
 })

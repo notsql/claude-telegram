@@ -131,6 +131,11 @@ export function createSessionStore(file: string, now: () => number = Date.now) {
       }
     },
 
+    /** The current session's title, from its first message. */
+    title(key: string): string | undefined {
+      return data[key]?.sessionId ? data[key]!.title : undefined
+    },
+
     /** Past sessions for this key, most recent first (FR9 `list`). */
     list(key: string): PastSession[] {
       return data[key]?.history ?? []

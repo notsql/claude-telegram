@@ -6,7 +6,7 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* AC4 with unit tests.
 - [x] **T803** `registry.ts` and `dispatch.ts`: built-in vs. skill vs. passthrough, `@botname` handling, approver checks.
   *Verify:* AC6, FR8, FR11.
-- [ ] **T804** Session handlers and parity tools (`/new /resume /sessions /stop /model /compact /cost /status`).
+- [x] **T804** Session handlers and parity tools (`/new /resume /sessions /stop /model /compact /cost /status`).
   *Verify:* the US2 flows.
 - [ ] **T805** Memory and history handlers (`/remember /forget /memory /search`) wired to 004 and 005.
   *Verify:* AC5.
