@@ -26,7 +26,7 @@ export type Hit = {
 
 const STOPWORDS = new Set(('a an and are as at be but by did do does for from had has have how i in is it its me my of on or ' +
   'so that the their them then there they this to was we were what when where which who why will with you your about ' +
-  'can could should would just our us').split(' '))
+  'can could should would just our us may might must also any some all not no yes ok okay please').split(' '))
 
 /** User text → FTS5 MATCH expression, or undefined when nothing searchable is left. */
 export function toMatch(query: string): string | undefined {

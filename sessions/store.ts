@@ -118,6 +118,19 @@ export function createSessionStore(file: string, now: () => number = Date.now) {
       return generations.get(key) ?? 0
     },
 
+    /** Every Claude Code session id this key has used, current first (005 FR6 `chat` scope). */
+    sessionIds(key: string): string[] {
+      const e = data[key]
+      return e ? [...(e.sessionId ? [e.sessionId] : []), ...e.history.map(h => h.sessionId)] : []
+    },
+
+    /** The session key a Claude Code session belongs to; undefined for terminal sessions (005 FR2). */
+    keyOf(sessionId: string): string | undefined {
+      for (const [key, e] of Object.entries(data)) {
+        if (e.sessionId === sessionId || e.history.some(h => h.sessionId === sessionId)) return key
+      }
+    },
+
     /** Past sessions for this key, most recent first (FR9 `list`). */
     list(key: string): PastSession[] {
       return data[key]?.history ?? []

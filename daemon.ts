@@ -44,6 +44,7 @@ import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
 import { claudeDir, memoryRoot, userDir } from './memory/paths.ts'
 import { openHistoryDb } from './history/db.ts'
 import { startIndexer } from './history/indexer.ts'
+import { createHistoryTools } from './history/tools.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
 import { createInjector } from './memory/inject.ts'
@@ -151,6 +152,8 @@ const injector = createInjector({ store: memory, userStore, indexImported: () =>
 // 005: index Claude Code transcripts for history search (FR1, FR3).
 const historyDb = openHistoryDb(join(STATE_DIR, 'history.db'))
 const stopIndexer = startIndexer(historyDb, join(claudeDir(), 'projects'), log)
+const sessions = createSessionStore(join(STATE_DIR, 'sessions.json'))
+const historyTools = createHistoryTools({ db: historyDb, sessions })
 const policyOf = (key: string) => resolvePolicy(loadAccess(), key, chatTypeOf(key))
 
 // 004 FR3: whose user model to inject: the latest sender first, then others active recently.
@@ -198,7 +201,7 @@ const reflection = createReflectionWorker({
   log,
 })
 
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools })
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -223,7 +226,6 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 
-const sessions = createSessionStore(join(STATE_DIR, 'sessions.json'))
 
 /**
  * Runs a turn in the key's session and stores the `session_id` from `init`,
