@@ -33,10 +33,11 @@ import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from '.
 import { parseKey, sessionKey } from './sessions/key.ts'
 import { threadOpts } from './telegram/send.ts'
 import { createSessionStore } from './sessions/store.ts'
-import { createSessionLifecycle, formatSessions } from './sessions/lifecycle.ts'
+import { createSessionLifecycle, formatCost, formatSessions, MODELS } from './sessions/lifecycle.ts'
+import { createSessionTools, sessionStatus } from './agent/sessionTools.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
-import { renderInbound } from './agent/inbound.ts'
+import { renderInbound, renderSkillInvocation } from './agent/inbound.ts'
 import { createTopicNames } from './sessions/topics.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
@@ -49,6 +50,7 @@ import { recall, withContext } from './history/recall.ts'
 import { searchCommand } from './history/commands.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
+import { forget, remember, showMemory, type CommandResult } from './memory/commands.ts'
 import { createInjector } from './memory/inject.ts'
 import { bridgePaths, importEnabled } from './memory/bridge.ts'
 import { createNotices, noticeText } from './memory/notices.ts'
@@ -60,6 +62,7 @@ import { createSkillStore, skillEvents, type SkillStore } from './skills/store.t
 import { skillsRoot, takenNames } from './skills/paths.ts'
 import { createSkillApplier } from './skills/apply.ts'
 import { createSkillTools } from './skills/tools.ts'
+import { listSkills, parseSkillsArgs, skillAction, type SkillAction } from './skills/commands.ts'
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
@@ -68,7 +71,9 @@ import { toolCalls } from './reflection/transcript.ts'
 import { search } from './history/search.ts'
 import { registry, type Command } from './commands/registry.ts'
 import { authorised, route } from './commands/dispatch.ts'
-import { loadTable } from './commands/skillMap.ts'
+import { assign, discoverSkills, loadTable, saveTable } from './commands/skillMap.ts'
+import { START_TEXT, helpText, pairingStatus } from './commands/help.ts'
+import { buildMenus, createMenu, type MenuSkill } from './commands/menu.ts'
 import { scopeFor } from './history/tools.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
@@ -194,8 +199,6 @@ const skillStoreFor = (key: string) => {
   return st
 }
 const skillNotices = createSkillNotices(bot.api)
-// 006 T611: 008's menu (T808) refreshes on this; until then it is only logged.
-skillEvents.on('skills-changed', ({ name }: { name: string }) => log(`skills-changed: ${name}`))
 const skillApplier = createSkillApplier({
   store: skillStoreFor,
   taken: st => takenNames(st.root, [config.cwd]),
@@ -301,7 +304,14 @@ const reflection = createReflectionWorker({
   log,
 })
 
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools })
+// FR8: each key's running turn, so /stop or a new message (with the flag) can interrupt it.
+const runningTurns = new Map<string, AbortController>()
+const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
+const lifecycle = createSessionLifecycle(sessions, key => runningTurns.get(key)?.abort())
+// 008 FR9: the agent's parity path for /new, /resume, /model and /status.
+const sessionDeps = { lifecycle, title: (key: string) => sessions.title(key), running: (key: string) => runningTurns.has(key) }
+const sessionTools = createSessionTools(sessionDeps)
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, session: sessionTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -313,6 +323,8 @@ const approvals = createApprovals({
     saveAccess(access)
   },
 })
+// 008 FR5: a skill command's <channel> wrapper, handed to its turn as hook context.
+const skillContext = new Map<string, string>()
 const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'permission-request': approvals.handle,
   'session-start': (payload, key) => injector.sessionStart(payload, policyOf(key), participants(key)),
@@ -324,7 +336,9 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
     const t = performance.now()
     const recalled = recall({ db: historyDb, sessions }, payload, key, policy)
     if (recalled) log(`history: recalled for ${key} in ${Math.round(performance.now() - t)}ms`)
-    return withContext(out, 'UserPromptSubmit', recalled)
+    const skill = skillContext.get(key) ?? ''
+    skillContext.delete(key)
+    return withContext(withContext(out, 'UserPromptSubmit', recalled), 'UserPromptSubmit', skill)
   },
   'stop': (payload, key) => { reflection.enqueue(key, payload) },
   'post-tool-use': (payload, key) => {
@@ -356,10 +370,6 @@ async function runInSession(key: string, prompt: string, firstMessage: string, o
 }
 
 const turnAbort = new AbortController()
-// FR8: each key's running turn, so /stop or a new message (with the flag) can interrupt it.
-const runningTurns = new Map<string, AbortController>()
-const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
-const lifecycle = createSessionLifecycle(sessions, key => runningTurns.get(key)?.abort())
 // FR10: set when a turn hits a usage limit; queued turns wait until then.
 let pausedUntil = 0
 const budget = createTurnBudget(config.dailyTurnBudget)
@@ -426,13 +436,19 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
     hookToken,
     cwd: policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd,
     maxTurns: policy.maxTurns ?? config.maxTurns,
-    policyArgs: policyArgs(policy),
+    policyArgs: policyArgs({ ...policy, model: lifecycle.model(key) ?? policy.model }),
     signal: AbortSignal.any([turnAbort.signal, turn.signal]),
     onEvent: progress.onEvent,
   }).finally(() => {
     progress.finish()
     if (runningTurns.get(key) === turn) runningTurns.delete(key)
   })
+  const reported = outcome.init?.skills?.filter(n => !loadedSkills.has(n)) ?? []
+  if (reported.length) {
+    for (const n of reported) loadedSkills.add(n)
+    menu.refresh()
+  }
+  if (outcome.result) lifecycle.recordTurn(outcome.result.session_id, outcome.result.total_cost_usd)
   if (turn.signal.aborted && !turnAbort.signal.aborted) {
     await notify('Stopped.')
   }
@@ -475,7 +491,7 @@ const isOwner = (ctx: Context) => !!ctx.from && loadAccess().allowFrom.includes(
 const commands: Command[] = []
 
 // FR8: owners can interrupt the turn running in this chat or topic.
-commands.push({ name: 'stop', handler: async ctx => {
+commands.push({ name: 'stop', description: 'Interrupt the running turn here', menu: ['private', 'group'], handler: async ctx => {
   if (!isOwner(ctx)) return
   const turn = runningTurns.get(sessionKey(ctx.msg!))
   if (!turn) {
@@ -486,25 +502,78 @@ commands.push({ name: 'stop', handler: async ctx => {
 } })
 
 // 002 FR9, owner-only like /stop. 008 moves these into its command handlers.
-commands.push({ name: 'new', handler: async ctx => {
+commands.push({ name: 'new', description: 'Start a fresh session', menu: ['private', 'group'], handler: async ctx => {
   if (!isOwner(ctx)) return
   lifecycle.new(sessionKey(ctx.msg!))
   await ctx.reply('New session. The next message starts with no earlier context.')
 } })
 
 // 005 US4: owner-only like /stop, scoped by the chat's historyScope. 008 moves it into its handlers.
-commands.push({ name: 'search', handler: async (ctx, args) => {
+commands.push({ name: 'search', description: 'Search past conversations: /search <words>', menu: ['private', 'group'], handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
   await ctx.reply(searchCommand({ db: historyDb, sessions }, args, key, policyOf(key)), { link_preview_options: { is_disabled: true } })
 } })
 
-commands.push({ name: 'sessions', handler: async ctx => {
+// 008 T805: memory curation over 004's command functions; writes get the Undo notice.
+const memoryReply = async (ctx: Context, r: CommandResult) =>
+  ctx.reply(r.text, r.change ? { reply_markup: notices.undoKeyboard(r.change) } : {})
+
+commands.push({ name: 'remember', description: 'Remember something: /remember <text>', menu: ['private'], handler: async (ctx, args) => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  await memoryReply(ctx, remember(memory, args, key, policyOf(key)))
+} })
+
+commands.push({ name: 'forget', description: 'Forget a memory: /forget <name or words>', menu: ['private'], requiresApprover: true, handler: async (ctx, args) => {
+  if (!isOwner(ctx)) return
+  await memoryReply(ctx, forget(memory, args, policyOf(sessionKey(ctx.msg!))))
+} })
+
+commands.push({ name: 'memory', description: 'Show what I remember', menu: ['private'], handler: async ctx => {
+  if (!isOwner(ctx)) return
+  await memoryReply(ctx, showMemory(memory, userStore(String(ctx.from!.id)), policyOf(sessionKey(ctx.msg!))))
+} })
+
+// 008 T806: the chat's skills; archive and remove need an approver (FR10).
+const canChange = (ctx: Context, key: string, isGroup: boolean) =>
+  authorised({ requiresApprover: true }, isGroup, isApprover(key, ctx.from!.id), isOwner(ctx))
+
+commands.push({ name: 'skills', description: 'List skills: /skills [show|rm] <name>', menu: ['private'], handler: async (ctx, args) => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  const parsed = parseSkillsArgs(args)
+  if (!parsed) return void await ctx.reply('Usage: /skills, /skills show <name>, /skills rm <name>')
+  if (parsed === 'list') {
+    const r = listSkills(skillStoreFor(key))
+    return void await ctx.reply(r.text, r.keyboard ? { reply_markup: r.keyboard } : {})
+  }
+  if (parsed.action !== 'show' && !canChange(ctx, key, ctx.chat!.type !== 'private')) return void await ctx.reply('Only approvers can remove skills here.')
+  await ctx.reply(skillAction(skillStoreFor(key), parsed.action, parsed.name).text)
+} })
+
+bot.callbackQuery(/^skc:(show|arch|rm):([a-z0-9-]{1,48})$/, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg || !isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const action = ctx.match[1] as SkillAction
+  if (action !== 'show' && !canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  const r = skillAction(skillStoreFor(key), action, ctx.match[2]!)
+  await ctx.answerCallbackQuery(r.changes ? { text: r.text } : {}).catch(() => {})
+  if (r.changes) {
+    const list = listSkills(skillStoreFor(key))
+    await ctx.editMessageText(list.text, list.keyboard ? { reply_markup: list.keyboard } : {}).catch(() => {})
+  } else {
+    await bot.api.sendMessage(msg.chat.id, r.text, threadOpts(parseKey(key))).catch(() => {})
+  }
+})
+
+commands.push({ name: 'sessions', description: 'List past sessions', menu: ['private'], handler: async ctx => {
   if (!isOwner(ctx)) return
   await ctx.reply(formatSessions(lifecycle.list(sessionKey(ctx.msg!))))
 } })
 
-commands.push({ name: 'resume', handler: async (ctx, args) => {
+commands.push({ name: 'resume', description: 'Resume a past session: /resume <n>', menu: ['private'], handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
   const arg = args.trim()
@@ -520,50 +589,73 @@ commands.push({ name: 'resume', handler: async (ctx, args) => {
   }
 } })
 
-// The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
+// 008 FR1, US4: bare /model opens a picker; the choice lasts for this session.
+const modelKeyboard = () => ({ inline_keyboard: [[...MODELS, 'default'].map(m => ({ text: m, callback_data: `mdl:${m}` }))] })
 
-commands.push({ name: 'start', handler: async ctx => {
-  if (!dmCommandGate(ctx)) return
-  await ctx.reply(
-    `This bot bridges Telegram to a Claude Code session.\n\n` +
-    `To pair:\n` +
-    `1. DM me anything: you'll get a 6-char code\n` +
-    `2. In Claude Code: /telegram:access pair <code>\n\n` +
-    `After that, DMs here reach that session.`
-  )
-} })
-
-commands.push({ name: 'help', handler: async ctx => {
-  if (!dmCommandGate(ctx)) return
-  await ctx.reply(
-    `Messages you send here route to a paired Claude Code session. ` +
-    `Text and photos are forwarded; replies and reactions come back.\n\n` +
-    `/start: pairing instructions\n` +
-    `/status: check your pairing state\n` +
-    `/stop: interrupt the running turn in this chat\n` +
-    `/new: start a fresh session here\n` +
-    `/sessions: list earlier sessions\n` +
-    `/resume <n>: switch back to an earlier session\n` +
-    `/policy: view or edit this chat's policy`
-  )
-} })
-
-commands.push({ name: 'status', handler: async ctx => {
-  const gated = dmCommandGate(ctx)
-  if (!gated) return
-  const { access, senderId } = gated
-  if (access.allowFrom.includes(senderId)) {
-    const name = ctx.from!.username ? `@${ctx.from!.username}` : senderId
-    await ctx.reply(`Paired as ${name}.`)
+commands.push({ name: 'model', description: 'Pick the model for this session', menu: ['private'], requiresApprover: true, handler: async (ctx, args) => {
+  const key = sessionKey(ctx.msg!)
+  if (!args) {
+    await ctx.reply(`Model: ${lifecycle.model(key) ?? policyOf(key).model ?? 'default'}. Pick one for this session:`, { reply_markup: modelKeyboard() })
     return
   }
-  for (const [code, p] of Object.entries(access.pending)) {
-    if (p.senderId === senderId) {
-      await ctx.reply(`Pending pairing: run in Claude Code:\n\n/telegram:access pair ${code}`)
-      return
-    }
+  try {
+    lifecycle.setModel(key, args.toLowerCase())
+    await ctx.reply(`Model for this session: ${args.toLowerCase()}.`)
+  } catch (err) {
+    await ctx.reply((err as Error).message)
   }
-  await ctx.reply(`Not paired. Send me a message to get a pairing code.`)
+} })
+
+bot.callbackQuery(/^mdl:(\w+)$/, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg) return ctx.answerCallbackQuery().catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  if (!authorised({ requiresApprover: true }, msg.chat.type !== 'private', isApprover(key, ctx.from.id), isOwner(ctx))) {
+    return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  }
+  lifecycle.setModel(key, ctx.match[1]!)
+  await ctx.editMessageText(`Model for this session: ${ctx.match[1]}.`).catch(() => {})
+  await ctx.answerCallbackQuery().catch(() => {})
+})
+
+// Claude Code compacts on its own; this forces it in the key's session.
+commands.push({ name: 'compact', description: "Compact this session's context", menu: ['private'], handler: async ctx => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  if (!sessions.current(key)) {
+    await ctx.reply('No session to compact yet.')
+    return
+  }
+  turns.enqueue(key, { prompt: '/compact', text: '/compact' })
+  await ctx.reply('Compacting this session.')
+} })
+
+commands.push({ name: 'cost', description: 'What this session has cost', menu: ['private'], handler: async ctx => {
+  if (!isOwner(ctx)) return
+  await ctx.reply(formatCost(lifecycle.stats(sessionKey(ctx.msg!))))
+} })
+
+// The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
+
+commands.push({ name: 'start', description: 'Welcome and setup guide', menu: ['private'], handler: async ctx => {
+  if (dmCommandGate(ctx)) await ctx.reply(START_TEXT)
+} })
+
+commands.push({ name: 'help', description: 'What this bot can do', menu: ['private'], handler: async ctx => {
+  if (dmCommandGate(ctx)) await ctx.reply(helpText(commands))
+} })
+
+commands.push({ name: 'status', description: 'Session, model and cost', menu: ['private', 'group'], handler: async ctx => {
+  const key = sessionKey(ctx.msg!)
+  // 008 FR1: in groups, owners get this chat's session status.
+  if (ctx.chat!.type !== 'private') {
+    if (isOwner(ctx)) await ctx.reply(sessionStatus(sessionDeps, key, policyOf(key)))
+    return
+  }
+  const gated = dmCommandGate(ctx)
+  if (!gated) return
+  const name = ctx.from!.username ? `@${ctx.from!.username}` : gated.senderId
+  await ctx.reply(pairingStatus(gated.access, gated.senderId, name, () => sessionStatus(sessionDeps, key, policyOf(key))))
 } })
 
 // 003 T309: owner-only policy editor for this chat or topic.
@@ -572,7 +664,7 @@ const showPolicy = (key: string) => {
   return [renderPolicy(key, p), { reply_markup: policyKeyboard(p) }] as const
 }
 
-commands.push({ name: 'policy', requiresApprover: true, handler: async ctx => {
+commands.push({ name: 'policy', description: "View or edit this chat's policy", menu: ['private', 'admin'], requiresApprover: true, handler: async ctx => {
   if (!isOwner(ctx)) return
   const [text, opts] = showPolicy(policyKey(sessionKey(ctx.msg!)))
   await ctx.reply(text, opts)
@@ -588,6 +680,7 @@ bot.callbackQuery(/^pol:(\w+):(\w+)$/, async ctx => {
     const stored = applyPolicyEdit(access, key, field!, value!)
     saveAccess(access)
     audit({ event: 'policy', key, user: String(ctx.from.id), field: field!, value: stored ?? 'default' })
+    menu.refresh()
   } catch (err) {
     return ctx.answerCallbackQuery({ text: (err as Error).message }).catch(() => {})
   }
@@ -713,11 +806,29 @@ bot.on('callback_query:data', async ctx => {
 
 // 008 FR8, FR10, FR11: built-in, skill, ignored (another bot's) or plain text.
 const builtins = registry(commands)
+
+// 008 T808: skills found on disk (narrowed to the ones turns report loaded), named for Telegram.
+const loadedSkills = new Set<string>()
+function menuSkills(): MenuSkill[] {
+  const chats = Object.values(loadAccess().chats ?? {})
+  const cwds = new Set([config.cwd, ...chats.flatMap(c => c.policy?.cwd ? [expandPath(c.policy.cwd, homedir())] : [])])
+  const found = discoverSkills(claudeDir(), [...cwds]).filter(s => !loadedSkills.size || loadedSkills.has(s.name))
+  const table = assign(loadTable(COMMANDS_FILE), found.map(s => s.name), builtins.keys())
+  saveTable(COMMANDS_FILE, table)
+  const usage = skillUsage.all()
+  return found.map(s => ({ command: table[s.name]!, description: s.description, uses: usage[s.name]?.count ?? 0 }))
+}
+const menu = createMenu(
+  () => buildMenus(commands, menuSkills()),
+  (scope, cmds) => bot.api.setMyCommands(cmds, { scope: { type: scope } }),
+)
+// 006 T611 → FR7: a learned skill reaches the menu within a minute.
+skillEvents.on('skills-changed', () => menu.refresh(30_000))
 bot.on('message:text', async ctx => {
   const text = ctx.message.text
   const r = route(text, ctx.me.username, builtins, loadTable(COMMANDS_FILE))
   if (r.kind === 'ignore') return
-  if (r.kind === 'skill') return handleInbound(ctx, r.text, undefined)
+  if (r.kind === 'skill') return handleInbound(ctx, text, undefined, undefined, r.text)
   if (r.kind === 'text') return handleInbound(ctx, text, undefined)
   const key = sessionKey(ctx.msg)
   if (!authorised(r.command, ctx.chat.type !== 'private', isApprover(key, ctx.from.id), isOwner(ctx))) {
@@ -801,6 +912,8 @@ async function handleInbound(
   text: string,
   downloadImage: (() => Promise<string | undefined>) | undefined,
   attachment?: AttachmentMeta,
+  /** 008 FR5: set for a skill command, the native `/<skill> <args>` invocation. */
+  invocation?: string,
 ): Promise<void> {
   if (ctx.from && ctx.chat && await skillEditReply(ctx, text)) return
   const result = gate(ctx)
@@ -853,7 +966,7 @@ async function handleInbound(
   const imagePath = downloadImage ? await downloadImage() : undefined
   const chat = ctx.chat!
   const topic = topicNames.get(key)
-  const prompt = renderInbound(text, {
+  const meta = {
     chat_id,
     chat_type: chat.type,
     ...('title' in chat && chat.title ? { chat_title: chat.title } : {}),
@@ -870,7 +983,13 @@ async function handleInbound(
       ...(attachment.mime ? { attachment_mime: attachment.mime } : {}),
       ...(attachment.name ? { attachment_name: attachment.name } : {}),
     } : {}),
-  }, groupBuffer.take(key))
+  }
+  let prompt = renderInbound(text, meta, groupBuffer.take(key))
+  if (invocation) {
+    const skill = renderSkillInvocation(invocation, meta)
+    prompt = skill.prompt
+    skillContext.set(key, skill.context)
+  }
   turns.enqueue(key, { prompt, text, msgId })
 }
 
@@ -885,32 +1004,7 @@ for (let attempt = 1; ; attempt++) {
         attempt = 0
         setBotUsername(info.username)
         log(`polling as @${info.username}`)
-        void bot.api.setMyCommands(
-          [
-            { command: 'start', description: 'Welcome and setup guide' },
-            { command: 'help', description: 'What this bot can do' },
-            { command: 'status', description: 'Check your pairing status' },
-            { command: 'stop', description: 'Interrupt the running turn in this chat' },
-            { command: 'new', description: 'Start a fresh session' },
-            { command: 'sessions', description: 'List past sessions' },
-            { command: 'resume', description: 'Resume a past session: /resume <n>' },
-            { command: 'search', description: 'Search past conversations: /search <words>' },
-            { command: 'policy', description: 'View or edit this chat\'s policy' },
-          ],
-          { scope: { type: 'all_private_chats' } },
-        ).catch(() => {})
-        // Owner-only commands that work in groups and topics; others see them but get no response.
-        void bot.api.setMyCommands(
-          [
-            { command: 'stop', description: 'Interrupt the running turn here' },
-            { command: 'new', description: 'Start a fresh session here' },
-            { command: 'sessions', description: 'List past sessions' },
-            { command: 'resume', description: 'Resume a past session: /resume <n>' },
-            { command: 'search', description: 'Search this chat\'s past conversations' },
-            { command: 'policy', description: 'View or edit this chat\'s policy' },
-          ],
-          { scope: { type: 'all_group_chats' } },
-        ).catch(() => {})
+        menu.refresh()
       },
     })
     break

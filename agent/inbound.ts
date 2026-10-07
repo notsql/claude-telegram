@@ -19,3 +19,13 @@ export function renderInbound(text: string, meta: Record<string, string>, recent
     : ''
   return `<channel source="telegram"${attrs}>${context}${escapeXml(text)}</channel>`
 }
+
+/**
+ * 008 FR5: a skill command's prompt is only the native `/<skill> <args>`
+ * invocation, which `claude -p` expands (anything after it would land in
+ * `$ARGUMENTS`). The wrapper goes in as hook context so the agent still
+ * knows where to reply.
+ */
+export function renderSkillInvocation(invocation: string, meta: Record<string, string>): { prompt: string; context: string } {
+  return { prompt: invocation, context: renderInbound(invocation, meta) }
+}

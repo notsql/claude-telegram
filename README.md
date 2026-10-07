@@ -122,7 +122,26 @@ To debug in the foreground, stop the service first.
 | `TELEGRAM_MAX_CONCURRENT_SESSIONS` | `3` | Chats or topics whose turns run at the same time; others wait with a 🫡 reaction |
 | `TELEGRAM_INTERRUPT_ON_NEW_MESSAGE` | unset | `1` interrupts the running turn when a new message arrives |
 
-**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. Each chat and forum topic is its own conversation, and up to `TELEGRAM_MAX_CONCURRENT_SESSIONS` of them work at once. Messages sent while the bot is busy in that chat are answered together in the next turn; a 🫡 reaction marks a message that is waiting. `/stop` interrupts the turn running in the chat or topic where you send it. `/new` starts a fresh conversation there, `/sessions` lists the earlier ones and `/resume <n>` switches back to one; these and `/stop` only work for senders in your `allowFrom` list. When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
+**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. Each chat and forum topic is its own conversation, and up to `TELEGRAM_MAX_CONCURRENT_SESSIONS` of them work at once. Messages sent while the bot is busy in that chat are answered together in the next turn; a 🫡 reaction marks a message that is waiting. `/stop` interrupts the turn running in the chat or topic where you send it, and `/new` starts a fresh conversation there (see [Commands](#commands)). When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
+
+### Commands
+
+You don't need commands: ask in plain words and the agent does the same thing with its tools. Commands are a sure shortcut that runs the same code. Type `/` to see them; DMs show them all, groups show `/new`, `/stop`, `/search` and `/status`, and group admins also see `/policy`. Commands only work for senders in your `allowFrom` list.
+
+| Command | Plain words / agent tool |
+| --- | --- |
+| `/new`, `/resume [n]`, `/sessions` | "let's start fresh", "go back to yesterday's chat" · `session_new`, `session_resume` |
+| `/stop` | a "stop" message when `TELEGRAM_INTERRUPT_ON_NEW_MESSAGE=1` |
+| `/model [name]` | "use opus for this" · `session_set_model`. Lasts until the next new session. |
+| `/compact` | Claude Code compacts on its own; this forces it. |
+| `/cost`, `/status` | "what's this costing me?" · `session_status` |
+| `/remember`, `/forget`, `/memory` | "remember I use pnpm", "forget that I use npm" · `memory_write`, `memory_delete`, `memory_search` |
+| `/search <words>` | "what did we decide about postgres?" · `history_search` |
+| `/skills [show\|rm] [name]` | "which skills do you have?" · `skill_list`, `skill_read`; buttons archive or remove |
+| `/policy` | Owner only. The agent may suggest changes but never applies them. |
+| `/start`, `/help` | Pairing instructions and this overview. |
+
+Your skills (user, project and plugin) appear as commands too, with Telegram-safe names: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory), and a newly learned skill shows up within a minute. In groups, `/model`, `/forget`, `/policy` and removing a skill need one of the chat's `approvers`.
 
 ### Groups and forum topics
 
@@ -147,6 +166,7 @@ Quick reference: IDs are **numeric user IDs** (get yours from [@userinfobot](htt
 | --- | --- |
 | `reply` | Send to a chat. Takes `chat_id` + `text`, optionally `reply_to` (message ID) for native threading and `files` (absolute paths) for attachments. Images (`.jpg`/`.png`/`.gif`/`.webp`) send as photos with inline preview; other types send as documents. Max 50MB each. Auto-chunks text; files send as separate messages after the text. Returns the sent message ID(s). |
 | `react` | Add an emoji reaction to a message by ID. **Only Telegram's fixed whitelist** is accepted (👍 👎 ❤ 🔥 👀 etc). |
+| `session_*` | Daemon only: `session_new`, `session_resume`, `session_set_model`, `session_status`, the agent's side of the session commands. |
 | `edit_message` | Edit a message the bot previously sent. Useful for "working…" → result progress updates. Only works on the bot's own messages. |
 
 Inbound messages trigger a typing indicator automatically — Telegram shows
