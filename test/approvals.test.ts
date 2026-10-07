@@ -160,3 +160,15 @@ test('Always prefers the CLI suggestions, e.g. a Read rule for a path outside cw
   expect((await res).hookSpecificOutput.decision.updatedPermissions[0].rules).toEqual([{ toolName: 'Read', ruleContent: '//Users/me/Development/**' }])
   expect(saved).toEqual(['Read(//Users/me/Development/**)'])
 })
+
+test('tool names read as words in the prompt', async () => {
+  const { toolLabel } = await import('../policy/approvals.ts')
+  expect(toolLabel('Bash')).toBe('Bash')
+  expect(toolLabel('WebFetch')).toBe('Web Fetch')
+  expect(toolLabel('NotebookEdit')).toBe('Notebook Edit')
+  expect(toolLabel('mcp__claude_ai_Notion__notion-query-data-sources')).toBe('Notion · Notion Query Data Sources')
+  expect(toolLabel('mcp__claude_ai_Atlassian_Rovo__getJiraIssue')).toBe('Atlassian Rovo · Get Jira Issue')
+  expect(toolLabel('mcp__claude_ai_Google_Drive__list_recent_files')).toBe('Google Drive · List Recent Files')
+  expect(toolLabel('mcp__tg__memory_write')).toBe('tg · Memory Write')
+  expect(toolLabel('mcp__x__fetchURLContent')).toBe('x · Fetch URL Content')
+})
