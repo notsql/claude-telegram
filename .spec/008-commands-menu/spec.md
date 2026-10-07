@@ -18,8 +18,7 @@ Telegram's `/` menu is the most discoverable way to control a bot. Under the con
 - **FR5**: Invoking a skill command passes the **native skill invocation** `/<original-skill-name> <args>` as the `claude -p` prompt in the current session. Claude Code expands it, including `$ARGUMENTS` and named `arguments`. This also works for `disable-model-invocation` skills. Skills with `user-invocable: false` are never put in the menu.
 - **FR6**: Menus are registered per scope with `setMyCommands` + `BotCommandScope`:
   - `all_private_chats`: session, agent and skill commands
-  - `all_group_chats`: `/new`, `/stop`, `/search`, `/status`, and the skills allowed by group policy
-  - `chat_administrators` / a per-chat scope for groups with custom policy: adds `/policy` and `/cron`
+  - `all_group_chats` and `all_chat_administrators`: the same, minus the DM-only `/start` and `/help` (owner decision 2026-10-07: groups get everything)
   Telegram's limit is 100 commands per scope. Built-in commands come first, then skills ranked by usage (006 `skills-usage.json`).
 - **FR7**: The menu refreshes on daemon start, on the `skills-changed` event (debounced 30 seconds), on policy change, and at most once per minute.
 - **FR8**: Unknown `/foo` that matches no command or skill is passed to the agent as text, so the agent can interpret it.
@@ -45,7 +44,7 @@ Telegram's `/` menu is the most discoverable way to control a bot. Under the con
 - Localised command descriptions (possible later via `language_code`).
 
 ## Acceptance criteria
-- **AC1** (FR6): The DM `/` menu shows the session, agent and skill commands. The group `/` menu shows the reduced set.
+- **AC1** (FR6): The DM `/` menu shows the session, agent and skill commands. The group `/` menu shows the same commands and skills, minus `/start` and `/help`.
 - **AC2** (FR4, FR7): A newly learned skill appears in the menu within 1 minute of the notice.
 - **AC3** (FR5): `/deploy_blog staging` invokes the skill with that argument.
 - **AC4** (FR4): Two skills that normalise to the same command name both appear, with distinct suffixes.

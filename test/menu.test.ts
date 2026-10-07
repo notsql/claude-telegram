@@ -7,15 +7,15 @@ const builtins = [
   { name: 'policy', description: 'Edit policy', menu: ['private', 'admin'] as const },
 ].map(b => ({ ...b, menu: [...b.menu] }))
 
-test('AC1: DMs get built-ins then skills by use; groups the reduced set; admins add /policy', () => {
+test('AC1: built-ins then skills by use; groups leave out DM-only commands', () => {
   const m = buildMenus(builtins, [
     { command: 'tidy', description: '', uses: 1 },
     { command: 'deploy_blog', description: 'Deploy the blog', uses: 9 },
   ])
   expect(m.all_private_chats.map(c => c.command)).toEqual(['new', 'memory', 'policy', 'deploy_blog', 'tidy'])
   expect(m.all_private_chats[4]!.description).toBe('Run the tidy skill')
-  expect(m.all_group_chats.map(c => c.command)).toEqual(['new'])
-  expect(m.all_chat_administrators.map(c => c.command)).toEqual(['new', 'policy'])
+  expect(m.all_group_chats.map(c => c.command)).toEqual(['new', 'deploy_blog', 'tidy'])
+  expect(m.all_chat_administrators.map(c => c.command)).toEqual(['new', 'policy', 'deploy_blog', 'tidy'])
 })
 
 test('at most 100 commands per scope', () => {

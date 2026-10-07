@@ -126,7 +126,7 @@ To debug in the foreground, stop the service first.
 
 ### Commands
 
-You don't need commands: ask in plain words and the agent does the same thing with its tools. Commands are a sure shortcut that runs the same code. Type `/` to see them; DMs show them all, groups show `/new`, `/stop`, `/search` and `/status`, and group admins also see `/policy`. Commands only work for senders in your `allowFrom` list.
+You don't need commands: ask in plain words and the agent does the same thing with its tools. Commands are a sure shortcut that runs the same code. Type `/` to see them; groups show the same ones except `/start` and `/help`. Commands only work for senders in your `allowFrom` list.
 
 | Command | Plain words / agent tool |
 | --- | --- |

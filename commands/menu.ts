@@ -1,6 +1,6 @@
 /**
- * Per-scope `/` menus (008 FR6, FR7). DMs get every built-in, then skills
- * ranked by use; groups get the reduced set, and group admins add `/policy`.
+ * Per-scope `/` menus (008 FR6, FR7). Every scope gets its built-ins, then
+ * skills ranked by use; groups leave out the DM-only ones (`/start`, `/help`).
  * At most 100 per scope. Refreshes are debounced, at most one per minute,
  * and a scope is only pushed when its list changed.
  */
@@ -21,8 +21,8 @@ export function buildMenus(builtins: MenuBuiltin[], skills: MenuSkill[]): Record
     .map(s => ({ command: s.command, description: (s.description || `Run the ${s.command} skill`).slice(0, 256) }))
   return {
     all_private_chats: [...pick('private'), ...ranked].slice(0, MAX_COMMANDS),
-    all_group_chats: pick('group'),
-    all_chat_administrators: pick('group', 'admin'),
+    all_group_chats: [...pick('group'), ...ranked].slice(0, MAX_COMMANDS),
+    all_chat_administrators: [...pick('group', 'admin'), ...ranked].slice(0, MAX_COMMANDS),
   }
 }
 
