@@ -15,7 +15,7 @@ src/
     stream.ts          stream-json event types + parser (contract-tested)
     args.ts            policy (003) → CLI flags
     prompt.ts          TELEGRAM_INSTRUCTIONS (for --append-system-prompt)
-    oneshot.ts         runOneShot(agent, input, schema) → claude -p --agent <hermes-*> --output-format json --json-schema … --settings '{"disableAllHooks":true}' (009)
+    oneshot.ts         runOneShot(agent, input, schema) → claude -p --agent <tg-*> --output-format json --json-schema … --settings '{"disableAllHooks":true}' (009)
     initGuard.ts       FR14: validate system/init (MCP connected, skills/plugins, hook_response seen)
   mcp/
     server.ts          MCP streamable-HTTP server on 127.0.0.1, bearer token, per-request session key

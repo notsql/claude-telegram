@@ -2,8 +2,8 @@
 
 ## Modules
 ```
-assets/agents/            shipped agent definitions (hermes-*.md)
-assets/skills/            shipped guidance skills (hermes-skill-authoring, hermes-research-method, …)
+assets/agents/            shipped agent definitions (tg-*.md)
+assets/skills/            shipped guidance skills (tg-skill-authoring, tg-research-method, …)
 src/agents/
   install.ts      copy assets → ~/.claude/agents|skills; checksum to detect user edits; never overwrite edited files
   store.ts        read/write agent .md (frontmatter), .bak versioning, section patch (shared helpers with skills/store.ts)
@@ -17,25 +17,25 @@ src/reflection/           schema + apply extended with `agents` section
 ## Example shipped agent
 ```markdown
 ---
-name: hermes-researcher
+name: tg-researcher
 description: Web research specialist. Use proactively when the user asks to research, compare, or find sources; returns a concise summary with links.
 tools: WebSearch, WebFetch, Read, Grep, Glob
 model: sonnet
 memory: user
 skills:
-  - hermes-research-method
+  - tg-research-method
 maxTurns: 30
 ---
-<!-- source: hermes · version: 1 -->
+<!-- source: tg · version: 1 -->
 You research questions on the web and return a short, sourced answer…
 Check your memory for the user's preferred sources and past findings; update it with durable findings.
 ```
-Agent frontmatter has no `metadata` field, so the hermes markers live in an HTML comment on the first body line. `install.ts` and `store.ts` parse that comment.
+Agent frontmatter has no `metadata` field, so the tg markers live in an HTML comment on the first body line. `install.ts` and `store.ts` parse that comment.
 
 ## One-shots as agents
 `agent/oneshot.ts` (001) becomes:
 ```
-claude -p "<input>" --agent hermes-reflector --output-format json --json-schema '<schema>' --settings '{"disableAllHooks": true}'
+claude -p "<input>" --agent tg-reflector --output-format json --json-schema '<schema>' --settings '{"disableAllHooks": true}'
 ```
 `disableAllHooks` stops the reflection run from triggering the daemon's own hooks (no recursion), and `--json-schema` gives schema-enforced `structured_output`. zod remains a second check.
 
@@ -53,7 +53,7 @@ claude -p "<input>" --agent hermes-reflector --output-format json --json-schema 
 The reflector prompt includes this table.
 
 ## Risks
-- **Description budget**: too many agents dilute delegation. Cap hermes agents at 12 and have the curator propose archiving unused ones (to `~/.claude/agents/.archive/`).
+- **Description budget**: too many agents dilute delegation. Cap tg agents at 12 and have the curator propose archiving unused ones (to `~/.claude/agents/.archive/`).
 - **Background subagents keeping `-p` open**: capped by `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`. The progress UX shows "background work running".
-- **Agent memory growth**: the curator also reviews `~/.claude/agent-memory/hermes-*/` weekly.
+- **Agent memory growth**: the curator also reviews `~/.claude/agent-memory/tg-*/` weekly.
 - **Subagent permission prompts**: these surface through the same `PermissionRequest` hook (003), so Telegram approvals work unchanged.

@@ -7,7 +7,7 @@ Depends on: 004 (reflection worker, guard), 005 (similar-request lookup), 003 (a
   *Verify:* unit tests for create, patch, undo.
 - [x] **T603** Extend the reflection schema and prompt with the skills section and trigger heuristics.
   *Verify:* the proposal JSON is logged for a 10-tool-call task.
-- [x] **T604** `skills/apply.ts`: confidence threshold, patch-over-create matching, protection of non-hermes skills (diff proposal only), per-turn cap.
+- [x] **T604** `skills/apply.ts`: confidence threshold, patch-over-create matching, protection of foreign skills (diff proposal only), per-turn cap.
   *Verify:* AC1, AC4.
 - [x] **T605** `autoLearn` modes and the propose UI (✅ / ✏️ / ✖).
   *Verify:* AC5.

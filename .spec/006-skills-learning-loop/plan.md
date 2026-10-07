@@ -18,7 +18,7 @@ This reuses `reflection/worker.ts` from 004. 006 only adds a schema section and 
 name: deploy-blog
 description: Build and deploy the personal Astro blog to Cloudflare Pages. Use when asked to publish/deploy the blog.
 metadata:
-  source: hermes
+  source: tg
   version: 1
   created_from: <claude_session_id>
   session_key: "123456789"
@@ -45,7 +45,7 @@ The live-context `` !`cmd` `` lines are limited to a read-only allowlist (`git s
 The `description` field is what Claude Code uses to decide when to load the skill. The reflection prompt has to optimise it for trigger accuracy, with concrete "Use when…" phrasing.
 
 ## Reflection prompt additions
-- The input includes the turn's tool-call trace (names and arg previews), user corrections, and the existing hermes skills (name and description only, so the token cost stays low).
+- The input includes the turn's tool-call trace (names and arg previews), user corrections, and the existing learned skills (name and description only, so the token cost stays low).
 - The model is asked: "Is there a reusable procedure here that isn't already covered? If it is covered, what is wrong or missing in the existing skill?"
 - Output: `skills: [{op:'create'|'patch'|'none', name, description, sections:{...}, reason, confidence}]`. Only proposals with confidence ≥ 0.7 are acted on.
 

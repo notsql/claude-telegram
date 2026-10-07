@@ -45,8 +45,8 @@ If the daemon is unreachable, the http hook fails, the request goes unanswered, 
 
 ## Tool filtering
 - Pass `--allowedTools`/`--disallowedTools` to `claude -p`, so Claude Code enforces them natively.
-- The MCP server's `tools/list` response for a session leaves out Hermes tools whose policy `requires` flag is false, so the model never sees them.
-- Hermes tools added later (004–007) register a `requires` flag (for example `schedulerAllowed`). The tool registry leaves them out when the flag is false.
+- The MCP server's `tools/list` response for a session leaves out daemon tools whose policy `requires` flag is false, so the model never sees them.
+- Daemon tools added later (004–007) register a `requires` flag (for example `schedulerAllowed`). The tool registry leaves them out when the flag is false.
 
 ## Terminal skill
 Extend `skills/access/SKILL.md` with `policy <key> <field> <value>`, `policy show <key>` and `policy reset <key>`. `bypassPermissions` can only be set here.

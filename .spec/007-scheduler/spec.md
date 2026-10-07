@@ -1,7 +1,7 @@
 # 007 — Scheduled Jobs (Cron)
 
 ## Problem
-A personal agent should act on its own schedule: morning briefings, reminders, recurring checks, and memory or skill maintenance. Hermes has a built-in scheduler whose results are delivered to the user's messaging platform. Our daemon is always on (001), so it can own the scheduling.
+A personal agent should act on its own schedule: morning briefings, reminders, recurring checks, and memory or skill maintenance. Our daemon is always on (001), so it can own the scheduling.
 
 ## User stories
 - **US1**: "Every weekday at 8:30 send me a summary of my GitHub notifications." The agent creates the job on its own and confirms the schedule in plain words.

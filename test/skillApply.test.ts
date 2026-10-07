@@ -28,12 +28,12 @@ function setup(autoLearn: Policy['autoLearn'] = 'auto') {
   return { root, store, a, notes, asks }
 }
 
-test('AC1: auto writes a hermes skill and notifies; low confidence, clashing names and extra proposals are dropped', () => {
+test('AC1: auto writes a learned skill and notifies; low confidence, clashing names and extra proposals are dropped', () => {
   const { store, a, notes } = setup()
   a.apply('123', { skills: [prop({ confidence: 0.5, name: 'weak' }), prop(), prop({ name: 'second', description: 'other thing entirely' })] })
   a.apply('123', { skills: [prop({ name: 'access', description: 'manage telegram access lists' })] })
   expect(store.list().map(s => s.name)).toEqual(['deploy-blog'])
-  expect(store.read('deploy-blog')!.metadata).toMatchObject({ source: 'hermes', version: '1', created_from: 'sess-1', session_key: '123' })
+  expect(store.read('deploy-blog')!.metadata).toMatchObject({ source: 'tg', version: '1', created_from: 'sess-1', session_key: '123' })
   expect(notes.map(n => `${n.verb} ${n.name}`)).toEqual(['Learned deploy-blog'])
 })
 

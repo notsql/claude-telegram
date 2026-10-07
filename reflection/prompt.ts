@@ -65,7 +65,7 @@ Consider a skill only when at least one signal holds: the turn used many tool ca
 - confidence: 0 to 1, how sure you are this is worth saving. Propose at most one skill.
 Skill outcomes ("skill_outcomes"): for each skill the assistant invoked in the exchange ([tool Skill …] lines), report how it went: "success", "corrected" (the user corrected the approach) or "failed". If a skill was corrected or failed, also patch it with what went wrong. Empty when no skill was invoked.`
 
-/** The `<skills_context>` block: existing hermes skills (name and description only) and the turn's signals. */
+/** The `<skills_context>` block: existing learned skills (name and description only) and the turn's signals. */
 export function skillsContext(skills: { name: string; description: string }[], toolCalls: number, similar: string[]): string {
   return [
     `Existing skills:\n${skills.map(s => `- ${s.name}: ${s.description}`).join('\n') || '(none)'}`,
@@ -74,7 +74,7 @@ export function skillsContext(skills: { name: string; description: string }[], t
   ].join('\n\n')
 }
 
-/** `skills` is the skills block (existing hermes skills and the turn's signals), or null when skill learning is off. */
+/** `skills` is the skills block (existing learned skills and the turn's signals), or null when skill learning is off. */
 export function reflectionInput(existing: string | null, delta: string, skills: string | null = null): string {
   const memory = existing === null
     ? '(memory is off for this chat: return empty "memory" and "user_model")'

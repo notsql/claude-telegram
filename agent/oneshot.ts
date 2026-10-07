@@ -2,7 +2,7 @@
  * Runs a one-shot structured call for 004–006: `claude -p --output-format json
  * --json-schema …` with every hook disabled, so it never reaches the daemon's
  * hook endpoint, and with no tools, no MCP servers and no saved transcript. The CLI validates against the schema; zod checks it again.
- * Until 009 T902 ships the `hermes-*` agents, calls without one use haiku.
+ * Until 009 T902 ships the `tg-*` agents, calls without one use haiku.
  */
 
 import { z } from 'zod'

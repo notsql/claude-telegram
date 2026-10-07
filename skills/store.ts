@@ -2,10 +2,10 @@
  * SKILL.md files under one skills root (006 FR1, plan "Patch semantics").
  * Frontmatter keeps `name`, `description`, any optional top-level fields
  * (`arguments`, `allowed-tools`, `context`…) as written, and a nested
- * `metadata` map (`source: hermes`, `version`, `created`, `updated`…).
+ * `metadata` map (`source: tg`, `version`, `created`, `updated`…).
  * A patch replaces named `## ` sections only. Before each patch the previous
  * file is copied to `<skill>/.bak/<version>.md`; undo restores the newest one.
- * Only `source: hermes` skills are patched unless the caller passes
+ * Only `source: tg` skills are patched unless the caller passes
  * `foreign: true` after an owner approved the diff (FR5).
  * Every write, undo, removal and archive emits `skills-changed` on
  * `skillEvents`, for the 008 menu refresh.
@@ -154,10 +154,10 @@ export function createSkillStore(root: string) {
       try { return readFileSync(fileOf(name), 'utf8') } catch { return undefined }
     },
 
-    /** New hermes skill at version 1. Throws when it exists or the guard refuses it. */
+    /** New learned skill at version 1. Throws when it exists or the guard refuses it. */
     create(d: SkillDraft): SkillWrite {
       if (existsSync(fileOf(d.name))) throw new Error(`skill ${d.name} already exists; patch it instead`)
-      const metadata = { source: 'hermes', version: '1', ...d.metadata, created: today(), updated: today() }
+      const metadata = { source: 'tg', version: '1', ...d.metadata, created: today(), updated: today() }
       const skill = { name: d.name, description: d.description.replace(/\s+/g, ' ').trim(), extra: d.extra ?? [], metadata, body: patchSections('', d.sections), dir: dirOf(d.name) }
       const text = renderSkill(skill)
       check(d.name, text)
@@ -169,7 +169,7 @@ export function createSkillStore(root: string) {
     patch(name: string, p: { description?: string; sections: Record<string, string>; extra?: [string, string][]; metadata?: Record<string, string> }, opts: { foreign?: boolean } = {}): SkillWrite {
       const cur = store.read(name)
       if (!cur) throw new Error(`no skill named ${name}`)
-      if (cur.metadata.source !== 'hermes' && !opts.foreign) throw new Error(`skill ${name} was not written by hermes; propose a diff instead`)
+      if (cur.metadata.source !== 'tg' && !opts.foreign) throw new Error(`skill ${name} was not written by this bot; propose a diff instead`)
       const prev = Number(cur.metadata.version) || 1
       const version = prev + 1
       const skill: Skill = {

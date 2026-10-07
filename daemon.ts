@@ -213,12 +213,12 @@ const skillApplier = createSkillApplier({
 
 const skillTools = createSkillTools(skillStoreFor, skillApplier)
 const skillUsage = createSkillUsage(join(STATE_DIR, 'skills-usage.json'))
-const isHermesSkill = (key: string, name: string) => skillStoreFor(key).read(name)?.metadata.source === 'hermes'
+const isLearnedSkill = (key: string, name: string) => skillStoreFor(key).read(name)?.metadata.source === 'tg'
 
 /** 006 FR7, FR8: record outcomes; a skill that keeps failing gets a refinement proposal for approval (AC6). */
 async function skillOutcomes(key: string, outcomes: Proposals['skill_outcomes'], delta: string): Promise<void> {
   for (const { name, outcome } of outcomes) {
-    if (!isHermesSkill(key, name) || !skillUsage.outcome(name, outcome)) continue
+    if (!isLearnedSkill(key, name) || !skillUsage.outcome(name, outcome)) continue
     log(`skills: refining ${name} after repeated failures`)
     const p = await runOneShot(undefined, refinementInput(skillStoreFor(key).text(name)!, delta), RefinementSchema)
     skillApplier.one(key, { ...p, op: 'patch', name, confidence: 1 }, true)
@@ -286,8 +286,8 @@ const reflection = createReflectionWorker({
   skills: (key, delta, payload) => {
     const p = policyOf(key)
     if (!p.autoLearn || p.autoLearn === 'off') return null
-    const hermes = skillStoreFor(key).list().filter(s => s.metadata.source === 'hermes')
-    return skillsContext(hermes, toolCalls(delta), similarRequests(key, delta, payload.session_id))
+    const learned = skillStoreFor(key).list().filter(s => s.metadata.source === 'tg')
+    return skillsContext(learned, toolCalls(delta), similarRequests(key, delta, payload.session_id))
   },
   apply: async (key, proposals, delta) => {
     applier.apply(key, proposals)
@@ -325,7 +325,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'stop': (payload, key) => { reflection.enqueue(key, payload) },
   'post-tool-use': (payload, key) => {
     const name = invokedSkill(payload)
-    if (name && isHermesSkill(key, name)) skillUsage.invoked(name)
+    if (name && isLearnedSkill(key, name)) skillUsage.invoked(name)
   },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
   'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
