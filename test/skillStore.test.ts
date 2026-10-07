@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { createSkillStore, patchSections } from '../skills/store'
+import { createSkillStore, patchSections, skillEvents } from '../skills/store'
 
 const root = () => mkdtempSync(join(tmpdir(), 'tg-skills-'))
 const draft = {
@@ -58,4 +58,19 @@ test('non-hermes skills are only patched with foreign: true; archive moves the d
 
 test('patchSections keeps unknown sections after the template ones', () => {
   expect(patchSections('intro\n\n## Notes\nn\n\n## Steps\ns', { Verify: 'v' })).toBe('intro\n\n## Steps\ns\n\n## Verify\nv\n\n## Notes\nn')
+})
+
+test('skills-changed fires on create, patch, undo, remove and archive', () => {
+  const seen: string[] = []
+  const on = (e: { name: string }) => seen.push(e.name)
+  skillEvents.on('skills-changed', on)
+  const s = createSkillStore(root())
+  s.create(draft)
+  s.patch('deploy-blog', { sections: { Verify: 'v' } })
+  s.undo('deploy-blog')
+  s.archive('deploy-blog')
+  s.create(draft)
+  s.remove('deploy-blog')
+  skillEvents.off('skills-changed', on)
+  expect(seen).toHaveLength(6)
 })

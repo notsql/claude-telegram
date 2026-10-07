@@ -7,8 +7,11 @@
  * file is copied to `<skill>/.bak/<version>.md`; undo restores the newest one.
  * Only `source: hermes` skills are patched unless the caller passes
  * `foreign: true` after an owner approved the diff (FR5).
+ * Every write, undo, removal and archive emits `skills-changed` on
+ * `skillEvents`, for the 008 menu refresh.
  */
 
+import { EventEmitter } from 'events'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { secretRefusal } from '../memory/guard.ts'
@@ -107,6 +110,10 @@ const rank = (head: string) => {
   return i < 0 ? SECTIONS.length : i
 }
 
+/** `skills-changed` with `{ root, name }`. */
+export const skillEvents = new EventEmitter()
+const changed = (root: string, name: string) => skillEvents.emit('skills-changed', { root, name })
+
 export type SkillWrite = { skill: Skill; op: 'create' | 'patch'; version: number }
 
 export function createSkillStore(root: string) {
@@ -125,6 +132,7 @@ export function createSkillStore(root: string) {
     mkdirSync(dirOf(name), { recursive: true })
     writeFileSync(`${fileOf(name)}.tmp`, text)
     renameSync(`${fileOf(name)}.tmp`, fileOf(name))
+    changed(root, name)
   }
 
   const store = {
@@ -194,7 +202,9 @@ export function createSkillStore(root: string) {
 
     /** Removes a skill entirely (undoing its creation). */
     remove(name: string): void {
-      if (validName(name)) rmSync(dirOf(name), { recursive: true, force: true })
+      if (!validName(name)) return
+      rmSync(dirOf(name), { recursive: true, force: true })
+      changed(root, name)
     },
 
     /** Moves a skill to `.archive/<name>` (a dated suffix when that is taken). */
@@ -205,6 +215,7 @@ export function createSkillStore(root: string) {
       let to = join(dest, name)
       if (existsSync(to)) to = `${to}-${Date.now()}`
       renameSync(dirOf(name), to)
+      changed(root, name)
       return to
     },
   }

@@ -56,7 +56,7 @@ import { createReflectionWorker } from './reflection/worker.ts'
 import { createApplier } from './reflection/apply.ts'
 import { ProposalsSchema } from './reflection/prompt.ts'
 import { runOneShot } from './agent/oneshot.ts'
-import { createSkillStore, type SkillStore } from './skills/store.ts'
+import { createSkillStore, skillEvents, type SkillStore } from './skills/store.ts'
 import { skillsRoot, takenNames } from './skills/paths.ts'
 import { createSkillApplier } from './skills/apply.ts'
 import { createSkillTools } from './skills/tools.ts'
@@ -190,6 +190,8 @@ const skillStoreFor = (key: string) => {
   return st
 }
 const skillNotices = createSkillNotices(bot.api)
+// 006 T611: 008's menu (T808) refreshes on this; until then it is only logged.
+skillEvents.on('skills-changed', ({ name }: { name: string }) => log(`skills-changed: ${name}`))
 const skillApplier = createSkillApplier({
   store: skillStoreFor,
   taken: st => takenNames(st.root, [config.cwd]),

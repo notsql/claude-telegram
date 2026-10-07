@@ -20,4 +20,4 @@ Depends on: 004 (reflection worker, guard), 005 (similar-request lookup), 003 (a
   *Verify:* AC3, AC6.
 - [x] **T610** Archive pruning, registered as a weekly system job with 007.
 - [ ] **T611** Emit `skills-changed` for the 008 menu refresh.
-  *Verify:* AC2.
+  *Verify:* AC2. (Event emitted; the menu half of AC2 waits on 008 T808.)
