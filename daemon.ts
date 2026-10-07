@@ -50,6 +50,7 @@ import { recall, withContext } from './history/recall.ts'
 import { searchCommand } from './history/commands.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
+import { forget, remember, showMemory, type CommandResult } from './memory/commands.ts'
 import { createInjector } from './memory/inject.ts'
 import { bridgePaths, importEnabled } from './memory/bridge.ts'
 import { createNotices, noticeText } from './memory/notices.ts'
@@ -502,6 +503,26 @@ commands.push({ name: 'search', handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
   await ctx.reply(searchCommand({ db: historyDb, sessions }, args, key, policyOf(key)), { link_preview_options: { is_disabled: true } })
+} })
+
+// 008 T805: memory curation over 004's command functions; writes get the Undo notice.
+const memoryReply = async (ctx: Context, r: CommandResult) =>
+  ctx.reply(r.text, r.change ? { reply_markup: notices.undoKeyboard(r.change) } : {})
+
+commands.push({ name: 'remember', handler: async (ctx, args) => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  await memoryReply(ctx, remember(memory, args, key, policyOf(key)))
+} })
+
+commands.push({ name: 'forget', requiresApprover: true, handler: async (ctx, args) => {
+  if (!isOwner(ctx)) return
+  await memoryReply(ctx, forget(memory, args, policyOf(sessionKey(ctx.msg!))))
+} })
+
+commands.push({ name: 'memory', handler: async ctx => {
+  if (!isOwner(ctx)) return
+  await memoryReply(ctx, showMemory(memory, userStore(String(ctx.from!.id)), policyOf(sessionKey(ctx.msg!))))
 } })
 
 commands.push({ name: 'sessions', handler: async ctx => {

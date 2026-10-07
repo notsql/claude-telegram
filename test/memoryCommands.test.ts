@@ -42,3 +42,20 @@ test('/memory lists shared entries and the sender model; memoryScope none refuse
   const none = { memoryScope: 'none' as const }
   for (const r of [remember(s, 'x', '1', none), forget(s, 'x', none), showMemory(s, u, none)]) expect(r.text).toContain('memoryScope: none')
 })
+
+test('008 AC5: /forget npm and the memory_delete tool leave the same store', async () => {
+  const { createMemoryTools } = await import('../memory/tools')
+  const viaCommand = fresh(), viaTool = fresh()
+  for (const s of [viaCommand, viaTool]) {
+    remember(s, 'I use pnpm, not npm', '1', on)
+    remember(s, 'Deploys go out on Fridays', '1', on)
+  }
+  const changes: string[] = []
+  const r = forget(viaCommand, 'npm', on)
+  if (r.change) changes.push(r.change.verb)
+  const name = viaTool.search('npm')[0]!.name
+  createMemoryTools(viaTool, () => viaTool, (_k, c) => changes.push(c.verb)).call('memory_delete', { name }, '1', on)
+  expect(viaCommand.list().map(e => e.name)).toEqual(viaTool.list().map(e => e.name))
+  expect(viaCommand.list()).toHaveLength(1)
+  expect(changes).toEqual(['Forgot', 'Forgot'])
+})
