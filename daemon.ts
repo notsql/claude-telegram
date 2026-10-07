@@ -595,6 +595,17 @@ for (let attempt = 1; ; attempt++) {
           ],
           { scope: { type: 'all_private_chats' } },
         ).catch(() => {})
+        // Owner-only commands that work in groups and topics; others see them but get no response.
+        void bot.api.setMyCommands(
+          [
+            { command: 'stop', description: 'Interrupt the running turn here' },
+            { command: 'new', description: 'Start a fresh session here' },
+            { command: 'sessions', description: 'List past sessions' },
+            { command: 'resume', description: 'Resume a past session: /resume <n>' },
+            { command: 'policy', description: 'View or edit this chat\'s policy' },
+          ],
+          { scope: { type: 'all_group_chats' } },
+        ).catch(() => {})
       },
     })
     break
