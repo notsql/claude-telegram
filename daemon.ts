@@ -82,7 +82,8 @@ import { scopeFor } from './history/tools.ts'
 import { createEngine } from './scheduler/engine.ts'
 import { failureNotice, runJob } from './scheduler/run.ts'
 import { createScheduleTools } from './scheduler/tools.ts'
-import { loadJobs, saveJobs, type Job } from './scheduler/store.ts'
+import type { Job } from './scheduler/store.ts'
+import { setJobEnabled } from './scheduler/manage.ts'
 import { startSystemJobs, type SystemJobId } from './scheduler/system.ts'
 import type { Policy } from './policy/schema.ts'
 import type { StreamEvent } from './agent/stream.ts'
@@ -559,13 +560,8 @@ async function fireJob(id: string): Promise<void> {
 bot.callbackQuery(/^sch:(retry|off):(j_[0-9a-f]+)$/, async ctx => {
   if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
   const [, action, id] = ctx.match as unknown as [string, 'retry' | 'off', string]
-  const jobs = loadJobs(STATE_DIR)
-  const job = jobs.find(j => j.id === id)
-  if (!job) return ctx.answerCallbackQuery({ text: 'Job is gone.' }).catch(() => {})
   // Retry re-enables an auto-disabled job with a clean failure count.
-  if (action === 'retry') Object.assign(job, { enabled: true, failures: 0 })
-  else job.enabled = false
-  saveJobs(STATE_DIR, jobs)
+  if (!setJobEnabled(STATE_DIR, id, action === 'retry')) return ctx.answerCallbackQuery({ text: 'Job is gone.' }).catch(() => {})
   scheduler.reload()
   if (action === 'retry') queueJob(id)
   const label = action === 'retry' ? '🔁 Retrying' : '⏸ Disabled'
