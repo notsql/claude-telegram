@@ -17,7 +17,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
   - **`PreToolUse` hook**: used only for **hard scope enforcement** that rules can't express, for example a `memory_*` scope or `cwd` escape. Telegram tools may message any allowlisted chat, not just the session's own (owner decision 2026-10-07). It returns `permissionDecision: deny` with a reason, or nothing.
   
   Subagent permission prompts go through the same `PermissionRequest` hook (009).
-- **FR2**: Prompt UI reuses the current keyboard (See more / ✅ Allow / ❌ Deny) and adds **♾ Always (this chat)**. "See more" expands to show the input preview, as it does today.
+- **FR2**: Prompt UI reuses the current keyboard (See more / ✅ Allow / ❌ Deny) and adds **♾ Always** (saved to the chat's `alwaysAllow`). The prompt names the tool and what the call is for: Bash's `description`, else its file path, URL, query or pattern. "See more" shows the Bash command (or the JSON input) in a code block (2026-10-07).
 - **FR3**: The prompt goes to the **originating session target** (chat and topic). Only users in `policy.approvers` can answer (default: owner IDs from `allowFrom`). Taps from anyone else get an "not authorised" toast.
 - **FR4**: If nobody answers within `approvalTimeoutSec` (default 60), the call is denied and the message is edited to "⌛ Expired". The `PermissionRequest` hook's `timeout` is generated as `approvalTimeoutSec` + 30s (the http hook default of 600s already allows this), so an expiry is a clean deny and never a hook error.
 - **FR5**: The text fallback `yes xxxxx` / `no xxxxx` still works (reuse `PERMISSION_REPLY_RE`).
@@ -40,6 +40,8 @@ A headless agent with shell and file access needs a human in the loop for risky 
 - **FR9**: `bypassPermissions` can only be set from the terminal skill, never from Telegram.
 - **FR10**: Every policy change and every approval decision is appended to `audit.log` (JSONL).
 - **FR11**: Policy, memory and history scopes are enforced **in code** (tool filtering and query filters), not only through prompt instructions.
+- **FR14**: **Reads never prompt** (owner decision 2026-10-07). Read-only calls are allowed by the hook without a prompt and audited as `auto`: Read, Glob, Grep, WebFetch, WebSearch; MCP tools whose names are reads (get, list, search, read, fetch…) with no write verb; and Bash commands where every part is a known reader (`ls`, `cat`, `git status`…) or has a read verb as its subcommand (`kubectl get`, `gh pr list`, `npm search`, `--help`). Redirection, substitution, backgrounding or a write verb anywhere still prompts.
+- **FR15**: **Allow lasts the session.** ✅ Allow adds the call's rule (as Always would derive it) for the rest of the chat's session, in memory, passed to later turns with `--allowedTools`; `/new` and `/resume` clear it. Always also persists it.
 - **FR13**: **cwd allowlist.** `claude -p` runs a working directory's `.claude/settings.json` hooks and `.mcp.json` servers **without a trust prompt**. A chat `cwd` must therefore be in the owner-approved `trustedDirs` list, which can only be set from the terminal skill.
 - **FR12**: **Owner-only on subscription.** Because auth is the owner's subscription (001 FR10), turns in groups are triggered only by owner IDs by default. Messages from other members can still feed the group context buffer (002 FR8), but they never start a model turn.
   - The owner can set `allowOthersOnSubscription: true` on a chat, from the terminal skill only. Doing so shows a terms warning and is recorded in `audit.log`.

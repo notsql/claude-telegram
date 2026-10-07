@@ -10,14 +10,17 @@ export type TurnStats = { turns: number; costUsd: number }
  * and 008's handlers and tools. `new` and `resume` interrupt the key's running
  * turn first, so it can't keep working in the session being left; the agent's
  * own tools pass `interrupt: false`, since that turn is the caller. A model
- * picked for a session lasts until the next `new` or `resume`, in memory.
+ * picked for a session, and rules from the approval Allow button (003 FR15),
+ * last until the next `new` or `resume`, in memory.
  */
 export function createSessionLifecycle(store: SessionStore, interrupt: (key: string) => void) {
   const models = new Map<string, string>()
+  const allowed = new Map<string, Set<string>>()
   const stats = new Map<string, TurnStats>()
   const leave = (key: string, opts: { interrupt?: boolean }) => {
     if (opts.interrupt !== false) interrupt(key)
     models.delete(key)
+    allowed.delete(key)
   }
 
   return {
@@ -46,6 +49,16 @@ export function createSessionLifecycle(store: SessionStore, interrupt: (key: str
 
     model(key: string): string | undefined {
       return models.get(key)
+    },
+
+    allow(key: string, rule: string): void {
+      const rules = allowed.get(key) ?? new Set()
+      allowed.set(key, rules.add(rule))
+    },
+
+    /** Rules allowed for the key's current session. */
+    allowed(key: string): string[] {
+      return [...allowed.get(key) ?? []]
     },
 
     /** Adds a finished turn's cost to its Claude Code session. */

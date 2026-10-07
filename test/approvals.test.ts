@@ -20,12 +20,18 @@ const tick = () => new Promise(r => setTimeout(r, 5))
 describe('approvals', () => {
   test('prompt goes to the topic and Allow resolves the held request', async () => {
     const { api, sent } = fakeApi()
-    const a = createApprovals({ api, timeoutSec: 60, saveRule: () => {} })
-    const res = a.handle({ tool_name: 'Bash', tool_input: { command: 'ls ~' } }, '-100:7')
+    const kept: string[] = []
+    const a = createApprovals({ api, timeoutSec: 60, saveRule: () => { throw new Error('Allow must not persist') }, sessionRule: (k, r) => kept.push(`${k} ${r}`) })
+    const res = a.handle({ tool_name: 'Bash', tool_input: { command: 'npm install', description: 'Install deps' } }, '-100:7')
     await tick()
-    expect(sent[0]).toMatchObject({ chat: '-100', text: expect.stringMatching(/^🔐 Permission: Bash\n\nOr reply "yes [a-km-z]{5}" \/ "no [a-km-z]{5}"\.$/), opts: { message_thread_id: 7 } })
+    expect(sent[0]).toMatchObject({ chat: '-100', text: expect.stringMatching(/^🔐 Permission: Bash\nInstall deps\n\nOr reply "yes [a-km-z]{5}" \/ "no [a-km-z]{5}"\.$/), opts: { message_thread_id: 7 } })
     expect(a.decide(idOf(sent[0]!.opts), 'allow')).toBe(true)
-    expect((await res).hookSpecificOutput.decision).toEqual({ behavior: 'allow' })
+    // FR15: Allow lasts the session, so it adds the rule without saving it to the chat.
+    expect((await res).hookSpecificOutput.decision).toEqual({
+      behavior: 'allow',
+      updatedPermissions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm install *' }], behavior: 'allow', destination: 'session' }],
+    })
+    expect(kept).toEqual(['-100:7 Bash(npm install *)'])
   })
 
   test('Deny returns a deny with a message; a second tap is rejected', async () => {
@@ -42,7 +48,7 @@ describe('approvals', () => {
   test('unanswered prompts expire into a deny (AC4)', async () => {
     const { api, edits } = fakeApi()
     const a = createApprovals({ api, timeoutSec: 0.02, saveRule: () => {} })
-    const out = await a.handle({ tool_name: 'Bash', tool_input: { command: 'ls' } }, '5')
+    const out = await a.handle({ tool_name: 'Bash', tool_input: { command: 'touch x' } }, '5')
     expect(out.hookSpecificOutput.decision.behavior).toBe('deny')
     expect(edits).toEqual(['🔐 Permission: Bash\n\n⌛ Expired'])
   })
@@ -61,13 +67,13 @@ describe('approvals', () => {
     expect(saved).toEqual(['5 Bash(npm test *)'])
   })
 
-  test('See more shows the input until decided', async () => {
+  test('See more shows the command in a code block until decided', async () => {
     const { api, sent } = fakeApi()
     const a = createApprovals({ api, timeoutSec: 60, saveRule: () => {} })
-    void a.handle({ tool_name: 'Bash', tool_input: { command: 'ls' } }, '5')
+    void a.handle({ tool_name: 'Bash', tool_input: { command: 'rm a && echo "<b>"' } }, '5')
     await tick()
     const id = idOf(sent[0]!.opts)
-    expect(a.details(id)).toContain('"command": "ls"')
+    expect(a.details(id)).toBe('🔐 Permission: Bash\n\n<pre><code class="language-bash">rm a &amp;&amp; echo "&lt;b&gt;"</code></pre>')
     a.decide(id, 'deny')
     expect(a.details(id)).toBeUndefined()
   })
@@ -104,11 +110,15 @@ test('decisions are audited with key, user, tool and decision', async () => {
   const { api, sent } = fakeApi()
   const entries: any[] = []
   const a = createApprovals({ api, timeoutSec: 60, saveRule: () => {}, audit: e => entries.push(e) })
-  const res = a.handle({ tool_name: 'Bash', tool_input: { command: 'ls' } }, '5')
+  const res = a.handle({ tool_name: 'Bash', tool_input: { command: 'mkdir x' } }, '5')
   await tick()
   a.decide(idOf(sent[0]!.opts), 'always', '42')
   await res
-  expect(entries).toEqual([{ event: 'approval', key: '5', tool: 'Bash', decision: 'always', user: '42', rule: 'Bash(ls *)' }])
+  await a.handle({ tool_name: 'Grep', tool_input: { pattern: 'x' } }, '5')
+  expect(entries).toEqual([
+    { event: 'approval', key: '5', tool: 'Bash', decision: 'always', user: '42', rule: 'Bash(mkdir x *)' },
+    { event: 'approval', key: '5', tool: 'Grep', decision: 'auto' },
+  ])
 })
 
 test('createAudit appends JSONL', async () => {
@@ -142,7 +152,7 @@ test('Always prefers the CLI suggestions, e.g. a Read rule for a path outside cw
   const a = createApprovals({ api, timeoutSec: 60, saveRule: (_k, r) => saved.push(r) })
   const res = a.handle({
     tool_name: 'Bash',
-    tool_input: { command: 'ls ~/Development' },
+    tool_input: { command: 'touch ~/Development/x' },
     permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Read', ruleContent: '//Users/me/Development/**' }], behavior: 'allow', destination: 'session' }],
   }, '5')
   await tick()
