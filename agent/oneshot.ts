@@ -1,7 +1,7 @@
 /**
  * Runs a one-shot structured call for 004–006: `claude -p --output-format json
  * --json-schema …` with every hook disabled, so it never reaches the daemon's
- * hook endpoint. The CLI validates against the schema; zod checks it again.
+ * hook endpoint, and with no tools, no MCP servers and no saved transcript. The CLI validates against the schema; zod checks it again.
  * Until 009 T902 ships the `hermes-*` agents, calls without one use haiku.
  */
 
@@ -21,6 +21,8 @@ export async function runOneShot<T extends z.ZodType>(
     // The CLI's validator rejects zod's default draft-2020-12 `$schema`.
     '--json-schema', JSON.stringify(z.toJSONSchema(schema, { target: 'draft-7' })),
     '--settings', '{"disableAllHooks":true}',
+    '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    '--no-session-persistence',
   ], { stdin: 'ignore', stdout: 'pipe', stderr: 'inherit', env })
 
   const [out, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited])

@@ -45,7 +45,11 @@ import { memoryRoot, userDir } from './memory/paths.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
 import { createInjector } from './memory/inject.ts'
-import { createNotices } from './memory/notices.ts'
+import { createNotices, noticeText } from './memory/notices.ts'
+import { createReflectionWorker } from './reflection/worker.ts'
+import { createApplier } from './reflection/apply.ts'
+import { ProposalsSchema } from './reflection/prompt.ts'
+import { runOneShot } from './agent/oneshot.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
@@ -155,6 +159,39 @@ function sawUser(key: string, userId: string): void {
 const participants = (key: string) =>
   [...seenUsers.get(key) ?? []].filter(([, t]) => Date.now() - t < ACTIVE_MS).map(([id]) => id).reverse()
 
+// 004 FR6: learn from each finished turn.
+const applier = createApplier({
+  store: memory,
+  userStore,
+  policy: policyOf,
+  notify: (key, change) => void notices.notify(key, change),
+  ask: (key, text, id) => {
+    const target = parseKey(key)
+    void bot.api.sendMessage(target.chatId, text, {
+      ...threadOpts(target),
+      reply_markup: { inline_keyboard: [[
+        { text: '✅ Save', callback_data: `mem:save:${id}` },
+        { text: '✖ Skip', callback_data: `mem:skip:${id}` },
+      ]] },
+    }).catch(() => {})
+  },
+  log,
+})
+const reflection = createReflectionWorker({
+  reflect: input => runOneShot(undefined, input, ProposalsSchema),
+  existing: key => {
+    const p = policyOf(key)
+    if (p.memoryScope === 'none' || !p.autoLearn || p.autoLearn === 'off') return null
+    const lines = memory.list().map(e => `${e.name} (${e.type}): ${e.description}`)
+    for (const id of participants(key)) {
+      for (const e of userStore(id).list()) lines.push(`user_model user_id=${id} ${e.name}: ${e.description}`)
+    }
+    return lines.join('\n')
+  },
+  apply: (key, proposals) => applier.apply(key, proposals),
+  log,
+})
+
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
@@ -174,6 +211,8 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
     memoryTools.startTurn(key)
     return injector.userPromptSubmit(payload, policyOf(key), participants(key))
   },
+  'stop': (payload, key) => { reflection.enqueue(key, payload) },
+  'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
   'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
@@ -436,6 +475,16 @@ bot.callbackQuery(/^mem:undo:([0-9a-f]+)$/, async ctx => {
   await ctx.answerCallbackQuery({ text: label }).catch(() => {})
   const msg = ctx.callbackQuery.message
   if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`).catch(() => {})
+})
+
+// 004 FR6: Save or Skip a proposed memory (autoLearn: propose).
+bot.callbackQuery(/^mem:(save|skip):([0-9a-f]+)$/, async ctx => {
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const r = applier.decide(ctx.match[2]!, ctx.match[1] === 'save')
+  if (!r) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  await ctx.answerCallbackQuery({ text: r.error ?? (r.change ? 'Saved' : 'Skipped') }).catch(() => {})
+  if (r.change) await ctx.editMessageText(noticeText(r.change), { reply_markup: notices.undoKeyboard(r.change) }).catch(() => {})
+  else if (!r.error) await ctx.deleteMessage().catch(() => {})
 })
 
 const isApprover = (key: string, userId: number) =>

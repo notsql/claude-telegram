@@ -15,9 +15,9 @@ Depends on: 001, 002, 003 (policy scopes, tool registry)
   *Verify:* AC2.
 - [x] **T406** Memory guidance in `TELEGRAM_INSTRUCTIONS` (when to save, curate and recall).
   *Verify:* AC1.
-- [ ] **T407** `reflection/worker.ts`: fed by the `Stop` hook (debounced) and the `PreCompact` hook (immediate). Reads the transcript delta, runs `agent/oneshot.ts` (Haiku, no tools, no hooks), and validates the output with zod.
+- [x] **T407** `reflection/worker.ts`: fed by the `Stop` hook (debounced) and the `PreCompact` hook (immediate). Reads the transcript delta, runs `agent/oneshot.ts` (Haiku, no tools, no hooks), and validates the output with zod.
   *Verify:* a log shows proposals after a turn, and the one-shot does not trigger another reflection.
-- [ ] **T408** `reflection/apply.ts`: dedup/merge, `autoLearn` modes, and propose buttons (✅ Save / ✖ Skip).
+- [x] **T408** `reflection/apply.ts`: dedup/merge, `autoLearn` modes, and propose buttons (✅ Save / ✖ Skip).
   *Verify:* AC5.
 - [x] **T409** Write notices with an Undo callback.
   *Verify:* AC6.

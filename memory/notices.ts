@@ -20,15 +20,22 @@ export function noticeText(c: Pick<MemoryChange, 'verb' | 'description'>): strin
 export function createNotices(api: Pick<Api, 'sendMessage'>) {
   const undos = new Map<string, MemoryChange>()
 
+  /** Registers the change's undo and returns the keyboard with its button. */
+  function undoKeyboard(change: MemoryChange) {
+    const id = randomBytes(6).toString('hex')
+    undos.set(id, change)
+    if (undos.size > MAX_PENDING) undos.delete(undos.keys().next().value!)
+    return { inline_keyboard: [[{ text: '↩️ Undo', callback_data: `mem:undo:${id}` }]] }
+  }
+
   return {
+    undoKeyboard,
+
     notify(key: string, change: MemoryChange): Promise<unknown> {
-      const id = randomBytes(6).toString('hex')
-      undos.set(id, change)
-      if (undos.size > MAX_PENDING) undos.delete(undos.keys().next().value!)
       const target = parseKey(key)
       return api.sendMessage(target.chatId, noticeText(change), {
         ...threadOpts(target),
-        reply_markup: { inline_keyboard: [[{ text: '↩️ Undo', callback_data: `mem:undo:${id}` }]] },
+        reply_markup: undoKeyboard(change),
       }).catch(() => {})
     },
 
