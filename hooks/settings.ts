@@ -50,6 +50,8 @@ export function renderHookSettings({ port, approvalTimeoutSec }: HookSettingsOpt
       PreToolUse: http('PreToolUse', { timeout: approvalTimeoutSec + 30 }),
       PermissionRequest: http('PermissionRequest', { timeout: approvalTimeoutSec + 30 }),
       ...Object.fromEntries(ASYNC.map(e => [e, http(e, { async: true })])),
+      // 006 FR7: only Skill calls are tracked.
+      PostToolUse: [{ matcher: 'Skill', ...http('PostToolUse', { async: true })[0]! }],
     },
   }
 }

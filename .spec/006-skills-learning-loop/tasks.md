@@ -14,9 +14,9 @@ Depends on: 004 (reflection worker, guard), 005 (similar-request lookup), 003 (a
 - [x] **T606** Notices with Show and Undo.
   *Verify:* FR10.
 - [x] **T607** `skills/tools.ts`: `skill_create/patch/list/read` registered with policy gating.
-- [ ] **T608** `skills/usage.ts`: `PostToolUse` hook handler (matcher `Skill`) records invocations, and reflection records outcomes.
+- [x] **T608** `skills/usage.ts`: `PostToolUse` hook handler (matcher `Skill`) records invocations, and reflection records outcomes.
   *Verify:* the counts increase.
-- [ ] **T609** Refinement trigger on repeated failures or corrections.
+- [x] **T609** Refinement trigger on repeated failures or corrections.
   *Verify:* AC3, AC6.
 - [ ] **T610** Archive pruning, registered as a weekly system job with 007.
 - [ ] **T611** Emit `skills-changed` for the 008 menu refresh.

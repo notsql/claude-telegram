@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { MEMORY_TYPES } from '../memory/store.ts'
 import { SECTIONS } from '../skills/store.ts'
+import { OUTCOMES } from '../skills/usage.ts'
 
 const Op = z.enum(['create', 'update', 'delete'])
 
@@ -35,6 +36,10 @@ export const ProposalsSchema = z.object({
     reason: z.string(),
     confidence: z.number(),
   })),
+  skill_outcomes: z.array(z.object({
+    name: z.string(),
+    outcome: z.enum(OUTCOMES),
+  })),
 })
 
 export type Proposals = z.infer<typeof ProposalsSchema>
@@ -57,7 +62,8 @@ Consider a skill only when at least one signal holds: the turn used many tool ca
 - op "create" for a new procedure. name: kebab-case, at most 48 chars. description: what it does plus a concrete "Use when…" phrase; Claude Code uses it to decide when to load the skill, so make it trigger on the right requests.
 - sections: "When to use", "Prerequisites", "Steps" (numbered, with the exact commands that worked), "Pitfalls" (what went wrong and the fix), "Verify". Markdown, concise.
 - Never include secrets, tokens, personal data or one-off details (specific file contents, dates, chat names).
-- confidence: 0 to 1, how sure you are this is worth saving. Propose at most one skill.`
+- confidence: 0 to 1, how sure you are this is worth saving. Propose at most one skill.
+Skill outcomes ("skill_outcomes"): for each skill the assistant invoked in the exchange ([tool Skill …] lines), report how it went: "success", "corrected" (the user corrected the approach) or "failed". If a skill was corrected or failed, also patch it with what went wrong. Empty when no skill was invoked.`
 
 /** The `<skills_context>` block: existing hermes skills (name and description only) and the turn's signals. */
 export function skillsContext(skills: { name: string; description: string }[], toolCalls: number, similar: string[]): string {
@@ -74,7 +80,14 @@ export function reflectionInput(existing: string | null, delta: string, skills: 
     ? '(memory is off for this chat: return empty "memory" and "user_model")'
     : existing || '(empty)'
   const skillPart = skills === null
-    ? '\n\nSkills are off for this chat: return an empty "skills" array.'
+    ? '\n\nSkills are off for this chat: return empty "skills" and "skill_outcomes" arrays.'
     : `\n\n${SKILL_INSTRUCTIONS}\n\n<skills_context>\n${skills}\n</skills_context>`
   return `${REFLECTION_INSTRUCTIONS}${skillPart}\n\n<existing_memory>\n${memory}\n</existing_memory>\n\n<exchange>\n${delta}\n</exchange>`
+}
+
+/** Refinement (006 FR8): a skill that keeps failing, with the exchange where it failed last. */
+export const RefinementSchema = ProposalsSchema.shape.skills.element.omit({ op: true, name: true, confidence: true })
+
+export function refinementInput(skillMd: string, delta: string): string {
+  return `This skill has failed or been corrected several times. Using the latest exchange where it was used, rewrite the sections that caused trouble so the next run succeeds. Give only the sections that change, plus the description (improve its "Use when…" phrase if it triggered wrongly). Never include secrets or personal data.\n\n<skill>\n${skillMd}\n</skill>\n\n<exchange>\n${delta}\n</exchange>`
 }

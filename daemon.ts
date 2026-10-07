@@ -60,8 +60,9 @@ import { createSkillStore, type SkillStore } from './skills/store.ts'
 import { skillsRoot, takenNames } from './skills/paths.ts'
 import { createSkillApplier } from './skills/apply.ts'
 import { createSkillTools } from './skills/tools.ts'
+import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
-import { skillsContext } from './reflection/prompt.ts'
+import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
 import { toolCalls } from './reflection/transcript.ts'
 import { search } from './history/search.ts'
 import { scopeFor } from './history/tools.ts'
@@ -208,6 +209,18 @@ const skillApplier = createSkillApplier({
 })
 
 const skillTools = createSkillTools(skillStoreFor, skillApplier)
+const skillUsage = createSkillUsage(join(STATE_DIR, 'skills-usage.json'))
+const isHermesSkill = (key: string, name: string) => skillStoreFor(key).read(name)?.metadata.source === 'hermes'
+
+/** 006 FR7, FR8: record outcomes; a skill that keeps failing gets a refinement proposal for approval (AC6). */
+async function skillOutcomes(key: string, outcomes: Proposals['skill_outcomes'], delta: string): Promise<void> {
+  for (const { name, outcome } of outcomes) {
+    if (!isHermesSkill(key, name) || !skillUsage.outcome(name, outcome)) continue
+    log(`skills: refining ${name} after repeated failures`)
+    const p = await runOneShot(undefined, refinementInput(skillStoreFor(key).text(name)!, delta), RefinementSchema)
+    skillApplier.one(key, { ...p, op: 'patch', name, confidence: 1 }, true)
+  }
+}
 
 /** 006 FR2: earlier user requests like this turn's first one, as hints that the task repeats. */
 function similarRequests(key: string, delta: string, sessionId: unknown): string[] {
@@ -253,9 +266,10 @@ const reflection = createReflectionWorker({
     const hermes = skillStoreFor(key).list().filter(s => s.metadata.source === 'hermes')
     return skillsContext(hermes, toolCalls(delta), similarRequests(key, delta, payload.session_id))
   },
-  apply: (key, proposals) => {
+  apply: async (key, proposals, delta) => {
     applier.apply(key, proposals)
     skillApplier.apply(key, proposals)
+    await skillOutcomes(key, proposals.skill_outcomes, delta)
   },
   log,
 })
@@ -286,6 +300,10 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
     return withContext(out, 'UserPromptSubmit', recalled)
   },
   'stop': (payload, key) => { reflection.enqueue(key, payload) },
+  'post-tool-use': (payload, key) => {
+    const name = invokedSkill(payload)
+    if (name && isHermesSkill(key, name)) skillUsage.invoked(name)
+  },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
   'pre-tool-use': (payload, key) => scopeDecision(payload, key, { trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
 } })
