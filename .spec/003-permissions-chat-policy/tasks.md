@@ -17,7 +17,7 @@ Depends on: 001 (hook endpoint T006, MCP server T005), 002 (session keys)
   *Verify:* manual test.
 - [ ] **T307** `policy/args.ts`: map the policy to `claude -p` flags (`--model`, `--permission-mode`, `--allowedTools`, `--disallowedTools`, `--max-turns`, `--agent`), render `alwaysAllow` into `--allowedTools` (same rule syntax as settings `permissions.allow`), and set `cwd`. Generate the `PermissionRequest` hook `timeout` from `approvalTimeoutSec`.
   *Verify:* AC5 (tool part).
-- [ ] **T308** MCP `tools/list` filtered by policy `requires` flags. This is groundwork for 004–007.
+- [x] **T308** MCP `tools/list` filtered by policy `requires` flags. This is groundwork for 004–007.
 - [ ] **T309** `/policy` inline editor in Telegram (owner only, no bypass option).
   *Verify:* AC6.
 - [ ] **T310** Extend the `/telegram:access` skill with policy subcommands and update ACCESS.md.
