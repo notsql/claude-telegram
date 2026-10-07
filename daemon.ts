@@ -72,6 +72,7 @@ import { search } from './history/search.ts'
 import { registry, type Command } from './commands/registry.ts'
 import { authorised, route } from './commands/dispatch.ts'
 import { assign, discoverSkills, loadTable, saveTable } from './commands/skillMap.ts'
+import { START_TEXT, helpText, pairingStatus } from './commands/help.ts'
 import { buildMenus, createMenu, type MenuSkill } from './commands/menu.ts'
 import { scopeFor } from './history/tools.ts'
 
@@ -637,29 +638,11 @@ commands.push({ name: 'cost', description: 'What this session has cost', menu: [
 // The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
 
 commands.push({ name: 'start', description: 'Welcome and setup guide', menu: ['private'], handler: async ctx => {
-  if (!dmCommandGate(ctx)) return
-  await ctx.reply(
-    `This bot bridges Telegram to a Claude Code session.\n\n` +
-    `To pair:\n` +
-    `1. DM me anything: you'll get a 6-char code\n` +
-    `2. In Claude Code: /telegram:access pair <code>\n\n` +
-    `After that, DMs here reach that session.`
-  )
+  if (dmCommandGate(ctx)) await ctx.reply(START_TEXT)
 } })
 
 commands.push({ name: 'help', description: 'What this bot can do', menu: ['private'], handler: async ctx => {
-  if (!dmCommandGate(ctx)) return
-  await ctx.reply(
-    `Messages you send here route to a paired Claude Code session. ` +
-    `Text and photos are forwarded; replies and reactions come back.\n\n` +
-    `/start: pairing instructions\n` +
-    `/status: check your pairing state\n` +
-    `/stop: interrupt the running turn in this chat\n` +
-    `/new: start a fresh session here\n` +
-    `/sessions: list earlier sessions\n` +
-    `/resume <n>: switch back to an earlier session\n` +
-    `/policy: view or edit this chat's policy`
-  )
+  if (dmCommandGate(ctx)) await ctx.reply(helpText(commands))
 } })
 
 commands.push({ name: 'status', description: 'Session, model and cost', menu: ['private', 'group'], handler: async ctx => {
@@ -671,19 +654,8 @@ commands.push({ name: 'status', description: 'Session, model and cost', menu: ['
   }
   const gated = dmCommandGate(ctx)
   if (!gated) return
-  const { access, senderId } = gated
-  if (access.allowFrom.includes(senderId)) {
-    const name = ctx.from!.username ? `@${ctx.from!.username}` : senderId
-    await ctx.reply(`Paired as ${name}.\n\n${sessionStatus(sessionDeps, key, policyOf(key))}`)
-    return
-  }
-  for (const [code, p] of Object.entries(access.pending)) {
-    if (p.senderId === senderId) {
-      await ctx.reply(`Pending pairing: run in Claude Code:\n\n/telegram:access pair ${code}`)
-      return
-    }
-  }
-  await ctx.reply(`Not paired. Send me a message to get a pairing code.`)
+  const name = ctx.from!.username ? `@${ctx.from!.username}` : gated.senderId
+  await ctx.reply(pairingStatus(gated.access, gated.senderId, name, () => sessionStatus(sessionDeps, key, policyOf(key))))
 } })
 
 // 003 T309: owner-only policy editor for this chat or topic.
