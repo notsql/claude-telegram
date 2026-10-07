@@ -43,6 +43,7 @@ import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
 import { claudeDir, memoryRoot, userDir } from './memory/paths.ts'
+import { installAssets } from './agents/install.ts'
 import { openHistoryDb } from './history/db.ts'
 import { startIndexer } from './history/indexer.ts'
 import { createHistoryTools } from './history/tools.ts'
@@ -131,6 +132,16 @@ if (versionRefusal) {
 // the PID still belongs to one (PIDs get recycled).
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
 mkdirSync(config.cwd, { recursive: true })
+
+// 009 FR1: shipped tg agents and skills; user-edited files are kept.
+try {
+  const r = installAssets(claudeDir(), join(STATE_DIR, 'agents-installed.json'))
+  for (const p of r.installed) log(`installed ${p}`)
+  for (const p of r.updated) log(`updated ${p}`)
+  for (const p of r.kept) log(`kept user-edited ${p}`)
+} catch (err) {
+  log(`agent install failed: ${err}`)
+}
 try {
   const stale = parseInt(readFileSync(PID_FILE, 'utf8'), 10)
   if (stale > 1 && stale !== process.pid) {
