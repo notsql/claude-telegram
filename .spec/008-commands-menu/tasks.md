@@ -1,7 +1,7 @@
 # 008 — Tasks
 Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
 
-- [ ] **T801** Spike: does the `claude -p` stream-json `system/init` event list the loaded skills or slash commands? Choose init-event discovery or the filesystem scan.
+- [x] **T801** Spike: does the `claude -p` stream-json `system/init` event list the loaded skills or slash commands? Choose init-event discovery or the filesystem scan.
 - [ ] **T802** `skillMap.ts`: discovery, name normalisation, persistent collision table.
   *Verify:* AC4 with unit tests.
 - [ ] **T803** `registry.ts` and `dispatch.ts`: built-in vs. skill vs. passthrough, `@botname` handling, approver checks.

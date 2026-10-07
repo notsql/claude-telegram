@@ -19,6 +19,8 @@ Scan these locations:
 
 Only `name` and `description` are parsed. If the stream-json `system/init` event from `claude -p` lists the loaded skills or slash commands, prefer that (the runner caches it from the latest turn per cwd) and keep the filesystem scan as a fallback (check in T801).
 
+**T801 result (Claude Code 2.1.292, 2026-10-07):** yes. The `system/init` event carries `skills` (names only, plugin skills as `plugin:skill`), `slash_commands` (skills plus built-ins such as `clear`, `compact`, `model`, `context`, and internal ones prefixed `__`), `agents` and `plugins`. It has no descriptions. Decision: the init event is the source of truth for *which* skills are loaded in a cwd (the runner caches it from the latest turn per cwd); the filesystem scan above is kept only to read each listed skill's `description` for the Telegram menu, and as the fallback before any turn has run in that cwd. Built-ins come from 008's own registry, not from `slash_commands`.
+
 ## Name mapping
 ```
 deploy-blog          → deploy_blog
