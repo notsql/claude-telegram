@@ -10,6 +10,7 @@ import type { Policy } from '../policy/schema.ts'
 import type { ToolResult } from '../memory/tools.ts'
 import type { SkillApplier } from './apply.ts'
 import { SECTIONS, type SkillStore } from './store.ts'
+import type { SkillFields } from './validate.ts'
 
 const text = (t: string, isError?: boolean): ToolResult => ({ content: [{ type: 'text', text: t }], ...(isError && { isError }) })
 
@@ -17,6 +18,20 @@ const SECTIONS_SCHEMA = {
   type: 'object',
   description: 'Markdown per section. On patch, only the sections that change.',
   properties: Object.fromEntries(SECTIONS.map(s => [s, { type: 'string' }])),
+}
+
+const FIELDS_SCHEMA = {
+  type: 'object',
+  description: 'Optional SKILL.md frontmatter. arguments: names used as $name in the steps; allowed-tools: narrow, never bare Bash; context "fork" + agent for heavy procedures; paths: globs; disable-model-invocation for side effects. !`cmd` blocks in sections must be read-only commands.',
+  properties: {
+    arguments: { type: 'array', items: { type: 'string' } },
+    'argument-hint': { type: 'string' },
+    'allowed-tools': { type: 'array', items: { type: 'string' } },
+    context: { type: 'string', enum: ['fork'] },
+    agent: { type: 'string' },
+    paths: { type: 'array', items: { type: 'string' } },
+    'disable-model-invocation': { type: 'boolean' },
+  },
 }
 
 const READ_TOOLS = [
@@ -43,6 +58,7 @@ const WRITE_TOOLS = [
         name: { type: 'string', description: 'kebab-case, [a-z0-9-]{1,48}' },
         description: { type: 'string', description: 'What it does plus a concrete "Use when…" phrase' },
         sections: { ...SECTIONS_SCHEMA, required: ['Steps'] },
+        fields: FIELDS_SCHEMA,
       },
       required: ['name', 'description', 'sections'],
     },
@@ -52,7 +68,7 @@ const WRITE_TOOLS = [
     description: 'Fix or extend an existing skill: replaces only the given sections. Skills this bot did not write are sent to the owner as a diff instead.',
     inputSchema: {
       type: 'object',
-      properties: { name: { type: 'string' }, description: { type: 'string' }, sections: SECTIONS_SCHEMA },
+      properties: { name: { type: 'string' }, description: { type: 'string' }, sections: SECTIONS_SCHEMA, fields: FIELDS_SCHEMA },
       required: ['name', 'sections'],
     },
   },
@@ -98,6 +114,7 @@ export function createSkillTools(storeFor: (key: string) => SkillStore, applier:
             name: String(args.name ?? ''),
             description: String(args.description ?? cur?.description ?? ''),
             sections: (args.sections ?? {}) as Record<string, string>,
+            ...(args.fields && typeof args.fields === 'object' ? { fields: args.fields as SkillFields } : {}),
             reason: 'agent tool call',
             confidence: 1,
           }))

@@ -49,7 +49,7 @@ const WRITE_TOOLS = [
   },
 ]
 
-const MARKER = /^<!-- source: (\S+) · version: (\d+) -->/m
+export const MARKER = /^<!-- source: (\S+) · version: (\d+) -->/m
 
 export function renderAgent(d: AgentDraft, version: number): string {
   const list = (k: string, v?: unknown[]) => (v?.length ? [`${k}:`, ...v.map(x => `  - ${x}`)] : [])
@@ -68,6 +68,20 @@ export function renderAgent(d: AgentDraft, version: number): string {
     d.body.trim(),
     '',
   ].join('\n')
+}
+
+/** Writes `<dir>/<name>.md`, backing up `current` (the file it replaces) first. Returns the new version. */
+export function writeAgent(dir: string, draft: AgentDraft, current?: string): number {
+  const file = join(dir, `${draft.name}.md`)
+  const prev = Number((current && MARKER.exec(current)?.[2]) ?? 0)
+  mkdirSync(dir, { recursive: true })
+  if (current) {
+    mkdirSync(join(dir, '.bak'), { recursive: true })
+    writeFileSync(join(dir, '.bak', `${draft.name}.v${prev}.md`), current)
+  }
+  writeFileSync(`${file}.tmp`, renderAgent(draft, prev + 1))
+  renameSync(`${file}.tmp`, file)
+  return prev + 1
 }
 
 function draftOf(args: Record<string, unknown>): AgentDraft {
@@ -135,15 +149,8 @@ export function createAgentTools(dir: string, isAuthor: (key: string) => boolean
       if (wrote.has(key)) return text('limit of 1 agent write per turn reached', true)
       wrote.add(key)
 
-      const prev = Number(marker?.[2] ?? 0)
-      mkdirSync(dir, { recursive: true })
-      if (current) {
-        mkdirSync(join(dir, '.bak'), { recursive: true })
-        writeFileSync(join(dir, '.bak', `${draft.name}.v${prev}.md`), current)
-      }
-      writeFileSync(`${file(draft.name)}.tmp`, renderAgent(draft, prev + 1))
-      renameSync(`${file(draft.name)}.tmp`, file(draft.name))
-      return text(`${current ? 'updated' : 'created'} agent ${draft.name} (v${prev + 1})`)
+      const version = writeAgent(dir, draft, current)
+      return text(`${current ? 'updated' : 'created'} agent ${draft.name} (v${version})`)
     },
   }
 }

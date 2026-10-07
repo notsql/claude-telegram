@@ -24,8 +24,8 @@ Depends on: 001 (runner, http hooks), 003 (policy), 004/006 (reflection, skill s
   *Verify:* AC3.
 - [x] **T908** `agents/validate.ts` guardrails and `agents/tools.ts` (skill-author only).
   *Verify:* the AC5 rejection case.
-- [ ] **T909** Extend the reflection schema and apply with the `agents` section and the 005-backed recurrence check.
+- [x] **T909** Extend the reflection schema and apply with the `agents` section and the 005-backed recurrence check.
   *Verify:* AC5.
-- [ ] **T910** Upgrade the 006 SKILL.md template and validator for the FR10 fields, including validation of `!` commands against a read-only allowlist.
+- [x] **T910** Upgrade the 006 SKILL.md template and validator for the FR10 fields, including validation of `!` commands against a read-only allowlist.
   *Verify:* AC6.
 - [ ] **T911** Weekly maintenance (007): curator pass over agent memory, archive unused agents, skill-creator evals if installed.
