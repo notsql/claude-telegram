@@ -45,6 +45,7 @@ import { claudeDir, memoryRoot, userDir } from './memory/paths.ts'
 import { openHistoryDb } from './history/db.ts'
 import { startIndexer } from './history/indexer.ts'
 import { createHistoryTools } from './history/tools.ts'
+import { recall, withContext } from './history/recall.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
 import { createInjector } from './memory/inject.ts'
@@ -218,7 +219,12 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'session-start': (payload, key) => injector.sessionStart(payload, policyOf(key), participants(key)),
   'user-prompt-submit': (payload, key) => {
     memoryTools.startTurn(key)
-    return injector.userPromptSubmit(payload, policyOf(key), participants(key))
+    const policy = policyOf(key)
+    const out = injector.userPromptSubmit(payload, policy, participants(key))
+    const t = performance.now()
+    const recalled = recall({ db: historyDb, sessions }, payload, key, policy)
+    if (recalled) log(`history: recalled for ${key} in ${Math.round(performance.now() - t)}ms`)
+    return withContext(out, 'UserPromptSubmit', recalled)
   },
   'stop': (payload, key) => { reflection.enqueue(key, payload) },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
