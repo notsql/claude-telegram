@@ -13,7 +13,7 @@ Depends on: 001 (hook endpoint T006, MCP server T005), 002 (session keys)
   *Verify:* AC5, and a chat `cwd` outside `trustedDirs` is refused when the policy is saved.
 - [x] **T305** Move the `callback_query:data` handler. Add an approvers check and the Always button.
   *Verify:* AC2, AC3.
-- [ ] **T306** Keep the `yes xxxxx` text fallback working through the same resolver.
+- [x] ~~**T306** Keep the `yes xxxxx` text fallback working through the same resolver.~~ Dropped 2026-10-07: buttons are enough.
   *Verify:* manual test.
 - [ ] **T307** `policy/args.ts`: map the policy to `claude -p` flags (`--model`, `--permission-mode`, `--allowedTools`, `--disallowedTools`, `--max-turns`, `--agent`), render `alwaysAllow` into `--allowedTools` (same rule syntax as settings `permissions.allow`), and set `cwd`. Generate the `PermissionRequest` hook `timeout` from `approvalTimeoutSec`.
   *Verify:* AC5 (tool part).
