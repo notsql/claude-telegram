@@ -2,7 +2,8 @@
  * Read-only tool calls are allowed without a prompt (003 FR14): only writes
  * and updates reach the chat. Bash counts as read-only when every command in
  * it is a known reader, or names a read verb (get, list, search, help…) as its
- * subcommand. Anything with redirection, substitution or a write verb asks.
+ * subcommand, through loops, `if` and variables. Anything with redirection,
+ * substitution or a write verb asks.
  */
 
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'NotebookRead', 'TodoWrite', 'ToolSearch'])
@@ -51,16 +52,89 @@ function readOnlyName(name: string): boolean {
 }
 
 export function readOnlyCommand(command: string): boolean {
-  // Redirection, substitution, backgrounding and heredocs can write or hide a second command.
-  if (/[<>`]|\$\(|(?<!&)&(?!&)|\|&/.test(command.replace(/\d?>\s*\/dev\/null|2>&1/g, ''))) return false
-  const segments = command.split(/&&|\|\||[;|\n]/).map(s => s.trim()).filter(Boolean)
-  return segments.length > 0 && segments.every(readOnlySegment)
+  const segments = splitCommand(command)
+  if (!segments?.length) return false
+  const vars = new Map<string, string>()
+  return segments.every(words => readOnlySegment(words, vars))
 }
 
-function readOnlySegment(segment: string): boolean {
-  const words = segment.split(/\s+/).map(w => w.replace(/^['"]|['"]$/g, ''))
-  while (words.length && /^\w+=/.test(words[0]!)) words.shift() // `FOO=1 cmd`
-  const [cmd, ...args] = words
+/**
+ * Splits a command into simple commands (word lists) on unquoted `;`, `|`,
+ * `&&`, `||` and newlines, removing quotes. Undefined when it holds anything
+ * that could write or hide a command: substitution (`$(`, backticks, even in
+ * double quotes), backgrounding, or redirection other than to /dev/null or
+ * between output streams.
+ */
+function splitCommand(command: string): string[][] | undefined {
+  const segments: string[][] = []
+  let words: string[] = []
+  let word = ''
+  let quoted = false // the word had quotes, so an empty one still counts
+  let quote: '"' | "'" | undefined
+  const endWord = () => { if (word || quoted) words.push(word); word = ''; quoted = false }
+  const endSegment = () => { endWord(); if (words.length) segments.push(words); words = [] }
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!
+    const rest = command.slice(i)
+    if (quote === "'") { if (c === "'") quote = undefined; else word += c; continue }
+    if (c === '`' || rest.startsWith('$(')) return undefined
+    if (quote === '"') {
+      if (c === '"') quote = undefined
+      else if (c === '\\' && i + 1 < command.length) word += command[++i]
+      else word += c
+      continue
+    }
+    if (c === "'" || c === '"') { quote = c; quoted = true; continue }
+    if (c === '\\') { if (i + 1 < command.length) word += command[++i]; continue }
+    if (c === ' ' || c === '\t') { endWord(); continue }
+    if (c === ';' || c === '\n') { endSegment(); continue }
+    if (rest.startsWith('&&') || rest.startsWith('||')) { endSegment(); i++; continue }
+    if (c === '|') { if (command[i + 1] === '&') return undefined; endSegment(); continue }
+    if (c === '>' || c === '<' || c === '&') {
+      // `2>&1`, `>&2`, `>/dev/null`, `2>/dev/null`, `&>/dev/null`: harmless.
+      const m = /^&?>(?:&[12]|\s*\/dev\/null)(?=[\s;|&]|$)/.exec(rest)
+      if (!m || !/^[12]?$/.test(word)) return undefined
+      word = ''
+      i += m[0].length - 1
+      continue
+    }
+    word += c
+  }
+  if (quote) return undefined
+  endSegment()
+  return segments
+}
+
+/** Shell keywords that wrap a command: `do ls`, `then cat x`, `if grep -q …`. */
+const PREFIX_KEYWORDS = new Set(['do', 'then', 'else', 'elif', 'if', 'while', 'until', '!', '{', '('])
+const END_KEYWORDS = new Set(['done', 'fi', '}', ')'])
+
+function readOnlySegment(words: string[], vars: Map<string, string>): boolean {
+  words = [...words]
+  while (words.length && PREFIX_KEYWORDS.has(words[0]!)) words.shift()
+  if (!words.length || (words.length === 1 && END_KEYWORDS.has(words[0]!))) return true
+  // `for x in a b c` only sets the loop variable.
+  if (words[0] === 'for') return true
+  // `T=~/bin/tool` remembers T, so a later `$T history` is judged as `~/bin/tool history`.
+  const assigns: [string, string][] = []
+  while (words.length && /^\w+=/.test(words[0]!)) {
+    const [, k, v] = /^(\w+)=(.*)$/.exec(words.shift()!)!
+    assigns.push([k!, v!])
+  }
+  if (!words.length) {
+    for (const [k, v] of assigns) vars.set(k, v)
+    return true
+  }
+  let cmd = words[0]!
+  const ref = /^\$\{?(\w+)\}?$/.exec(cmd)
+  if (ref) {
+    const value = vars.get(ref[1]!)
+    if (!value) return false
+    cmd = value
+  }
+  // `/opt/homebrew/bin/gh` is judged as `gh`.
+  cmd = cmd.split('/').pop()!
+  const args = words.slice(1)
   if (!cmd || WRITERS.has(cmd)) return false
   if (cmd === 'git') return readOnlyGit(args)
   if (READERS.has(cmd)) {
