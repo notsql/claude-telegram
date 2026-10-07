@@ -14,9 +14,8 @@ const call = (tool_name: string, tool_input: object, key: string) =>
   scopeDecision({ tool_name, tool_input, cwd: '/work' }, key, opts) as Promise<any>
 
 describe('scopeDecision', () => {
-  test('reply to another chat is denied', async () => {
-    expect((await call('mcp__tg__reply', { chat_id: '999', text: 'x' }, '-100:7')).hookSpecificOutput.permissionDecision).toBe('deny')
-    expect(await call('mcp__tg__reply', { chat_id: '-100', text: 'x' }, '-100:7')).toEqual({})
+  test('reply to another chat is allowed', async () => {
+    expect(await call('mcp__tg__reply', { chat_id: '999', text: 'x' }, '-100:7')).toEqual({})
   })
 
   test('group file tools inside cwd, trusted dirs and inbox pass without asking', async () => {

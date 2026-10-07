@@ -7,11 +7,11 @@ Depends on: 001 (hook endpoint T006, MCP server T005), 002 (session keys)
   *Verify:* unit tests.
 - [x] **T303** `policy/rules.ts`: derive "Always" rules (command prefix with ` *`, dir globs).
   *Verify:* unit tests for `Bash(npm test *)`, `Edit(~/proj/**)` and bare `WebSearch`.
-- [ ] **T304** `approvals.ts`: `PermissionRequest` http hook handler, a long-held request until decision, pending map, timeout, deny-on-expiry, `updatedPermissions` for Always.
+- [x] **T304** `approvals.ts`: `PermissionRequest` http hook handler, a long-held request until decision, pending map, timeout, deny-on-expiry, `updatedPermissions` for Always.
   *Verify:* AC1, AC4, and killing the daemon mid-turn makes the tool call deny.
 - [ ] **T313** `scope.ts`: `PreToolUse` hard-scope denies (reply target, memory/history scope, cwd escape) and the `trustedDirs` check in `args.ts` (FR13).
   *Verify:* AC5, and a chat `cwd` outside `trustedDirs` is refused when the policy is saved.
-- [ ] **T305** Move the `callback_query:data` handler. Add an approvers check and the Always button.
+- [x] **T305** Move the `callback_query:data` handler. Add an approvers check and the Always button.
   *Verify:* AC2, AC3.
 - [ ] **T306** Keep the `yes xxxxx` text fallback working through the same resolver.
   *Verify:* manual test.

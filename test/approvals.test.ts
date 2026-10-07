@@ -23,7 +23,7 @@ describe('approvals', () => {
     const a = createApprovals({ api, timeoutSec: 60, saveRule: () => {} })
     const res = a.handle({ tool_name: 'Bash', tool_input: { command: 'ls ~' } }, '-100:7')
     await tick()
-    expect(sent[0]).toMatchObject({ chat: '-100', text: '🔐 Permission: Bash', opts: { message_thread_id: 7 } })
+    expect(sent[0]).toMatchObject({ chat: '-100', text: expect.stringMatching(/^🔐 Permission: Bash\n\nOr reply "yes [a-km-z]{5}" \/ "no [a-km-z]{5}"\.$/), opts: { message_thread_id: 7 } })
     expect(a.decide(idOf(sent[0]!.opts), 'allow')).toBe(true)
     expect((await res).hookSpecificOutput.decision).toEqual({ behavior: 'allow' })
   })

@@ -1,14 +1,14 @@
 /**
  * `PreToolUse` http hook handler (003 FR1): scope checks that permission rules
- * can't express. Telegram tools may only target the session's own chat (hard
- * deny). In groups, a file tool reaching outside the turn's cwd, the trusted
- * dirs and the inbox needs an approver's OK first. Anything else gets `{}`.
+ * can't express. In groups, a file tool reaching outside the turn's cwd, the
+ * trusted dirs and the inbox needs an approver's OK first. Anything else gets
+ * `{}`. Telegram tools may message any allowlisted chat (owner decision
+ * 2026-10-07); `assertAllowedChat` still refuses the rest.
  */
 
 import { parseKey } from '../sessions/key.ts'
 import { expandPath, isInside } from './args.ts'
 
-const CHAT_TOOLS = ['mcp__tg__reply', 'mcp__tg__react', 'mcp__tg__edit_message']
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep']
 
 export type ScopeOpts = {
@@ -23,10 +23,6 @@ export async function scopeDecision(payload: Record<string, unknown>, key: strin
   const tool = String(payload.tool_name ?? '')
   const input = (payload.tool_input ?? {}) as Record<string, unknown>
   const { chatId } = parseKey(key)
-
-  if (CHAT_TOOLS.includes(tool) && input.chat_id !== undefined && String(input.chat_id) !== chatId) {
-    return deny(`This session can only message chat ${chatId}.`)
-  }
 
   // Groups only (FR8 read-only defaults); the owner DM may touch any path.
   if (chatId.startsWith('-') && FILE_TOOLS.includes(tool)) {

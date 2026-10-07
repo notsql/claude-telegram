@@ -6,7 +6,7 @@ src/policy/
   schema.ts      zod schema for ChatPolicy + defaults per chat type
   resolve.ts     resolvePolicy(key) → merged effective policy (topic → chat → type default)
   approvals.ts   PermissionRequest hook handler (/hook/permission-request): pending map, timeout, Telegram buttons, updatedPermissions for Always
-  scope.ts       PreToolUse hook handler (/hook/pre-tool-use): hard scope denies only (memory scope, reply target, cwd escape)
+  scope.ts       PreToolUse hook handler (/hook/pre-tool-use): hard scope denies only (memory scope, cwd escape)
   rules.ts       derive an "Always" rule from tool+input (Bash → command prefix "Bash(npm test *)"; Edit/Write → dir glob)
   args.ts        policy → CLI flags (--model --permission-mode --allowedTools --disallowedTools --max-turns --agent), cwd (trustedDirs check)
   audit.ts       append-only audit.log

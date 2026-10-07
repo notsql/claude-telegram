@@ -77,7 +77,8 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
         if (p.messageId != null) void api.editMessageText(p.chatId, p.messageId, `${title(p)}\n\n⌛ Expired`).catch(() => {})
       }, timeoutSec * 1000)
       p.resolve = d => { clearTimeout(timer); pending.delete(id); by = p.by; resolve(d) }
-      void api.sendMessage(target.chatId, title(p), { ...threadOpts(target), reply_markup: keyboard(id, always) })
+      // FR5: the id is what a typed `yes xxxxx` answer refers to.
+      void api.sendMessage(target.chatId, `${title(p)}\n\nOr reply "yes ${id}" / "no ${id}".`, { ...threadOpts(target), reply_markup: keyboard(id, always) })
         .then(m => { p.messageId = m.message_id })
         .catch(err => process.stderr.write(`telegram daemon: permission prompt send failed: ${err}\n`))
     })

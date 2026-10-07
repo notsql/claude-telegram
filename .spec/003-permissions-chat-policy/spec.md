@@ -14,7 +14,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
 - **FR1**: Approvals use two hooks (001 FR4). Claude Code's own rule engine does the matching, so we don't reimplement it.
   - **Rules first, natively**: the policy's `allowedTools`/`disallowedTools`/`alwaysAllow` and `permissionMode` are passed as CLI flags and settings permission rules, and Claude Code evaluates them.
   - **`PermissionRequest` hook**: fires only when Claude Code *would prompt* (no rule resolved the call). The daemon sends the Telegram buttons, waits, and returns `decision.behavior: allow | deny`. "Always" also returns `decision.updatedPermissions` (`addRules`, destination `session`). In `-p` mode with no other host, an unanswered request counts as a deny.
-  - **`PreToolUse` hook**: used only for **hard scope enforcement** that rules can't express, for example a `memory_*` scope, cross-chat `reply` targets, or `cwd` escape. It returns `permissionDecision: deny` with a reason, or nothing.
+  - **`PreToolUse` hook**: used only for **hard scope enforcement** that rules can't express, for example a `memory_*` scope or `cwd` escape. Telegram tools may message any allowlisted chat, not just the session's own (owner decision 2026-10-07). It returns `permissionDecision: deny` with a reason, or nothing.
   
   Subagent permission prompts go through the same `PermissionRequest` hook (009).
 - **FR2**: Prompt UI reuses the current keyboard (See more / ✅ Allow / ❌ Deny) and adds **♾ Always (this chat)**. "See more" expands to show the input preview, as it does today.
