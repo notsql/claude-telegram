@@ -46,6 +46,8 @@ export function createApprovals({ api, timeoutSec, saveRule }: ApprovalsOpts) {
     .text('See more', `perm:more:${id}`)
     .text('✅ Allow', `perm:allow:${id}`)
     .text('❌ Deny', `perm:deny:${id}`)
+    .row()
+    .text('♾ Always (this chat)', `perm:always:${id}`)
 
   async function handle(payload: Record<string, unknown>, key: string) {
     const toolName = String(payload.tool_name ?? '')
@@ -77,6 +79,8 @@ export function createApprovals({ api, timeoutSec, saveRule }: ApprovalsOpts) {
       p.resolve(d)
       return true
     },
+    /** Session key of a pending request, for the approvers check (FR3). */
+    keyOf: (id: string) => pending.get(id)?.key,
     /** The expanded "See more" text, or undefined once decided. */
     details(id: string): string | undefined {
       const p = pending.get(id)

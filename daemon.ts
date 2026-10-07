@@ -19,7 +19,7 @@ import {
   gate, groupVerdict, dmCommandGate, checkApprovals, saveAccess,
 } from './access.ts'
 import { createApprovals } from './policy/approvals.ts'
-import { addAlwaysAllow } from './policy/resolve.ts'
+import { addAlwaysAllow, chatTypeOf, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
@@ -353,24 +353,26 @@ bot.command('status', async ctx => {
   await ctx.reply(`Not paired. Send me a message to get a pairing code.`)
 })
 
-// Approval buttons: `perm:<allow|deny|more>:<id>` (003 FR2).
+// Approval buttons: `perm:<allow|deny|always|more>:<id>` (003 FR2). Only the
+// key's approvers may answer (FR3); the first tap wins.
 bot.on('callback_query:data', async ctx => {
-  const m = /^perm:(allow|deny|more):([a-km-z]{5})$/.exec(ctx.callbackQuery.data)
+  const m = /^perm:(allow|deny|always|more):([a-km-z]{5})$/.exec(ctx.callbackQuery.data)
   if (!m) return ctx.answerCallbackQuery().catch(() => {})
-  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
-  const [, action, id] = m
+  const [, action, id] = m as unknown as [string, 'allow' | 'deny' | 'always' | 'more', string]
+  const key = approvals.keyOf(id)
+  if (!key) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  const approvers = resolvePolicy(loadAccess(), key, chatTypeOf(key)).approvers ?? []
+  if (!approvers.includes(String(ctx.from.id))) {
+    return ctx.answerCallbackQuery({ text: 'Not authorised to approve.' }).catch(() => {})
+  }
   if (action === 'more') {
-    const details = approvals.details(id!)
-    if (!details) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
-    const kb = approvals.keyboard(id!)
+    const kb = approvals.keyboard(id)
     kb.inline_keyboard[0]!.shift()
-    await ctx.editMessageText(details, { reply_markup: kb }).catch(() => {})
+    await ctx.editMessageText(approvals.details(id)!, { reply_markup: kb }).catch(() => {})
     return ctx.answerCallbackQuery().catch(() => {})
   }
-  if (!approvals.decide(id!, action as 'allow' | 'deny')) {
-    return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
-  }
-  const label = action === 'allow' ? '✅ Allowed' : '❌ Denied'
+  if (!approvals.decide(id, action)) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  const label = { allow: '✅ Allowed', deny: '❌ Denied', always: '♾ Always allowed in this chat' }[action]
   await ctx.answerCallbackQuery({ text: label }).catch(() => {})
   const msg = ctx.callbackQuery.message
   if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`).catch(() => {})

@@ -1,6 +1,9 @@
 import type { Access } from '../access.ts'
 import { defaultPolicy, type ChatType, type Policy } from './schema.ts'
 
+/** Telegram group and supergroup ids are negative; DMs use the user id. */
+export const chatTypeOf = (key: string): ChatType => (key.startsWith('-') ? 'group' : 'private')
+
 /**
  * Effective policy for a session key (FR6): topic key → chat key → defaults for
  * the chat type. Each field takes the most specific value set; `approvers`

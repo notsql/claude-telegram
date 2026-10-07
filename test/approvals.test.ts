@@ -79,3 +79,15 @@ test('addAlwaysAllow appends once to the exact key', () => {
   addAlwaysAllow(access, '-100:7', 'Bash(ls *)')
   expect(access.chats).toEqual({ '-100:7': { policy: { alwaysAllow: ['Bash(ls *)'] } } })
 })
+
+test('keyboard has Always and keyOf tracks pending requests', async () => {
+  const { api, sent } = fakeApi()
+  const a = createApprovals({ api, timeoutSec: 60, saveRule: () => {} })
+  void a.handle({ tool_name: 'Bash', tool_input: {} }, '-100:7')
+  await tick()
+  const id = idOf(sent[0]!.opts)
+  expect(JSON.stringify(sent[0]!.opts.reply_markup)).toContain(`perm:always:${id}`)
+  expect(a.keyOf(id)).toBe('-100:7')
+  a.decide(id, 'deny')
+  expect(a.keyOf(id)).toBeUndefined()
+})

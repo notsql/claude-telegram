@@ -36,3 +36,9 @@ describe('resolvePolicy', () => {
     expect(resolvePolicy(a, '-100:7', 'group').approvers).toEqual(['2'])
   })
 })
+
+test('chatTypeOf', async () => {
+  const { chatTypeOf } = await import('../policy/resolve.ts')
+  expect(chatTypeOf('-100:7')).toBe('group')
+  expect(chatTypeOf('5')).toBe('private')
+})
