@@ -2,17 +2,20 @@
  * `PreToolUse` http hook handler (003 FR1): scope checks that permission rules
  * can't express. In groups, a file tool reaching outside the turn's cwd, the
  * trusted dirs and the inbox needs an approver's OK first. Anything else gets
- * `{}`. Telegram tools may message any allowlisted chat (owner decision
+ * `{}`. Memory and history tools are denied when the policy turns them off
+ * (also refused inside the tools). Telegram tools may message any allowlisted chat (owner decision
  * 2026-10-07); `assertAllowedChat` still refuses the rest.
  */
 
 import { parseKey } from '../sessions/key.ts'
 import { expandPath, isInside } from './args.ts'
+import type { Policy } from './schema.ts'
 
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep']
 
 export type ScopeOpts = {
   trustedDirs: () => string[]
+  policy: (key: string) => Policy
   /** Always readable, e.g. the inbox where inbound photos land. */
   extraDirs: string[]
   /** Asks the key's approvers; true if allowed. */
@@ -23,6 +26,13 @@ export async function scopeDecision(payload: Record<string, unknown>, key: strin
   const tool = String(payload.tool_name ?? '')
   const input = (payload.tool_input ?? {}) as Record<string, unknown>
   const { chatId } = parseKey(key)
+
+  const name = tool.replace(/^mcp__tg__/, '')
+  if (name !== tool) {
+    const p = opts.policy(key)
+    if (name.startsWith('memory_') && p.memoryScope === 'none') return deny('Memory is off in this chat (memoryScope: none).')
+    if (name === 'history_search' && p.historyScope === 'none') return deny('History search is off in this chat (historyScope: none).')
+  }
 
   // Groups only (FR8 read-only defaults); the owner DM may touch any path.
   if (chatId.startsWith('-') && FILE_TOOLS.includes(tool)) {
