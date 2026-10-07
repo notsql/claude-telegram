@@ -66,6 +66,7 @@ import { createSkillTools } from './skills/tools.ts'
 import { listSkills, parseSkillsArgs, skillAction, type SkillAction } from './skills/commands.ts'
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { createAgentUsage } from './agents/usage.ts'
+import { availableAgents, setPolicyAgent } from './agents/available.ts'
 import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
@@ -623,6 +624,29 @@ commands.push({ name: 'model', description: 'Pick the model for this session', m
   } catch (err) {
     await ctx.reply((err as Error).message)
   }
+} })
+
+// 009 FR3, FR4: owner-only. Set on the session key, so a forum topic can run as its own agent (US3).
+commands.push({ name: 'agent', description: 'Run this chat as an agent: /agent [name|off]', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  const policy = policyOf(key)
+  const available = availableAgents(claudeDir(), policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd)
+  const name = args.trim()
+  if (!name) {
+    await ctx.reply([`Agent: ${policy.agent ?? 'none'}`, '', ...available.map(a => `${a === policy.agent ? '• ' : ''}${a}`), '', 'Send /agent <name>, or /agent off.'].join('\n'))
+    return
+  }
+  const access = loadAccess()
+  try {
+    setPolicyAgent(access, key, name === 'off' ? undefined : name, available)
+  } catch (err) {
+    await ctx.reply((err as Error).message)
+    return
+  }
+  saveAccess(access)
+  audit({ event: 'policy', key, user: String(ctx.from!.id), field: 'agent', value: name === 'off' ? 'default' : name })
+  await ctx.reply(name === 'off' ? 'Agent cleared.' : `Turns here now run as ${name}.`)
 } })
 
 bot.callbackQuery(/^mdl:(\w+)$/, async ctx => {

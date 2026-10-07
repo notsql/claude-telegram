@@ -20,7 +20,7 @@ Depends on: 001 (runner, http hooks), 003 (policy), 004/006 (reflection, skill s
   *Verify:* AC1, AC3, AC4.
 - [x] **T906** `agents/usage.ts`: SubagentStart/Stop hook handlers, `agents-usage.json`.
   *Verify:* counts per agent increase.
-- [ ] **T907** Policy `agent` field, its validation, and the `/agent` command (008).
+- [x] **T907** Policy `agent` field, its validation, and the `/agent` command (008).
   *Verify:* AC3.
 - [ ] **T908** `agents/validate.ts` guardrails and `agents/tools.ts` (skill-author only).
   *Verify:* the AC5 rejection case.
