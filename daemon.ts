@@ -62,6 +62,7 @@ import { createSkillStore, skillEvents, type SkillStore } from './skills/store.t
 import { skillsRoot, takenNames } from './skills/paths.ts'
 import { createSkillApplier } from './skills/apply.ts'
 import { createSkillTools } from './skills/tools.ts'
+import { listSkills, parseSkillsArgs, skillAction, type SkillAction } from './skills/commands.ts'
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
@@ -524,6 +525,39 @@ commands.push({ name: 'memory', handler: async ctx => {
   if (!isOwner(ctx)) return
   await memoryReply(ctx, showMemory(memory, userStore(String(ctx.from!.id)), policyOf(sessionKey(ctx.msg!))))
 } })
+
+// 008 T806: the chat's skills; archive and remove need an approver (FR10).
+const canChange = (ctx: Context, key: string, isGroup: boolean) =>
+  authorised({ requiresApprover: true }, isGroup, isApprover(key, ctx.from!.id), isOwner(ctx))
+
+commands.push({ name: 'skills', handler: async (ctx, args) => {
+  if (!isOwner(ctx)) return
+  const key = sessionKey(ctx.msg!)
+  const parsed = parseSkillsArgs(args)
+  if (!parsed) return void await ctx.reply('Usage: /skills, /skills show <name>, /skills rm <name>')
+  if (parsed === 'list') {
+    const r = listSkills(skillStoreFor(key))
+    return void await ctx.reply(r.text, r.keyboard ? { reply_markup: r.keyboard } : {})
+  }
+  if (parsed.action !== 'show' && !canChange(ctx, key, ctx.chat!.type !== 'private')) return void await ctx.reply('Only approvers can remove skills here.')
+  await ctx.reply(skillAction(skillStoreFor(key), parsed.action, parsed.name).text)
+} })
+
+bot.callbackQuery(/^skc:(show|arch|rm):([a-z0-9-]{1,48})$/, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg || !isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const action = ctx.match[1] as SkillAction
+  if (action !== 'show' && !canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  const r = skillAction(skillStoreFor(key), action, ctx.match[2]!)
+  await ctx.answerCallbackQuery(r.changes ? { text: r.text } : {}).catch(() => {})
+  if (r.changes) {
+    const list = listSkills(skillStoreFor(key))
+    await ctx.editMessageText(list.text, list.keyboard ? { reply_markup: list.keyboard } : {}).catch(() => {})
+  } else {
+    await bot.api.sendMessage(msg.chat.id, r.text, threadOpts(parseKey(key))).catch(() => {})
+  }
+})
 
 commands.push({ name: 'sessions', handler: async ctx => {
   if (!isOwner(ctx)) return
