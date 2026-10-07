@@ -14,6 +14,8 @@ export const PolicySchema = z.object({
   memoryScope: z.enum(['global', 'none']),
   historyScope: z.enum(['all', 'chat', 'none']),
   autoLearn: z.enum(['off', 'propose', 'auto']),
+  /** 006 FR1: where learned skills go; `project` uses `<cwd>/.claude/skills/` when `cwd` is set. */
+  skillScope: z.enum(['user', 'project']),
   schedulerAllowed: z.boolean(),
   approvers: z.array(z.string()),
   /** FR12: let non-owners start turns on the owner's subscription. Terminal skill only. */

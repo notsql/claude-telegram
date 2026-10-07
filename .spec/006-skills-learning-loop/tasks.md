@@ -1,7 +1,7 @@
 # 006 — Tasks
 Depends on: 004 (reflection worker, guard), 005 (similar-request lookup), 003 (autoLearn, tool registry)
 
-- [ ] **T601** `skills/paths.ts`: roots, name validation, discovery of installed skill names for collision checks.
+- [x] **T601** `skills/paths.ts`: roots, name validation, discovery of installed skill names for collision checks.
   *Verify:* unit tests.
 - [ ] **T602** `skills/store.ts`: frontmatter IO, section patching, `.bak` versioning, undo.
   *Verify:* unit tests for create, patch, undo.
