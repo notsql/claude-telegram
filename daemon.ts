@@ -41,7 +41,9 @@ import { createTopicNames } from './sessions/topics.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
 import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
-import { memoryRoot, userDir } from './memory/paths.ts'
+import { claudeDir, memoryRoot, userDir } from './memory/paths.ts'
+import { openHistoryDb } from './history/db.ts'
+import { startIndexer } from './history/indexer.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
 import { createInjector } from './memory/inject.ts'
@@ -146,6 +148,9 @@ const userStore = (id: string) => createMemoryStore(userDir(memory.dir, id))
 const notices = createNotices(bot.api)
 const memoryTools = createMemoryTools(memory, userStore, (key, change) => void notices.notify(key, change))
 const injector = createInjector({ store: memory, userStore, indexImported: () => importEnabled(bridgePaths(memory.dir)) })
+// 005: index Claude Code transcripts for history search (FR1, FR3).
+const historyDb = openHistoryDb(join(STATE_DIR, 'history.db'))
+const stopIndexer = startIndexer(historyDb, join(claudeDir(), 'projects'), log)
 const policyOf = (key: string) => resolvePolicy(loadAccess(), key, chatTypeOf(key))
 
 // 004 FR3: whose user model to inject: the latest sender first, then others active recently.
@@ -341,6 +346,7 @@ function shutdown(): void {
   } catch {}
   setTimeout(() => process.exit(0), SHUTDOWN_DEADLINE_MS).unref()
   turnAbort.abort()
+  stopIndexer()
   void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
     hookServer.stop()
