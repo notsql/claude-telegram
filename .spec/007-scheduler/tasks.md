@@ -5,7 +5,7 @@ Depends on: 001 (runner, budget), 002 (session targets, semaphore), 003 (policy 
   *Verify:* unit tests.
 - [x] **T702** `engine.ts`: load, schedule and reschedule on change, with tz support.
   *Verify:* a job fires in a test with a short interval.
-- [ ] **T703** `run.ts`: fresh vs. session mode, `origin="scheduler"` wrapper, header, fallback post, status bookkeeping.
+- [x] **T703** `run.ts`: fresh vs. session mode, `origin="scheduler"` wrapper, header, fallback post, status bookkeeping.
   *Verify:* AC1.
 - [ ] **T704** `describe.ts`: human-readable cron text and the next 3 runs.
   *Verify:* AC2.

@@ -75,6 +75,11 @@ import { assign, discoverSkills, loadTable, saveTable } from './commands/skillMa
 import { START_TEXT, helpText, pairingStatus } from './commands/help.ts'
 import { buildMenus, createMenu, type MenuSkill } from './commands/menu.ts'
 import { scopeFor } from './history/tools.ts'
+import { createEngine } from './scheduler/engine.ts'
+import { runJob } from './scheduler/run.ts'
+import type { Job } from './scheduler/store.ts'
+import type { Policy } from './policy/schema.ts'
+import type { StreamEvent } from './agent/stream.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
@@ -389,7 +394,9 @@ const setReaction = (chat_id: string, msgId: number, emoji: string | undefined) 
 // 002 FR5/FR6: serial per key, up to N keys at once, mid-turn messages batched.
 const turns = createTurnQueue<Inbound>({
   concurrency: config.maxConcurrentSessions,
-  run: (key, batch) => runBatch(key, batch).catch(err => log(`turn failed: ${err}`)),
+  // 007 FR9: scheduled runs share the slots, keyed `job:<id>` so one job never overlaps itself.
+  run: (key, batch) => (key.startsWith(JOB_PREFIX) ? fireJob(key.slice(JOB_PREFIX.length)) : runBatch(key, batch))
+    .catch(err => log(`turn failed: ${err}`)),
   onQueued: (key, item) => {
     item.queued = true
     if (item.msgId != null) void setReaction(parseKey(key).chatId, item.msgId, QUEUED_REACTION)
@@ -464,6 +471,47 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
   }
 }
 
+// 007: scheduled jobs. A run goes through the turn queue like a message.
+const JOB_PREFIX = 'job:'
+const notifyKey = (key: string, text: string) => {
+  const target = parseKey(key)
+  return bot.api.sendMessage(target.chatId, text, threadOpts(target)).catch(() => {})
+}
+
+/** FR4: fresh by default; `mode: session` resumes the chat's session. */
+async function jobTurn(job: Job, prompt: string, policy: Policy, onEvent: (ev: StreamEvent) => void): Promise<TurnOutcome> {
+  const access = loadAccess()
+  if (policy.cwd && !isTrustedCwd(policy.cwd, access.trustedDirs)) return { refused: [`cwd ${policy.cwd} is not in trustedDirs`], exitCode: 1 }
+  // FR11: jobs count toward the daily budget.
+  if (!budget.take()) return { refused: [`daily turn budget (${config.dailyTurnBudget}) used up`], exitCode: 1 }
+  const opts: RunTurnOpts = {
+    settingsFile: SETTINGS_FILE,
+    mcpPort: mcpServer.port,
+    mcpToken,
+    hookToken,
+    cwd: policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd,
+    maxTurns: policy.maxTurns ?? config.maxTurns,
+    policyArgs: policyArgs(policy),
+    signal: turnAbort.signal,
+    onEvent,
+  }
+  return job.mode === 'session' ? runInSession(job.sessionKey, prompt, `⏰ ${job.title ?? job.prompt}`, opts) : runTurn(job.sessionKey, prompt, opts)
+}
+
+async function fireJob(id: string): Promise<void> {
+  if (turnAbort.signal.aborted) return
+  const status = await runJob(id, { stateDir: STATE_DIR, policy: policyOf, turn: jobTurn, post: notifyKey })
+  if (status) log(`job ${id}: ${status}`)
+  scheduler.reload()
+}
+
+const scheduler = createEngine({ stateDir: STATE_DIR, fire: id => turns.enqueue(JOB_PREFIX + id, { prompt: '', text: '' }) })
+try {
+  scheduler.reload()
+} catch (err) {
+  log(`scheduler: could not load jobs.json: ${err}`)
+}
+
 let shuttingDown = false
 function shutdown(): void {
   if (shuttingDown) return
@@ -474,6 +522,7 @@ function shutdown(): void {
   } catch {}
   setTimeout(() => process.exit(0), SHUTDOWN_DEADLINE_MS).unref()
   turnAbort.abort()
+  scheduler.stop()
   stopIndexer()
   void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
