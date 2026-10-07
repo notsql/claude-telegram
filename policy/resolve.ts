@@ -17,3 +17,11 @@ export function resolvePolicy(access: Access, key: string, type: ChatType): Poli
     ...topic,
   }
 }
+
+/** Adds an Always rule (US2) to the key's own `alwaysAllow`, once. Mutates `access`. */
+export function addAlwaysAllow(access: Access, key: string, rule: string): void {
+  const chats = access.chats ??= {}
+  const policy = (chats[key] ??= {}).policy ??= {}
+  const rules = policy.alwaysAllow ??= []
+  if (!rules.includes(rule)) rules.push(rule)
+}

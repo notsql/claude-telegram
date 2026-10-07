@@ -71,7 +71,7 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     '--settings', opts.settingsFile,
     '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key)),
     '--append-system-prompt', TELEGRAM_INSTRUCTIONS,
-    // The daemon's own tools; with no handler a PermissionRequest denies in -p.
+    // The daemon's own tools never prompt.
     '--allowedTools', 'mcp__tg',
     '--max-turns', String(opts.maxTurns),
   ], {

@@ -16,8 +16,10 @@ import { randomBytes } from 'crypto'
 import { join } from 'path'
 import {
   STATE_DIR, initAccess, setBotUsername, loadAccess,
-  gate, groupVerdict, dmCommandGate, checkApprovals,
+  gate, groupVerdict, dmCommandGate, checkApprovals, saveAccess,
 } from './access.ts'
+import { createApprovals } from './policy/approvals.ts'
+import { addAlwaysAllow } from './policy/resolve.ts'
 import { type AttachmentMeta, safeName, downloadPhoto } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
@@ -124,7 +126,16 @@ if (!isLoggedIn()) {
 const mcpToken = randomBytes(32).toString('hex')
 const hookToken = randomBytes(32).toString('hex')
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN })
-const hookServer = startHookServer({ authToken: hookToken, log })
+const approvals = createApprovals({
+  api: bot.api,
+  timeoutSec: APPROVAL_TIMEOUT_SEC,
+  saveRule: (key, rule) => {
+    const access = loadAccess()
+    addAlwaysAllow(access, key, rule)
+    saveAccess(access)
+  },
+})
+const hookServer = startHookServer({ authToken: hookToken, log, handlers: { 'permission-request': approvals.handle } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 
 const sessions = createSessionStore(join(STATE_DIR, 'sessions.json'))
@@ -336,6 +347,29 @@ bot.command('status', async ctx => {
     }
   }
   await ctx.reply(`Not paired. Send me a message to get a pairing code.`)
+})
+
+// Approval buttons: `perm:<allow|deny|more>:<id>` (003 FR2).
+bot.on('callback_query:data', async ctx => {
+  const m = /^perm:(allow|deny|more):([a-km-z]{5})$/.exec(ctx.callbackQuery.data)
+  if (!m) return ctx.answerCallbackQuery().catch(() => {})
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  const [, action, id] = m
+  if (action === 'more') {
+    const details = approvals.details(id!)
+    if (!details) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+    const kb = approvals.keyboard(id!)
+    kb.inline_keyboard[0]!.shift()
+    await ctx.editMessageText(details, { reply_markup: kb }).catch(() => {})
+    return ctx.answerCallbackQuery().catch(() => {})
+  }
+  if (!approvals.decide(id!, action as 'allow' | 'deny')) {
+    return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  }
+  const label = action === 'allow' ? '✅ Allowed' : '❌ Denied'
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  const msg = ctx.callbackQuery.message
+  if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`).catch(() => {})
 })
 
 bot.on('message:text', ctx => handleInbound(ctx, ctx.message.text, undefined))
