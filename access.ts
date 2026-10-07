@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { parseChats, type ChatEntry } from './policy/schema.ts'
 
 export const STATE_DIR = process.env.TELEGRAM_STATE_DIR
   ?? join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'channels', 'telegram')
@@ -34,6 +35,8 @@ export type Access = {
   allowFrom: string[]
   groups: Record<string, GroupPolicy>
   pending: Record<string, PendingEntry>
+  /** Per-session-key settings (003 FR6), keyed `chat_id` or `chat_id:thread_id`. */
+  chats?: Record<string, ChatEntry>
   mentionPatterns?: string[]
   // delivery/UX config — optional, defaults live in the reply handler
   /** Emoji to react with on receipt. Empty string disables. Telegram only accepts its fixed whitelist. */
@@ -58,12 +61,13 @@ export function defaultAccess(): Access {
 export function readAccessFile(): Access {
   try {
     const raw = readFileSync(ACCESS_FILE, 'utf8')
-    const parsed = JSON.parse(raw) as Partial<Access>
+    const parsed = JSON.parse(raw) as Partial<Access> & { chats?: unknown }
     return {
       dmPolicy: parsed.dmPolicy ?? 'pairing',
       allowFrom: parsed.allowFrom ?? [],
       groups: parsed.groups ?? {},
       pending: parsed.pending ?? {},
+      ...(parsed.chats !== undefined && { chats: parseChats(parsed.chats) }),
       mentionPatterns: parsed.mentionPatterns,
       ackReaction: parsed.ackReaction,
       replyToMode: parsed.replyToMode,
