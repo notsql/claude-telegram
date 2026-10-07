@@ -477,6 +477,9 @@ for (let attempt = 1; ; attempt++) {
             { command: 'help', description: 'What this bot can do' },
             { command: 'status', description: 'Check your pairing status' },
             { command: 'stop', description: 'Interrupt the running turn in this chat' },
+            { command: 'new', description: 'Start a fresh session' },
+            { command: 'sessions', description: 'List past sessions' },
+            { command: 'resume', description: 'Resume a past session: /resume <n>' },
           ],
           { scope: { type: 'all_private_chats' } },
         ).catch(() => {})
