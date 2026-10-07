@@ -18,6 +18,7 @@ import type { Proposals } from '../reflection/prompt.ts'
 import { SIMILAR } from '../reflection/apply.ts'
 import { nameRefusal } from './paths.ts'
 import { parseSkill, patchSections, splitSections, type SkillStore } from './store.ts'
+import { fieldsToExtra, skillRefusal, type SkillFields } from './validate.ts'
 
 export const MIN_CONFIDENCE = 0.7
 const MAX_PENDING = 100
@@ -34,6 +35,8 @@ export type Planned = {
   name: string
   description: string
   sections: Record<string, string>
+  /** 009 FR10 frontmatter fields to set. */
+  fields?: SkillFields
   /** Patching a skill this bot did not write: only after the owner approves the diff. */
   foreign: boolean
 }
@@ -84,7 +87,8 @@ export function sectionDiff(body: string, sections: Record<string, string>): str
 /** The draft as it will read, for previews and Edit. */
 export function draftText(pl: Planned): string {
   const cur = pl.op === 'patch' ? pl.store.read(pl.name) : undefined
-  return `${pl.description}\n\n${patchSections(cur?.body ?? '', pl.sections)}`
+  const fields = pl.fields ? fieldsToExtra(pl.fields).map(([k, v]) => `${k}: ${v}\n`).join('') : ''
+  return `${pl.description}\n${fields}\n${patchSections(cur?.body ?? '', pl.sections)}`
 }
 
 export function createSkillApplier(opts: SkillApplyOpts) {
@@ -96,22 +100,26 @@ export function createSkillApplier(opts: SkillApplyOpts) {
     const sections = clean(p.sections)
     const existing = matchSkill(store, p.name, p.description)
     if (existing) {
-      return { store, op: 'patch', name: existing.name, description: p.description || existing.description, sections, foreign: existing.metadata.source !== 'tg' }
+      return { store, op: 'patch', name: existing.name, description: p.description || existing.description, sections, fields: p.fields, foreign: existing.metadata.source !== 'tg' }
     }
     const why = nameRefusal(p.name, opts.taken(store))
     if (why) return void log(`skills: dropped ${p.name}: ${why}`)
     if (!sections.Steps) return void log(`skills: dropped ${p.name}: no Steps section`)
-    return { store, op: 'create', name: p.name, description: p.description, sections, foreign: false }
+    return { store, op: 'create', name: p.name, description: p.description, sections, fields: p.fields, foreign: false }
   }
 
   function run(key: string, pl: Planned): SkillChange {
     const { store, name } = pl
+    const why = skillRefusal(pl.fields ?? {}, Object.values(pl.sections).join('\n'), opts.policy(key))
+    if (why) throw new Error(why)
+    const extra = pl.fields && fieldsToExtra(pl.fields)
     if (pl.op === 'create') {
       const session = opts.sessionOf?.(key)
-      store.create({ name, description: pl.description, sections: pl.sections, metadata: { ...(session && { created_from: session }), session_key: key } })
+      store.create({ name, description: pl.description, sections: pl.sections, extra, metadata: { ...(session && { created_from: session }), session_key: key } })
       return { verb: 'Learned', name, version: 1, store, undo: () => store.remove(name) }
     }
-    const r = store.patch(name, { description: pl.foreign ? undefined : pl.description, sections: pl.sections }, { foreign: pl.foreign })
+    const cur = extra && store.read(name)?.extra.filter(([k]) => !extra.some(([e]) => e === k))
+    const r = store.patch(name, { description: pl.foreign ? undefined : pl.description, sections: pl.sections, extra: cur && [...cur, ...extra] }, { foreign: pl.foreign })
     return { verb: 'Updated', name, version: r.version, store, undo: () => store.undo(name) }
   }
 

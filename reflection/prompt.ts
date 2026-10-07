@@ -10,6 +10,17 @@ import { MEMORY_TYPES } from '../memory/store.ts'
 import { SECTIONS } from '../skills/store.ts'
 import { OUTCOMES } from '../skills/usage.ts'
 
+/** 009 FR10 SKILL.md fields; see skills/validate.ts. */
+const SkillFieldsSchema = z.object({
+  arguments: z.array(z.string()).optional(),
+  'argument-hint': z.string().optional(),
+  'allowed-tools': z.array(z.string()).optional(),
+  context: z.literal('fork').optional(),
+  agent: z.string().optional(),
+  paths: z.array(z.string()).optional(),
+  'disable-model-invocation': z.boolean().optional(),
+})
+
 const Op = z.enum(['create', 'update', 'delete'])
 
 export const ProposalsSchema = z.object({
@@ -34,6 +45,7 @@ export const ProposalsSchema = z.object({
     name: z.string(),
     description: z.string(),
     sections: z.object(Object.fromEntries(SECTIONS.map(s => [s, z.string().optional()]))),
+    fields: SkillFieldsSchema.optional(),
     reason: z.string(),
     confidence: z.number(),
   })),
@@ -75,6 +87,7 @@ Consider a skill only when at least one signal holds: the turn used many tool ca
 - op "patch" with an existing skill's exact name when it covers the task: give only the sections that change. Prefer patch over create.
 - op "create" for a new procedure. name: kebab-case, at most 48 chars. description: what it does plus a concrete "Use when…" phrase; Claude Code uses it to decide when to load the skill, so make it trigger on the right requests.
 - sections: "When to use", "Prerequisites", "Steps" (numbered, with the exact commands that worked), "Pitfalls" (what went wrong and the fix), "Verify". Markdown, concise.
+- fields (optional SKILL.md frontmatter, only where relevant): "arguments" (names the user passes, used as $name in the steps, e.g. ["issue"]) with "argument-hint"; "allowed-tools" (a narrow pre-approved list such as "Bash(gh issue view:*)", never bare Bash); "context": "fork" plus "agent" for heavy procedures that should run in a subagent; "paths" (globs the skill applies to); "disable-model-invocation": true for side-effecting skills such as deploys. Steps may use !\`command\` blocks for live context: read-only commands only (git status/log/diff, gh issue view, ls, cat…), no pipes, variables or shell operators.
 - Never include secrets, tokens, personal data or one-off details (specific file contents, dates, chat names).
 - confidence: 0 to 1, how sure you are this is worth saving. Propose at most one skill.
 Skill outcomes ("skill_outcomes"): for each skill the assistant invoked in the exchange ([tool Skill …] lines), report how it went: "success", "corrected" (the user corrected the approach) or "failed". If a skill was corrected or failed, also patch it with what went wrong. Empty when no skill was invoked.`
@@ -115,7 +128,7 @@ export function reflectionInput(existing: string | null, delta: string, skills: 
 }
 
 /** Refinement (006 FR8): a skill that keeps failing, with the exchange where it failed last. */
-export const RefinementSchema = ProposalsSchema.shape.skills.element.omit({ op: true, name: true, confidence: true })
+export const RefinementSchema = ProposalsSchema.shape.skills.element.omit({ op: true, name: true, confidence: true, fields: true })
 
 export function refinementInput(skillMd: string, delta: string): string {
   return `This skill has failed or been corrected several times. Using the latest exchange where it was used, rewrite the sections that caused trouble so the next run succeeds. Give only the sections that change, plus the description (improve its "Use when…" phrase if it triggered wrongly). Never include secrets or personal data.\n\n<skill>\n${skillMd}\n</skill>\n\n<exchange>\n${delta}\n</exchange>`
