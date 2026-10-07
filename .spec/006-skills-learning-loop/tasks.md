@@ -13,7 +13,7 @@ Depends on: 004 (reflection worker, guard), 005 (similar-request lookup), 003 (a
   *Verify:* AC5.
 - [x] **T606** Notices with Show and Undo.
   *Verify:* FR10.
-- [ ] **T607** `skills/tools.ts`: `skill_create/patch/list/read` registered with policy gating.
+- [x] **T607** `skills/tools.ts`: `skill_create/patch/list/read` registered with policy gating.
 - [ ] **T608** `skills/usage.ts`: `PostToolUse` hook handler (matcher `Skill`) records invocations, and reflection records outcomes.
   *Verify:* the counts increase.
 - [ ] **T609** Refinement trigger on repeated failures or corrections.

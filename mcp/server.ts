@@ -15,6 +15,7 @@ import { loadAccess } from '../access.ts'
 import { chatTypeOf, resolvePolicy } from '../policy/resolve.ts'
 import type { MemoryTools } from '../memory/tools.ts'
 import type { HistoryTools } from '../history/tools.ts'
+import type { SkillTools } from '../skills/tools.ts'
 
 export type McpServerOpts = {
   /** Bearer token clients must send; random per daemon start. */
@@ -23,6 +24,7 @@ export type McpServerOpts = {
   botToken: string
   memory: MemoryTools
   history?: HistoryTools
+  skills?: SkillTools
   /** 0 picks a free port. */
   port?: number
 }
@@ -48,8 +50,8 @@ export function startMcpServer(opts: McpServerOpts): { port: number; stop: () =>
       const mcp = new Server({ name: 'tg', version: '1.0.0' }, { capabilities: { tools: {} } })
       const policy = resolvePolicy(loadAccess(), key, chatTypeOf(key))
       registerTelegramTools(mcp, opts.api, opts.botToken, key, policy, {
-        list: () => [...opts.memory.list(policy), ...opts.history?.list(policy) ?? []],
-        call: (name, args) => opts.memory.call(name, args, key, policy) ?? opts.history?.call(name, args, key, policy),
+        list: () => [...opts.memory.list(policy), ...opts.history?.list(policy) ?? [], ...opts.skills?.list(policy) ?? []],
+        call: (name, args) => opts.memory.call(name, args, key, policy) ?? opts.skills?.call(name, args, key, policy) ?? opts.history?.call(name, args, key, policy),
       })
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,

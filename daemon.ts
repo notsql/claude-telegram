@@ -59,6 +59,7 @@ import { runOneShot } from './agent/oneshot.ts'
 import { createSkillStore, type SkillStore } from './skills/store.ts'
 import { skillsRoot, takenNames } from './skills/paths.ts'
 import { createSkillApplier } from './skills/apply.ts'
+import { createSkillTools } from './skills/tools.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { skillsContext } from './reflection/prompt.ts'
 import { toolCalls } from './reflection/transcript.ts'
@@ -206,6 +207,8 @@ const skillApplier = createSkillApplier({
   log,
 })
 
+const skillTools = createSkillTools(skillStoreFor, skillApplier)
+
 /** 006 FR2: earlier user requests like this turn's first one, as hints that the task repeats. */
 function similarRequests(key: string, delta: string, sessionId: unknown): string[] {
   const first = /^USER: ([\s\S]*?)(?:\n\n(?:USER|AGENT): |$)/.exec(delta)?.[1]?.replace(/<[^>]*>/g, ' ').trim()
@@ -257,7 +260,7 @@ const reflection = createReflectionWorker({
   log,
 })
 
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools })
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -274,6 +277,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'session-start': (payload, key) => injector.sessionStart(payload, policyOf(key), participants(key)),
   'user-prompt-submit': (payload, key) => {
     memoryTools.startTurn(key)
+    skillTools.startTurn(key)
     const policy = policyOf(key)
     const out = injector.userPromptSubmit(payload, policy, participants(key))
     const t = performance.now()
