@@ -66,11 +66,15 @@ import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
 import { toolCalls } from './reflection/transcript.ts'
 import { search } from './history/search.ts'
+import { registry, type Command } from './commands/registry.ts'
+import { authorised, route } from './commands/dispatch.ts'
+import { loadTable } from './commands/skillMap.ts'
 import { scopeFor } from './history/tools.ts'
 
 const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
 const SETTINGS_FILE = join(STATE_DIR, 'hook-settings.json')
+const COMMANDS_FILE = join(STATE_DIR, 'commands.json')
 // 003 FR4 makes this configurable.
 const APPROVAL_TIMEOUT_SEC = 60
 // FR9: the whole shutdown, including the child's SIGINT → SIGTERM → SIGKILL escalation (7s).
@@ -467,8 +471,11 @@ process.on('SIGHUP', shutdown)
 
 const isOwner = (ctx: Context) => !!ctx.from && loadAccess().allowFrom.includes(String(ctx.from.id))
 
+// 008 T803: built-ins, routed by dispatch() ahead of the agent.
+const commands: Command[] = []
+
 // FR8: owners can interrupt the turn running in this chat or topic.
-bot.command('stop', async ctx => {
+commands.push({ name: 'stop', handler: async ctx => {
   if (!isOwner(ctx)) return
   const turn = runningTurns.get(sessionKey(ctx.msg!))
   if (!turn) {
@@ -476,31 +483,31 @@ bot.command('stop', async ctx => {
     return
   }
   turn.abort()
-})
+} })
 
 // 002 FR9, owner-only like /stop. 008 moves these into its command handlers.
-bot.command('new', async ctx => {
+commands.push({ name: 'new', handler: async ctx => {
   if (!isOwner(ctx)) return
   lifecycle.new(sessionKey(ctx.msg!))
   await ctx.reply('New session. The next message starts with no earlier context.')
-})
+} })
 
 // 005 US4: owner-only like /stop, scoped by the chat's historyScope. 008 moves it into its handlers.
-bot.command('search', async ctx => {
+commands.push({ name: 'search', handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
-  await ctx.reply(searchCommand({ db: historyDb, sessions }, ctx.match, key, policyOf(key)), { link_preview_options: { is_disabled: true } })
-})
+  await ctx.reply(searchCommand({ db: historyDb, sessions }, args, key, policyOf(key)), { link_preview_options: { is_disabled: true } })
+} })
 
-bot.command('sessions', async ctx => {
+commands.push({ name: 'sessions', handler: async ctx => {
   if (!isOwner(ctx)) return
   await ctx.reply(formatSessions(lifecycle.list(sessionKey(ctx.msg!))))
-})
+} })
 
-bot.command('resume', async ctx => {
+commands.push({ name: 'resume', handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
-  const arg = ctx.match.trim()
+  const arg = args.trim()
   if (!arg) {
     await ctx.reply(`${formatSessions(lifecycle.list(key))}\n\nSend /resume <n> to switch.`)
     return
@@ -511,11 +518,11 @@ bot.command('resume', async ctx => {
   } catch (err) {
     await ctx.reply((err as Error).message)
   }
-})
+} })
 
 // The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
 
-bot.command('start', async ctx => {
+commands.push({ name: 'start', handler: async ctx => {
   if (!dmCommandGate(ctx)) return
   await ctx.reply(
     `This bot bridges Telegram to a Claude Code session.\n\n` +
@@ -524,9 +531,9 @@ bot.command('start', async ctx => {
     `2. In Claude Code: /telegram:access pair <code>\n\n` +
     `After that, DMs here reach that session.`
   )
-})
+} })
 
-bot.command('help', async ctx => {
+commands.push({ name: 'help', handler: async ctx => {
   if (!dmCommandGate(ctx)) return
   await ctx.reply(
     `Messages you send here route to a paired Claude Code session. ` +
@@ -539,9 +546,9 @@ bot.command('help', async ctx => {
     `/resume <n>: switch back to an earlier session\n` +
     `/policy: view or edit this chat's policy`
   )
-})
+} })
 
-bot.command('status', async ctx => {
+commands.push({ name: 'status', handler: async ctx => {
   const gated = dmCommandGate(ctx)
   if (!gated) return
   const { access, senderId } = gated
@@ -557,7 +564,7 @@ bot.command('status', async ctx => {
     }
   }
   await ctx.reply(`Not paired. Send me a message to get a pairing code.`)
-})
+} })
 
 // 003 T309: owner-only policy editor for this chat or topic.
 const showPolicy = (key: string) => {
@@ -565,11 +572,11 @@ const showPolicy = (key: string) => {
   return [renderPolicy(key, p), { reply_markup: policyKeyboard(p) }] as const
 }
 
-bot.command('policy', async ctx => {
+commands.push({ name: 'policy', requiresApprover: true, handler: async ctx => {
   if (!isOwner(ctx)) return
   const [text, opts] = showPolicy(policyKey(sessionKey(ctx.msg!)))
   await ctx.reply(text, opts)
-})
+} })
 
 bot.callbackQuery(/^pol:(\w+):(\w+)$/, async ctx => {
   const msg = ctx.callbackQuery.message
@@ -704,7 +711,21 @@ bot.on('callback_query:data', async ctx => {
   if (msg && 'text' in msg && msg.text) await ctx.editMessageText(`${msg.text}\n\n${label}`).catch(() => {})
 })
 
-bot.on('message:text', ctx => handleInbound(ctx, ctx.message.text, undefined))
+// 008 FR8, FR10, FR11: built-in, skill, ignored (another bot's) or plain text.
+const builtins = registry(commands)
+bot.on('message:text', async ctx => {
+  const text = ctx.message.text
+  const r = route(text, ctx.me.username, builtins, loadTable(COMMANDS_FILE))
+  if (r.kind === 'ignore') return
+  if (r.kind === 'skill') return handleInbound(ctx, r.text, undefined)
+  if (r.kind === 'text') return handleInbound(ctx, text, undefined)
+  const key = sessionKey(ctx.msg)
+  if (!authorised(r.command, ctx.chat.type !== 'private', isApprover(key, ctx.from.id), isOwner(ctx))) {
+    await ctx.reply(`Only approvers can use /${r.command.name} here.`)
+    return
+  }
+  await r.command.handler(ctx, r.args)
+})
 
 bot.on('message:photo', ctx => handleInbound(
   ctx, ctx.message.caption ?? '(photo)', () => downloadPhoto(ctx.api, TOKEN, ctx.message.photo),
