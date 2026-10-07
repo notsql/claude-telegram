@@ -5,7 +5,7 @@
 src/policy/
   schema.ts      zod schema for ChatPolicy + defaults per chat type
   resolve.ts     resolvePolicy(key) → merged effective policy (topic → chat → type default)
-  approvals.ts   PermissionRequest hook handler (/hook/permission-request): pending map, timeout, Telegram buttons, applyRule for Always
+  approvals.ts   PermissionRequest hook handler (/hook/permission-request): pending map, timeout, Telegram buttons, updatedPermissions for Always
   scope.ts       PreToolUse hook handler (/hook/pre-tool-use): hard scope denies only (memory scope, reply target, cwd escape)
   rules.ts       derive an "Always" rule from tool+input (Bash → command prefix "Bash(npm test *)"; Edit/Write → dir glob)
   args.ts        policy → CLI flags (--model --permission-mode --allowedTools --disallowedTools --max-turns --agent), cwd (trustedDirs check)
@@ -34,7 +34,7 @@ src/telegram/policyUi.ts   /policy inline keyboard editor (owner only)
 3. The daemon creates a 5-letter `request_id` with the existing alphabet, stores it in `pending` with a resolver and timer, and sends the keyboard to the session target.
 4. The `callback_query:data` handler (moved from `server.ts`) checks `ctx.from.id ∈ approvers`, resolves the request, and edits the message to show the outcome.
 5. The response body is `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow|deny"}}}`. Confirm the exact shape in 001 T003.
-6. **Always**: `rules.ts` derives the rule, persists it to `alwaysAllow` (so later turns get it through `--settings`), and also returns `decision.applyRule` so the current session stops asking.
+6. **Always**: `rules.ts` derives the rule, persists it to `alwaysAllow` (so later turns get it through `--settings`), and also returns `decision.updatedPermissions` (`addRules`, destination `session`) so the current session stops asking.
 
 The daemon's MCP tools (for example `memory_*` with a scope) read the policy of their bound session key directly. They do not ask the model to behave.
 
