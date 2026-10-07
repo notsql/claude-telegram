@@ -83,7 +83,8 @@ import { createEngine } from './scheduler/engine.ts'
 import { failureNotice, runJob } from './scheduler/run.ts'
 import { createScheduleTools } from './scheduler/tools.ts'
 import type { Job } from './scheduler/store.ts'
-import { setJobEnabled } from './scheduler/manage.ts'
+import { chatJobs, deleteJob, setJobEnabled } from './scheduler/manage.ts'
+import { CRON_CALLBACK, cronView, type CronAction } from './commands/cron.ts'
 import { startSystemJobs, type SystemJobId } from './scheduler/system.ts'
 import type { Policy } from './policy/schema.ts'
 import type { StreamEvent } from './agent/stream.ts'
@@ -853,6 +854,34 @@ bot.callbackQuery(/^pol:(\w+):(\w+)$/, async ctx => {
   const [text, opts] = showPolicy(key)
   await ctx.editMessageText(text, opts).catch(() => {})
   await ctx.answerCallbackQuery({ text: `${field} → ${value}` }).catch(() => {})
+})
+
+// 008 T807, 007 US5: this chat's jobs with pause/resume, delete and run-now buttons.
+commands.push({ name: 'cron', description: "Manage this chat's scheduled jobs", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
+  const { text, keyboard } = cronView(chatJobs(STATE_DIR, sessionKey(ctx.msg!)))
+  await ctx.reply(text, keyboard ? { reply_markup: keyboard } : {})
+} })
+
+bot.callbackQuery(CRON_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg) return ctx.answerCallbackQuery().catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  if (!canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  const [, action, id] = ctx.match as unknown as [string, CronAction, string]
+  if (!chatJobs(STATE_DIR, key).some(j => j.id === id)) return ctx.answerCallbackQuery({ text: 'Job is gone.' }).catch(() => {})
+  let label: string
+  if (action === 'run') {
+    queueJob(id)
+    label = '▶️ Running now'
+  } else {
+    if (action === 'del') deleteJob(STATE_DIR, id)
+    else setJobEnabled(STATE_DIR, id, action === 'resume')
+    scheduler.reload()
+    label = { del: '🗑 Deleted', pause: '⏸ Paused', resume: '▶ Resumed' }[action]
+  }
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  const { text, keyboard } = cronView(chatJobs(STATE_DIR, key))
+  await ctx.editMessageText(text, keyboard ? { reply_markup: keyboard } : {}).catch(() => {})
 })
 
 // 004 FR9: Undo on a memory notice.

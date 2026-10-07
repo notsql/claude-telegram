@@ -138,10 +138,11 @@ You don't need commands: ask in plain words and the agent does the same thing wi
 | `/remember`, `/forget`, `/memory` | "remember I use pnpm", "forget that I use npm" · `memory_write`, `memory_delete`, `memory_search` |
 | `/search <words>` | "what did we decide about postgres?" · `history_search` |
 | `/skills [show\|rm] [name]` | "which skills do you have?" · `skill_list`, `skill_read`; buttons archive or remove |
+| `/cron` | "remind me tomorrow at 3pm…", "what have I scheduled?" · `schedule_*`; buttons pause, resume, delete or run now |
 | `/policy` | Owner only. The agent may suggest changes but never applies them. |
 | `/start`, `/help` | Pairing instructions and this overview. |
 
-Your skills (user, project and plugin) appear as commands too, with Telegram-safe names: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory), and a newly learned skill shows up within a minute. In groups, `/model`, `/forget`, `/policy` and removing a skill need one of the chat's `approvers`.
+Your skills (user, project and plugin) appear as commands too, with Telegram-safe names: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory), and a newly learned skill shows up within a minute. In groups, `/model`, `/forget`, `/cron`, `/policy` and removing a skill need one of the chat's `approvers`.
 
 ### Groups and forum topics
 
