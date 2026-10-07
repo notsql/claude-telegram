@@ -12,7 +12,7 @@ import type { Policy } from '../policy/schema.ts'
 export const EDITABLE = {
   permissionMode: ['default', 'acceptEdits', 'plan'],
   model: ['default', 'sonnet', 'opus', 'haiku'],
-  memoryScope: ['global', 'chat', 'none'],
+  memoryScope: ['global', 'none'],
   historyScope: ['all', 'chat', 'none'],
   autoLearn: ['off', 'propose', 'auto'],
   schedulerAllowed: ['true', 'false'],

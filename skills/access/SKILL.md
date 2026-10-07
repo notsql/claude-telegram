@@ -117,7 +117,7 @@ for a forum topic. Show `chats[<key>].policy` and, for a topic, the chat's
 entry it inherits from. Unset fields fall back to the chat-type defaults:
 DMs get `memoryScope: global`, `historyScope: all`, `autoLearn: auto`;
 groups get read-only tools (`Read Glob Grep WebSearch WebFetch mcp__tg`)
-pre-approved (anything else prompts), `memoryScope: chat`, `historyScope: chat`,
+pre-approved (anything else prompts), shared memory, `historyScope: chat`,
 `autoLearn: propose`, `schedulerAllowed: false`.
 
 ### `policy <key> <field> <value>`
@@ -132,7 +132,7 @@ Set one field of `chats[<key>].policy`. Validate:
   entry, otherwise refuse and suggest `trust add <dir>` first (the daemon
   also refuses turns in an untrusted cwd).
 - `maxTurns`: positive integer.
-- `memoryScope`: `global` | `chat` | `none`; `historyScope`: `all` | `chat` |
+- `memoryScope`: `global` | `none` (memory is shared by all chats); `historyScope`: `all` | `chat` |
   `none`; `autoLearn`: `off` | `propose` | `auto`.
 - `schedulerAllowed`, `teamsAllowed`: `true` | `false`.
 - `allowOthersOnSubscription`: `true` | `false`. Groups only. Before setting

@@ -6,7 +6,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
 ## User stories
 - **US1**: As the owner, when the agent wants to run a tool that is not pre-approved, I get Allow / Deny / Always / See-more buttons in the chat where the request came from.
 - **US2**: As the owner, I tap "Always" once and that tool (or tool+pattern) no longer prompts in this chat.
-- **US3**: As the owner, I configure a group topic so the agent can only read and search the web there, can't see my personal memory, and can only search that topic's own history.
+- **US3**: As the owner, I configure a group topic so the agent can only read and search the web there, and can only search that topic's own history. Memory is shared across all chats; I can turn it off for a chat.
 - **US4**: As the owner, I can view and edit a chat's policy from Telegram (`/policy`), or from the terminal (`/telegram:access`).
 - **US5**: As a group member who is not an approver, I cannot approve tool calls.
 
@@ -29,14 +29,14 @@ A headless agent with shell and file access needs a human in the loop for risky 
   - `model`, `cwd`, `maxTurns`
   - `agent`: run turns as this named subagent (009)
   - `teamsAllowed`: reserved for 010
-  - `memoryScope`: `global | chat | none` (004)
+  - `memoryScope`: `global | none` (004; memory is shared across chats, `none` turns it off)
   - `historyScope`: `all | chat | none` (005)
   - `autoLearn`: `off | propose | auto` (004/006)
   - `schedulerAllowed`: bool (007)
   - `approvers[]`
 - **FR8**: Defaults by chat type:
   - Owner DM: `permissionMode: default`, broad tools, `memoryScope: global`, `historyScope: all`, `autoLearn: auto`.
-  - Groups and topics: only the owner can trigger turns (FR12), read-only tools pre-approved (`Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch` and the Telegram tools); anything else, and any file path outside the chat's cwd, asks an approver instead of being blocked, `memoryScope: chat`, `historyScope: chat`, `autoLearn: propose`, `schedulerAllowed: false`.
+  - Groups and topics: only the owner can trigger turns (FR12), shared memory (`memoryScope: global`), read-only tools pre-approved (`Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch` and the Telegram tools); anything else, and any file path outside the chat's cwd, asks an approver instead of being blocked, `historyScope: chat`, `autoLearn: propose`, `schedulerAllowed: false`.
 - **FR9**: `bypassPermissions` can only be set from the terminal skill, never from Telegram.
 - **FR10**: Every policy change and every approval decision is appended to `audit.log` (JSONL).
 - **FR11**: Policy, memory and history scopes are enforced **in code** (tool filtering and query filters), not only through prompt instructions.
@@ -53,7 +53,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
 - **AC2** (FR2, FR6): After tapping Always on `Bash(ls:*)`, the next `ls` runs without a prompt in that chat, but still prompts in another chat.
 - **AC3** (FR3): A non-approver group member taps Allow and nothing happens. A toast appears.
 - **AC4** (FR4): An ignored prompt expires and the tool is denied.
-- **AC5** (FR8, FR11): In a default group, a request to edit a file or read outside the chat's cwd shows an approval prompt and runs only if allowed, and `memory_search` returns no global or owner memories.
+- **AC5** (FR8, FR11): In a default group, a request to edit a file or read outside the chat's cwd shows an approval prompt and runs only if allowed, and `history_search` returns only that chat's history.
 - **AC6** (FR9): Telegram `/policy` does not offer `bypassPermissions`.
 - **AC7** (FR12): In a default group, a non-owner mentioning the bot gets no model turn. The text still appears in the context of the owner's next turn.
 

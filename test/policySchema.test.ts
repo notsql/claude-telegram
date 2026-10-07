@@ -38,6 +38,6 @@ describe('policy schema', () => {
     expect(defaultPolicy('private').memoryScope).toBe('global')
     const g = defaultPolicy('group')
     expect(g.allowedTools).not.toContain('Edit')
-    expect(g).toMatchObject({ memoryScope: 'chat', historyScope: 'chat', autoLearn: 'propose', schedulerAllowed: false })
+    expect(g).toMatchObject({ memoryScope: 'global', historyScope: 'chat', autoLearn: 'propose', schedulerAllowed: false })
   })
 })

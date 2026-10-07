@@ -3,7 +3,7 @@
 ## Modules
 ```
 src/memory/
-  paths.ts       resolve global/chat/user roots from workspace cwd (Claude Code's project-dir sanitisation)
+  paths.ts       resolve the shared memory root and users/ from workspace cwd (Claude Code's project-dir sanitisation)
   store.ts       read/write/delete with frontmatter (gray-matter or tiny parser), index maintenance, version backup (.bak/<ts>)
   inject.ts      build the memory context block within a token budget → SessionStart/UserPromptSubmit hook handlers
   tools.ts       memory_* tools on the daemon MCP server, scope-checked against resolvePolicy(key)
@@ -41,14 +41,13 @@ The `source`, `session_key` and `user_id` fields are extensions. Claude Code ign
     skills: Array<...> /* 006 */,
     agents: Array<...> /* 009 */ }
   ```
-- **apply.ts**: enforces scope (policy), runs guard checks, deduplicates by name and by token overlap with existing descriptions (a simple Jaccard score over 0.6 means update instead of create), and handles `autoLearn` modes.
+- **apply.ts**: skips chats with `memoryScope: none`, runs guard checks, deduplicates by name and by token overlap with existing descriptions (a simple Jaccard score over 0.6 means update instead of create), and handles `autoLearn` modes.
 - The reflection prompt borrows from Hermes' "nudge" idea and from Claude Code's memory guidance: what to save, what not to save, and to prefer updating over adding.
 
 ## Injection
 `inject.ts` builds:
 ```
-<memory scope="global">…MEMORY.md index…</memory>
-<memory scope="chat">…</memory>
+<memory>…shared MEMORY.md index…</memory>
 <user_model user_id="…">…bodies of type:user files…</user_model>
 ```
 This block is returned as `additionalContext` from the **`SessionStart`** hook, once per session (including resumes). The **`UserPromptSubmit`** hook adds a delta only when an index has changed since then (an mtime check) or when a new group participant speaks. This keeps the prompt prefix stable for caching. The append-system-prompt text stays static.
@@ -57,4 +56,4 @@ This block is returned as `additionalContext` from the **`SessionStart`** hook, 
 - **Memory bloat or drift**: handled by the limits and the consolidation pass (a weekly 007 job run as `--agent hermes-curator`, 009). The curator also reviews subagent memories in `~/.claude/agent-memory/hermes-*/`.
 - **Reflection recursion or cost**: one-shots run without daemon hooks, and use Haiku with debounce and a daily cap.
 - **Hook latency**: the `SessionStart` and `UserPromptSubmit` handlers must answer in under 200ms. Indexes are cached in memory and invalidated by fs watch.
-- **Privacy in groups**: user-model files for group participants are only written when the group policy is `autoLearn != off`, and are stored under the chat root, not under the global `users/`.
+- **Privacy in groups**: memory is shared by design, so anything learned in a group is visible to the bot in every chat (owner decision 2026-10-07). User-model files for group participants are only written when the group policy is `autoLearn != off`; set `memoryScope: none` on a chat that should neither read nor add to memory.

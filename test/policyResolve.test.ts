@@ -8,7 +8,7 @@ const access: Access = {
   allowFrom: ['1'],
   chats: {
     '-100': { policy: { model: 'sonnet', memoryScope: 'none' } },
-    '-100:7': { policy: { memoryScope: 'chat', allowedTools: ['Read'] } },
+    '-100:7': { policy: { memoryScope: 'global', allowedTools: ['Read'] } },
   },
 }
 
@@ -24,7 +24,7 @@ describe('resolvePolicy', () => {
 
   test('topic overrides chat, which overrides defaults', () => {
     const p = resolvePolicy(access, '-100:7', 'group')
-    expect(p).toMatchObject({ model: 'sonnet', memoryScope: 'chat', allowedTools: ['Read'], autoLearn: 'propose' })
+    expect(p).toMatchObject({ model: 'sonnet', memoryScope: 'global', allowedTools: ['Read'], autoLearn: 'propose' })
   })
 
   test('topic without its own entry inherits the chat', () => {

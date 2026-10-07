@@ -11,7 +11,7 @@ export const PolicySchema = z.object({
   maxTurns: z.number().int().positive(),
   agent: z.string(),
   teamsAllowed: z.boolean(),
-  memoryScope: z.enum(['global', 'chat', 'none']),
+  memoryScope: z.enum(['global', 'none']),
   historyScope: z.enum(['all', 'chat', 'none']),
   autoLearn: z.enum(['off', 'propose', 'auto']),
   schedulerAllowed: z.boolean(),
@@ -36,7 +36,7 @@ export function defaultPolicy(type: ChatType): Policy {
     : {
         permissionMode: 'default',
         allowedTools: GROUP_READ_ONLY_TOOLS,
-        memoryScope: 'chat',
+        memoryScope: 'global',
         historyScope: 'chat',
         autoLearn: 'propose',
         schedulerAllowed: false,

@@ -16,7 +16,7 @@ After meaningful work the agent reflects and persists what it learned: facts and
 - The model never approves pairings or edits `access.json` because a chat message asked it to.
 - `assertSendable()` continues to block exfiltration of state-dir files.
 - Metadata fields (`image_path`, `chat_id`, …) are set by the daemon and are never parsed from message text.
-- **Scope isolation**: memory, history and skills learned in one chat must not leak into another chat unless that chat's policy allows it. Group content never flows into the owner's global memory by default.
+- **Scope isolation**: history and skills learned in one chat must not leak into another chat unless that chat's policy allows it. **Memory is the exception**: by the owner's decision (2026-10-07) it is one store shared by every chat, topic and the terminal; a chat's policy can only turn it off (`memoryScope: none`).
 - Tool permissions fail closed. An unanswered approval request counts as a deny.
 - **Only the owner's own requests run on the owner's Claude subscription.** Other people never trigger model turns by default (see [Auth](./README.md#auth)).
 
