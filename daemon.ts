@@ -77,6 +77,7 @@ import { buildMenus, createMenu, type MenuSkill } from './commands/menu.ts'
 import { scopeFor } from './history/tools.ts'
 import { createEngine } from './scheduler/engine.ts'
 import { runJob } from './scheduler/run.ts'
+import { createScheduleTools } from './scheduler/tools.ts'
 import type { Job } from './scheduler/store.ts'
 import type { Policy } from './policy/schema.ts'
 import type { StreamEvent } from './agent/stream.ts'
@@ -316,7 +317,9 @@ const lifecycle = createSessionLifecycle(sessions, key => runningTurns.get(key)?
 // 008 FR9: the agent's parity path for /new, /resume, /model and /status.
 const sessionDeps = { lifecycle, title: (key: string) => sessions.title(key), running: (key: string) => runningTurns.has(key) }
 const sessionTools = createSessionTools(sessionDeps)
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, session: sessionTools })
+// 007 FR6: the scheduler is created further down, once the turn queue exists.
+const scheduleTools = createScheduleTools({ stateDir: STATE_DIR, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, session: sessionTools, scheduler: scheduleTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -505,7 +508,8 @@ async function fireJob(id: string): Promise<void> {
   scheduler.reload()
 }
 
-const scheduler = createEngine({ stateDir: STATE_DIR, fire: id => turns.enqueue(JOB_PREFIX + id, { prompt: '', text: '' }) })
+const queueJob = (id: string) => turns.enqueue(JOB_PREFIX + id, { prompt: '', text: '' })
+const scheduler = createEngine({ stateDir: STATE_DIR, fire: queueJob })
 try {
   scheduler.reload()
 } catch (err) {

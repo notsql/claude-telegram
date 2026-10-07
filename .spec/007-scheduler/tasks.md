@@ -9,7 +9,7 @@ Depends on: 001 (runner, budget), 002 (session targets, semaphore), 003 (policy 
   *Verify:* AC1.
 - [x] **T704** `describe.ts`: human-readable cron text and the next 3 runs.
   *Verify:* AC2.
-- [ ] **T705** `tools.ts`: `schedule_*` tools gated by `schedulerAllowed`, with narrowing-only `policyOverride`.
+- [x] **T705** `tools.ts`: `schedule_*` tools gated by `schedulerAllowed`, with narrowing-only `policyOverride`.
   *Verify:* AC3, AC6.
 - [ ] **T706** Catch-up on boot within `catchUpWindow`.
   *Verify:* AC4.
