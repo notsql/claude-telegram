@@ -46,7 +46,7 @@ const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
 const SETTINGS_FILE = join(STATE_DIR, 'hook-settings.json')
 // 003 FR4 makes this configurable.
-const APPROVAL_TIMEOUT_SEC = 300
+const APPROVAL_TIMEOUT_SEC = 60
 // FR9: the whole shutdown, including the child's SIGINT → SIGTERM → SIGKILL escalation (7s).
 const SHUTDOWN_DEADLINE_MS = 9000
 
