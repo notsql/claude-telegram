@@ -37,7 +37,7 @@ import { createSessionLifecycle, formatCost, formatSessions, MODELS } from './se
 import { createSessionTools, sessionStatus } from './agent/sessionTools.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
-import { renderInbound } from './agent/inbound.ts'
+import { renderInbound, renderSkillInvocation } from './agent/inbound.ts'
 import { createTopicNames } from './sessions/topics.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
@@ -322,6 +322,8 @@ const approvals = createApprovals({
     saveAccess(access)
   },
 })
+// 008 FR5: a skill command's <channel> wrapper, handed to its turn as hook context.
+const skillContext = new Map<string, string>()
 const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'permission-request': approvals.handle,
   'session-start': (payload, key) => injector.sessionStart(payload, policyOf(key), participants(key)),
@@ -333,7 +335,9 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
     const t = performance.now()
     const recalled = recall({ db: historyDb, sessions }, payload, key, policy)
     if (recalled) log(`history: recalled for ${key} in ${Math.round(performance.now() - t)}ms`)
-    return withContext(out, 'UserPromptSubmit', recalled)
+    const skill = skillContext.get(key) ?? ''
+    skillContext.delete(key)
+    return withContext(withContext(out, 'UserPromptSubmit', recalled), 'UserPromptSubmit', skill)
   },
   'stop': (payload, key) => { reflection.enqueue(key, payload) },
   'post-tool-use': (payload, key) => {
@@ -852,7 +856,7 @@ bot.on('message:text', async ctx => {
   const text = ctx.message.text
   const r = route(text, ctx.me.username, builtins, loadTable(COMMANDS_FILE))
   if (r.kind === 'ignore') return
-  if (r.kind === 'skill') return handleInbound(ctx, r.text, undefined)
+  if (r.kind === 'skill') return handleInbound(ctx, text, undefined, undefined, r.text)
   if (r.kind === 'text') return handleInbound(ctx, text, undefined)
   const key = sessionKey(ctx.msg)
   if (!authorised(r.command, ctx.chat.type !== 'private', isApprover(key, ctx.from.id), isOwner(ctx))) {
@@ -936,6 +940,8 @@ async function handleInbound(
   text: string,
   downloadImage: (() => Promise<string | undefined>) | undefined,
   attachment?: AttachmentMeta,
+  /** 008 FR5: set for a skill command, the native `/<skill> <args>` invocation. */
+  invocation?: string,
 ): Promise<void> {
   if (ctx.from && ctx.chat && await skillEditReply(ctx, text)) return
   const result = gate(ctx)
@@ -988,7 +994,7 @@ async function handleInbound(
   const imagePath = downloadImage ? await downloadImage() : undefined
   const chat = ctx.chat!
   const topic = topicNames.get(key)
-  const prompt = renderInbound(text, {
+  const meta = {
     chat_id,
     chat_type: chat.type,
     ...('title' in chat && chat.title ? { chat_title: chat.title } : {}),
@@ -1005,7 +1011,13 @@ async function handleInbound(
       ...(attachment.mime ? { attachment_mime: attachment.mime } : {}),
       ...(attachment.name ? { attachment_name: attachment.name } : {}),
     } : {}),
-  }, groupBuffer.take(key))
+  }
+  let prompt = renderInbound(text, meta, groupBuffer.take(key))
+  if (invocation) {
+    const skill = renderSkillInvocation(invocation, meta)
+    prompt = skill.prompt
+    skillContext.set(key, skill.context)
+  }
   turns.enqueue(key, { prompt, text, msgId })
 }
 

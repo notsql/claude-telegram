@@ -14,7 +14,7 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
 - [ ] **T807** `/cron` inline manager wired to 007, and `/policy` wired to the 003 editor.
 - [x] **T808** `menu.ts`: per-scope lists, ranking, ≤100 commands, diff-and-debounce refresh on `skills-changed` and policy change.
   *Verify:* AC1, AC2.
-- [ ] **T809** Skill command invocation with args.
+- [x] **T809** Skill command invocation with args.
   *Verify:* AC3.
 - [ ] **T810** Move `/start /help /status` from `server.ts` and update the `/help` text to explain that plain language works for everything.
 - [ ] **T811** Document the parity table in README and ACCESS.md.

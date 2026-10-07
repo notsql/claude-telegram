@@ -32,3 +32,11 @@ describe('inbound prompt formatter (002 T207)', () => {
     expect(renderInbound('a & b', {})).toBe('<channel source="telegram">a &amp; b</channel>')
   })
 })
+
+test('008 AC3: a skill command prompt starts with the native invocation and its args', async () => {
+  const { renderSkillInvocation } = await import('../agent/inbound')
+  expect(renderSkillInvocation('/deploy-blog staging', { chat_id: '1' })).toEqual({
+    prompt: '/deploy-blog staging',
+    context: '<channel source="telegram" chat_id="1">/deploy-blog staging</channel>',
+  })
+})
