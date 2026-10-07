@@ -5,7 +5,7 @@ Depends on: 004 (reflection worker, guard), 005 (similar-request lookup), 003 (a
   *Verify:* unit tests.
 - [x] **T602** `skills/store.ts`: frontmatter IO, section patching, `.bak` versioning, undo.
   *Verify:* unit tests for create, patch, undo.
-- [ ] **T603** Extend the reflection schema and prompt with the skills section and trigger heuristics.
+- [x] **T603** Extend the reflection schema and prompt with the skills section and trigger heuristics.
   *Verify:* the proposal JSON is logged for a 10-tool-call task.
 - [ ] **T604** `skills/apply.ts`: confidence threshold, patch-over-create matching, protection of non-hermes skills (diff proposal only), per-turn cap.
   *Verify:* AC1, AC4.
