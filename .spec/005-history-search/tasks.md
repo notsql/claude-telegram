@@ -10,7 +10,7 @@ Depends on: 002 (sessions.json, inbound wrapper), 003 (historyScope)
   *Verify:* AC3, and FR9.
 - [x] **T505** `search.ts`: FTS query escaping, scope filter, bm25, snippets.
   *Verify:* AC2.
-- [ ] **T506** `summarize.ts` (a Haiku one-shot through the `claude` CLI) and the `history_search` MCP tool.
+- [x] **T506** `summarize.ts` (a Haiku one-shot through the `claude` CLI) and the `history_search` MCP tool.
   *Verify:* AC1.
 - [x] **T507** `recall.ts`: `UserPromptSubmit` hook handler for auto-recall on fresh or rotated sessions, with a threshold, token cap and a latency under 200ms.
   *Verify:* a fresh session referring to earlier work gets a `<recalled>` block (debug log).
