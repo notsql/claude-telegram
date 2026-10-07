@@ -42,3 +42,12 @@ test('chatTypeOf', async () => {
   expect(chatTypeOf('-100:7')).toBe('group')
   expect(chatTypeOf('5')).toBe('private')
 })
+
+test('canStartTurn: owners always, others only with allowOthersOnSubscription (FR12)', async () => {
+  const { canStartTurn } = await import('../policy/resolve.ts')
+  expect(canStartTurn(access, '-100:7', '1')).toBe(true)
+  expect(canStartTurn(access, '-100:7', '2')).toBe(false)
+  const opted = { ...access, chats: { '-100': { policy: { allowOthersOnSubscription: true } } } }
+  expect(canStartTurn(opted, '-100:7', '2')).toBe(true)
+  expect(canStartTurn(access, '5', '5')).toBe(true)
+})

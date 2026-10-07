@@ -19,7 +19,7 @@ import {
   gate, groupVerdict, dmCommandGate, checkApprovals, saveAccess,
 } from './access.ts'
 import { createApprovals, parseTextReply } from './policy/approvals.ts'
-import { addAlwaysAllow, chatTypeOf, resolvePolicy } from './policy/resolve.ts'
+import { addAlwaysAllow, canStartTurn, chatTypeOf, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
 import { applyPolicyEdit, policyKeyboard, renderPolicy } from './telegram/policyUi.ts'
@@ -489,15 +489,16 @@ async function handleInbound(
   attachment?: AttachmentMeta,
 ): Promise<void> {
   const result = gate(ctx)
+  const bufferContext = () => {
+    topicNames.learn(ctx.msg!)
+    groupBuffer.push(sessionKey(ctx.msg!), {
+      ts: ctx.msg!.date * 1000,
+      user: ctx.from!.username ?? String(ctx.from!.id),
+      text,
+    })
+  }
   if (result.action === 'drop') {
-    if (result.unmentioned) {
-      topicNames.learn(ctx.msg!)
-      groupBuffer.push(sessionKey(ctx.msg!), {
-        ts: ctx.msg!.date * 1000,
-        user: ctx.from!.username ?? String(ctx.from!.id),
-        text,
-      })
-    }
+    if (result.unmentioned) bufferContext()
     return
   }
   if (result.action === 'pair') {
@@ -518,6 +519,12 @@ async function handleInbound(
   const replyKey = reply && approvals.keyOf(reply.id)
   if (reply && replyKey && isApprover(replyKey, from.id) && approvals.decide(reply.id, reply.decision, String(from.id))) {
     if (msgId != null) void setReaction(chat_id, msgId, reply.decision === 'allow' ? '👍' : '👎')
+    return
+  }
+
+  // 003 FR12: non-owners in groups feed the context buffer but never start a turn.
+  if (!canStartTurn(access, key, String(from.id))) {
+    bufferContext()
     return
   }
 

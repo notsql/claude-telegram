@@ -16,6 +16,8 @@ export const PolicySchema = z.object({
   autoLearn: z.enum(['off', 'propose', 'auto']),
   schedulerAllowed: z.boolean(),
   approvers: z.array(z.string()),
+  /** FR12: let non-owners start turns on the owner's subscription. Terminal skill only. */
+  allowOthersOnSubscription: z.boolean(),
 }).partial()
 
 export type Policy = z.infer<typeof PolicySchema>

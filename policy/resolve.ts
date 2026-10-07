@@ -28,3 +28,12 @@ export function addAlwaysAllow(access: Access, key: string, rule: string): void 
   const rules = policy.alwaysAllow ??= []
   if (!rules.includes(rule)) rules.push(rule)
 }
+
+/**
+ * FR12: in groups only owners start model turns unless the chat opts in with
+ * `allowOthersOnSubscription`. DMs are already limited to `allowFrom` by gate().
+ */
+export function canStartTurn(access: Access, key: string, senderId: string): boolean {
+  if (chatTypeOf(key) === 'private' || access.allowFrom.includes(senderId)) return true
+  return resolvePolicy(access, key, 'group').allowOthersOnSubscription === true
+}

@@ -135,6 +135,10 @@ Set one field of `chats[<key>].policy`. Validate:
 - `memoryScope`: `global` | `chat` | `none`; `historyScope`: `all` | `chat` |
   `none`; `autoLearn`: `off` | `propose` | `auto`.
 - `schedulerAllowed`, `teamsAllowed`: `true` | `false`.
+- `allowOthersOnSubscription`: `true` | `false`. Groups only. Before setting
+  `true`, warn the user: turns started by other group members run on the
+  owner's Claude subscription, which the subscription terms may not allow.
+  Set it only after they confirm. Never settable from Telegram.
 
 Read, set, write, then append an audit line (see below).
 
