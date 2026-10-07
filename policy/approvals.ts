@@ -10,6 +10,7 @@ import { randomInt } from 'crypto'
 import { parseKey } from '../sessions/key.ts'
 import { threadOpts } from '../telegram/send.ts'
 import { deriveRule } from './rules.ts'
+import { isReadOnly } from './readOnly.ts'
 import type { AuditEntry } from './audit.ts'
 
 /** 5 lowercase letters without 'l', the alphabet of the `yes xxxxx` text reply (FR5). */
@@ -42,10 +43,12 @@ export type ApprovalsOpts = {
   timeoutSec: number
   /** Persists an Always rule to the key's `alwaysAllow` so later turns get it natively. */
   saveRule: (key: string, rule: string) => void
+  /** Keeps an Allow rule for the rest of the key's session (until /new or /resume). */
+  sessionRule?: (key: string, rule: string) => void
   audit?: (entry: AuditEntry) => void
 }
 
-export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsOpts) {
+export function createApprovals({ api, timeoutSec, saveRule, sessionRule, audit }: ApprovalsOpts) {
   const pending = new Map<string, Pending>()
 
   const newId = () => {
@@ -61,7 +64,7 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
       .text('See more', `perm:more:${id}`)
       .text('✅ Allow', `perm:allow:${id}`)
       .text('❌ Deny', `perm:deny:${id}`)
-    return always ? kb.row().text('♾ Always (this chat)', `perm:always:${id}`) : kb
+    return always ? kb.row().text('♾ Always', `perm:always:${id}`) : kb
   }
 
   /** Sends the prompt to the key's chat and waits for a decision or expiry. Audited. */
@@ -74,11 +77,11 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
       pending.set(id, p)
       const timer = setTimeout(() => {
         resolve('expired')
-        if (p.messageId != null) void api.editMessageText(p.chatId, p.messageId, `${title(p)}\n\n⌛ Expired`).catch(() => {})
+        if (p.messageId != null) void api.editMessageText(p.chatId, p.messageId, `${heading(p)}\n\n⌛ Expired`).catch(() => {})
       }, timeoutSec * 1000)
       p.resolve = d => { clearTimeout(timer); pending.delete(id); by = p.by; resolve(d) }
       // FR5: the id is what a typed `yes xxxxx` answer refers to.
-      void api.sendMessage(target.chatId, `${title(p)}\n\nOr reply "yes ${id}" / "no ${id}".`, { ...threadOpts(target), reply_markup: keyboard(id, always) })
+      void api.sendMessage(target.chatId, `${heading(p)}\n\nOr reply "yes ${id}" / "no ${id}".`, { ...threadOpts(target), reply_markup: keyboard(id, always) })
         .then(m => { p.messageId = m.message_id })
         .catch(err => process.stderr.write(`telegram daemon: permission prompt send failed: ${err}\n`))
     })
@@ -89,9 +92,18 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
   async function handle(payload: Record<string, unknown>, key: string) {
     const toolName = String(payload.tool_name ?? '')
     const input = (payload.tool_input ?? {}) as Record<string, unknown>
+    // FR14: reads never prompt; only writes and updates reach the chat.
+    if (isReadOnly(toolName, input)) {
+      audit?.({ event: 'approval', key, tool: toolName, decision: 'auto' })
+      return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } }
+    }
     const { decision, by } = await ask(key, toolName, input)
     const rules: string[] = []
-    const out = hookOutput(decision, toolName, input, payload.permission_suggestions, r => { rules.push(r); saveRule(key, r) })
+    const out = hookOutput(decision, toolName, input, payload.permission_suggestions, (r, persist) => {
+      rules.push(r)
+      if (persist) saveRule(key, r)
+      else sessionRule?.(key, r)
+    })
     audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }), ...(rules.length && { rule: rules.join(' ') }) })
     return out
   }
@@ -119,17 +131,27 @@ export function createApprovals({ api, timeoutSec, saveRule, audit }: ApprovalsO
     },
     /** Session key of a pending request, for the approvers check (FR3). */
     keyOf: (id: string) => pending.get(id)?.key,
-    /** The expanded "See more" text, or undefined once decided. */
+    /** The expanded "See more" text as HTML, the command or input in a code block; undefined once decided. */
     details(id: string): string | undefined {
       const p = pending.get(id)
       if (!p) return undefined
-      return `${title(p)}\n\n${JSON.stringify(p.input, null, 2).slice(0, 3500)}`
+      const bash = p.toolName === 'Bash' && typeof p.input.command === 'string'
+      const body = (bash ? String(p.input.command) : JSON.stringify(p.input, null, 2)).slice(0, 3500)
+      return `${escapeHtml(heading(p))}\n\n<pre><code class="language-${bash ? 'bash' : 'json'}">${escapeHtml(body)}</code></pre>`
     },
     keyboard,
   }
 }
 
-const title = (p: Pick<Pending, 'toolName'>) => `🔐 Permission: ${p.toolName}`
+/** FR4: the tool plus what the call is for: Bash's own description, else its main argument. */
+function heading(p: Pick<Pending, 'toolName' | 'input'>): string {
+  const i = p.input
+  const what = [i.description, i.file_path, i.notebook_path, i.url, i.query, i.pattern, i.prompt]
+    .find((v): v is string => typeof v === 'string' && v.trim() !== '')
+  return `🔐 Permission: ${p.toolName}${what ? `\n${what.trim().slice(0, 300)}` : ''}`
+}
+
+const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 type RuleValue = { toolName: string; ruleContent?: string }
 
@@ -153,22 +175,21 @@ export function hookOutput(
   toolName: string,
   input: Record<string, unknown>,
   suggestions: unknown,
-  saveRule: (rule: string) => void,
+  /** `persist` is true for Always (the chat's policy), false for Allow (this session only). */
+  keep: (rule: string, persist: boolean) => void,
 ) {
   if (d === 'deny' || d === 'expired') {
     const message = d === 'deny' ? 'Denied by the user on Telegram.' : 'No answer on Telegram before the approval timed out.'
     return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message } } }
   }
   const decision: Record<string, unknown> = { behavior: 'allow' }
-  if (d === 'always') {
-    let rules = suggestedRules(suggestions)
-    if (!rules.length) {
-      const rule = deriveRule(toolName, input)
-      const m = /^([^(]+)\((.*)\)$/.exec(rule)
-      rules = [m ? { toolName: m[1]!, ruleContent: m[2] } : { toolName: rule }]
-    }
-    for (const r of rules) saveRule(ruleString(r))
-    decision.updatedPermissions = [{ type: 'addRules', rules, behavior: 'allow', destination: 'session' }]
+  let rules = suggestedRules(suggestions)
+  if (!rules.length) {
+    const rule = deriveRule(toolName, input)
+    const m = /^([^(]+)\((.*)\)$/.exec(rule)
+    rules = [m ? { toolName: m[1]!, ruleContent: m[2] } : { toolName: rule }]
   }
+  for (const r of rules) keep(ruleString(r), d === 'always')
+  decision.updatedPermissions = [{ type: 'addRules', rules, behavior: 'allow', destination: 'session' }]
   return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } }
 }

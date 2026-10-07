@@ -12,19 +12,21 @@ Telegram's `/` menu is the most discoverable way to control a bot. Under the con
 
 ## Functional requirements
 - **FR1**: Session commands: `/new`, `/resume [n]`, `/sessions`, `/stop`, `/model [name]`, `/compact`, `/cost`, `/status`.
-- **FR2**: Agent commands: `/remember <text>`, `/forget <name|query>`, `/memory`, `/search <query>`, `/skills [show|rm] [name]`, `/agents`, `/agent [name|off]` (009), `/cron`, `/policy`.
+- **FR2**: Agent commands: `/memory`, `/search <query>`, `/skills [command] [args]`, `/agents`, `/agent [name|off]` (009), `/cron`, `/policy`. (`/remember` and `/forget` were folded into `/memory`'s buttons on 2026-10-07, FR13.)
 - **FR3**: Legacy commands remain: `/start`, `/help` and `/status` keep the current pairing-aware behaviour from `server.ts`, extended for the new features.
 - **FR4**: **Skill commands**: discover all skills (user, project and plugin), map each `name` to Telegram's charset (`[a-z0-9_]{1,32}`: lowercase, `-`→`_`, truncate, deduplicate with a numeric suffix), and use the skill `description` truncated to 256 chars as the command description. A collision table is kept in `commands.json`.
 - **FR5**: Invoking a skill command passes the **native skill invocation** `/<original-skill-name> <args>` as the `claude -p` prompt in the current session. Claude Code expands it, including `$ARGUMENTS` and named `arguments`. This also works for `disable-model-invocation` skills. Skills with `user-invocable: false` are never put in the menu.
 - **FR6**: Menus are registered per scope with `setMyCommands` + `BotCommandScope`:
-  - `all_private_chats`: session, agent and skill commands
+  - `all_private_chats`: session and agent commands
   - `all_group_chats` and `all_chat_administrators`: the same, minus the DM-only `/start` and `/help` (owner decision 2026-10-07: groups get everything)
-  Telegram's limit is 100 commands per scope. Built-in commands come first, then skills ranked by usage (006 `skills-usage.json`).
-- **FR7**: The menu refreshes on daemon start, on the `skills-changed` event (debounced 30 seconds), on policy change, and at most once per minute.
+  Skills are not listed one per command; they all sit behind `/skills` (FR12, owner decision 2026-10-07). Typed skill commands (FR4, FR5) still work.
+- **FR7**: The menu refreshes on daemon start and on policy change, at most once per minute.
 - **FR8**: Unknown `/foo` that matches no command or skill is passed to the agent as text, so the agent can interpret it.
 - **FR9**: Every command handler is a thin adapter over the functions exposed by 002–007, so there is no duplicated logic. Each command has an equivalent tool or natural-language path, documented in a parity table.
-- **FR10**: Command authorisation: commands that change state (`/policy`, `/cron`, `/forget`, `/model`) need approver status in groups. In DMs they go through `dmCommandGate()`.
+- **FR10**: Command authorisation: commands that change state (`/policy`, `/cron`, Forget, `/model`) need approver status in groups. In DMs they go through `dmCommandGate()`.
 - **FR11**: Group handling: commands addressed to `@botname` are accepted, and commands addressed to other bots are ignored.
+- **FR12**: **`/skills` buttons.** `/skills` lists every discovered skill as buttons, most used first, 12 per page. Tapping one shows ▶️ Run (the FR5 invocation with no arguments), 📄 Show (its SKILL.md), and, for skills in the chat's skill store, 📦 Archive and 🗑 Remove (approvers only, FR10). `/skills <command> <args>` runs a skill with arguments.
+- **FR13**: **`/memory` buttons.** `/memory` lists shared memory entries as buttons, newest first, 10 per page, plus ➕ Add and 👤 About you. An entry shows its text with 🗑 Forget (approvers only, with the Undo notice). Add asks for a reply and saves it as `/remember` did.
 
 ## Parity table (command ↔ autonomous path)
 | Command | Tool / NL path |
@@ -34,7 +36,7 @@ Telegram's `/` menu is the most discoverable way to control a bot. Under the con
 | /model | `session_set_model` (policy-bounded) |
 | /compact | Claude Code compacts automatically. The command forces it with `claude -p --resume <id> "/compact"`. |
 | /cost, /status | `session_status` tool |
-| /remember, /forget, /memory | `memory_write`, `memory_delete`, `memory_search` |
+| /memory (Add, Forget buttons) | `memory_write`, `memory_delete`, `memory_search` |
 | /search | `history_search` |
 | /skills | `skill_list`, `skill_read`, and the archive |
 | /cron | `schedule_*` |
@@ -48,7 +50,7 @@ Telegram's `/` menu is the most discoverable way to control a bot. Under the con
 - **AC2** (FR4, FR7): A newly learned skill appears in the menu within 1 minute of the notice.
 - **AC3** (FR5): `/deploy_blog staging` invokes the skill with that argument.
 - **AC4** (FR4): Two skills that normalise to the same command name both appear, with distinct suffixes.
-- **AC5** (FR9): "forget that I use npm" and `/forget npm` produce the same result.
+- **AC5** (FR9): "forget that I use npm" and the /memory Forget button produce the same result.
 - **AC6** (FR10): A non-approver's `/policy` in a group is refused.
 
 ## Open questions

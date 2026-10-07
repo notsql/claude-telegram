@@ -86,6 +86,8 @@ ln -s "$PWD/skills/configure" ~/.claude/skills/telegram-configure
 
 Then pair as in step 5, using `/telegram-access pair <code>` in place of `/telegram:access pair <code>`.
 
+On start the daemon also installs its `tg-*` agents and skills (from `assets/`) into `~/.claude/agents/` and `~/.claude/skills/`; files you have edited are kept.
+
 **2. Try it in the foreground.**
 
 ```sh
@@ -135,14 +137,15 @@ You don't need commands: ask in plain words and the agent does the same thing wi
 | `/model [name]` | "use opus for this" · `session_set_model`. Lasts until the next new session. |
 | `/compact` | Claude Code compacts on its own; this forces it. |
 | `/cost`, `/status` | "what's this costing me?" · `session_status` |
-| `/remember`, `/forget`, `/memory` | "remember I use pnpm", "forget that I use npm" · `memory_write`, `memory_delete`, `memory_search` |
+| `/memory` | "remember I use pnpm", "forget that" · `memory_write`, `memory_delete`, `memory_search`. Buttons list each entry (tap it, then 🗑 Forget, with Undo), ➕ Add (reply to the prompt to save), 👤 About you, and paging. |
 | `/search <words>` | "what did we decide about postgres?" · `history_search` |
-| `/skills [show\|rm] [name]` | "which skills do you have?" · `skill_list`, `skill_read`; buttons archive or remove |
+| `/skills [command] [args]` | "which skills do you have?" · `skill_list`, `skill_read`. Buttons list every skill, paged; tap one for ▶️ Run, 📄 Show and, for the chat's own skills, 📦 Archive / 🗑 Remove. `/skills <command> <args>` runs one with arguments. |
+| `/agent [name\|off]` | Run this chat as one of your agents. |
 | `/cron` | "remind me tomorrow at 3pm…", "what have I scheduled?" · `schedule_*`; buttons pause, resume, delete or run now |
 | `/policy` | Owner only. The agent may suggest changes but never applies them. |
 | `/start`, `/help` | Pairing instructions and this overview. |
 
-Your skills (user, project and plugin) appear as commands too, with Telegram-safe names: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory), and a newly learned skill shows up within a minute. In groups, `/model`, `/forget`, `/cron`, `/policy` and removing a skill need one of the chat's `approvers`.
+Skills are not listed in the `/` menu; use `/skills`. Typing a skill's Telegram-safe name still works: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory). In groups, `/model`, `/agent`, `/cron`, `/policy`, forgetting a memory and archiving or removing a skill need one of the chat's `approvers`.
 
 ### Groups and forum topics
 

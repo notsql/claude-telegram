@@ -23,7 +23,7 @@ export function helpText(builtins: MenuBuiltin[]): string {
     'The commands below do the same things when you want a sure shortcut:',
     ...builtins.filter(b => b.menu.includes('private')).map(b => `/${b.name}: ${b.description}`),
     '',
-    'Skills show up in the / menu too, e.g. /deploy_blog staging.',
+    'All your skills are under /skills: tap one to run it, or send /skills deploy_blog staging to pass arguments.',
   ].join('\n')
 }
 

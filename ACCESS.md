@@ -117,15 +117,17 @@ Configure outbound behavior with `/telegram:access set <key> <value>`.
 What the bot may do in a chat is separate from who can reach it. Policies live in `chats`, keyed by chat id or `chatId:threadId` for a forum topic. A topic inherits its chat's entry, which overrides the defaults for the chat type:
 
 - **DMs**: the normal permission prompts, global memory, all history.
-- **Groups**: only owners (`allowFrom`) start turns; other members' messages are kept as context for the owner's next turn. `allowOthersOnSubscription: true`, set from the terminal, lets them trigger turns on your subscription. Read-only tools run without asking; Bash, edits and file paths outside the chat's workspace show an approval prompt. Memory is shared with all your chats; history is per chat; no scheduler.
+- **Groups**: only owners (`allowFrom`) start turns; other members' messages are kept as context for the owner's next turn. `allowOthersOnSubscription: true`, set from the terminal, lets them trigger turns on your subscription. Read-only tools run without asking; other Bash, edits and file paths outside the chat's workspace show an approval prompt. Memory is shared with all your chats; history is per chat; no scheduler.
 
-When the agent wants a tool that no rule allows, the chat gets **See more / ✅ Allow / ❌ Deny / ♾ Always (this chat)** buttons. Only `approvers` (default: `allowFrom`) can answer; `yes abcde` / `no abcde` also works, in groups without an @mention (with privacy mode on, send it as a reply to the prompt so the bot receives it). Unanswered prompts deny after 1 minute. **Always** saves Claude Code's suggested rule (for example `Bash(npm test *)`) to the chat's `alwaysAllow`. In a group it applies to every topic.
+Read-only calls never prompt: `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, MCP tools whose names are reads (`get`, `list`, `search`, `read`, `fetch`…), and Bash commands that are known readers (`ls`, `cat`, `grep`, `git status`/`log`/`diff`…) or whose subcommand is a read verb (`get`, `list`, `search`, `show`, `view`, `describe`, `info`, `history`, `help`, `--help`…). Redirection, command substitution or a write verb still asks.
+
+When the agent wants a tool that no rule allows, the chat gets a prompt naming the tool with Bash's description (or the file path or URL), and **See more / ✅ Allow / ❌ Deny / ♾ Always** buttons. **See more** shows the full command in a code block. Only `approvers` (default: `allowFrom`) can answer; `yes abcde` / `no abcde` also works, in groups without an @mention (with privacy mode on, send it as a reply to the prompt so the bot receives it). Unanswered prompts deny after 1 minute. **Allow** allows that rule for the rest of the chat's session (until `/new` or `/resume`). **Always** saves Claude Code's suggested rule (for example `Bash(npm test *)`) to the chat's `alwaysAllow`. In a group it applies to every topic.
 
 The owner can also edit common fields with `/policy` in the chat; in a group the edit applies to all topics (topic-only overrides are set from the terminal). `bypassPermissions`, `cwd` and `trustedDirs` can only be set from the terminal. Policy changes and approval decisions are logged to `audit.log` in the state directory.
 
 ## Commands
 
-Bot commands (see the README's command table) only answer senders in `allowFrom`. Commands that change state (`/model`, `/forget`, `/cron`, `/policy`, and removing or archiving a skill from `/skills`) also need the chat's `approvers` in groups; others get a refusal. Commands addressed to another bot (`/new@otherbot`) are ignored, and an unknown `/foo` goes to the agent as a normal message.
+Bot commands (see the README's command table) only answer senders in `allowFrom`. Commands that change state (`/model`, `/agent`, `/cron`, `/policy`, forgetting an entry from `/memory`, and removing or archiving a skill from `/skills`) also need the chat's `approvers` in groups; others get a refusal. Commands addressed to another bot (`/new@otherbot`) are ignored, and an unknown `/foo` goes to the agent as a normal message.
 
 ## Config file
 

@@ -18,3 +18,7 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* AC3.
 - [x] **T810** Move `/start /help /status` from `server.ts` and update the `/help` text to explain that plain language works for everything.
 - [x] **T811** Document the parity table in README and ACCESS.md.
+- [x] **T812** `/skills` button browser with Run / Show / Archive / Remove; skills leave the `/` menu (FR6, FR12).
+  *Verify:* `test/skillCommands.test.ts` and `test/menu.test.ts` pass.
+- [x] **T813** `/memory` buttons with Add, Forget and About you, replacing `/remember` and `/forget` (FR13).
+  *Verify:* `test/memoryCommands.test.ts` passes.

@@ -25,3 +25,5 @@ Depends on: 001 (hook endpoint T006, MCP server T005), 002 (session keys)
   *Verify:* entries appear with key, user, tool and decision.
 - [x] **T312** Owner-only turn trigger in groups (FR12): non-owner messages go to the group context buffer only. Add `allowOthersOnSubscription`, settable from the terminal skill only, with a warning and an audit entry.
   *Verify:* AC7.
+- [x] **T313** Read-only calls skip the prompt (FR14); the prompt shows the call's description and See more a code block (FR2); Allow lasts the session and the button reads "Always" (FR15).
+  *Verify:* `test/readOnly.test.ts` and `test/approvals.test.ts` pass.

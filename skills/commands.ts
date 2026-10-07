@@ -1,42 +1,58 @@
 /**
- * `/skills [show|rm] [name]` for 008 (T806), over the chat's skill store.
- * The bare list carries Show / Archive / Remove buttons (`skc:<action>:<name>`).
+ * `/skills` (008 FR12): one entry point for every skill, as buttons, instead
+ * of one `/` menu command per skill. The list pages through all discovered
+ * skills (`sk:p:<page>`); tapping one opens it (`sk:o:<command>`) with Run,
+ * Show and, for the chat's own skills, Archive and Remove. Callback data
+ * carries the Telegram command name, which fits the 64-byte limit.
  */
 
-import type { InlineKeyboardMarkup } from 'grammy/types'
-import type { SkillStore } from './store.ts'
+import type { InlineKeyboardButton, InlineKeyboardMarkup } from 'grammy/types'
 
-export type SkillAction = 'show' | 'arch' | 'rm'
-export type SkillsReply = { text: string; keyboard?: InlineKeyboardMarkup; changes?: boolean }
+export type SkillEntry = { name: string; command: string; description: string; uses: number }
+export type SkillAction = 'o' | 'r' | 's' | 'a' | 'd'
+export type SkillsReply = { text: string; keyboard?: InlineKeyboardMarkup }
 
-const MAX_LISTED = 30
+export const SKILLS_CALLBACK = /^sk:(p|o|r|s|a|d):([a-z0-9_]{1,32})$/
+const PAGE = 12
 
-export function listSkills(store: SkillStore): SkillsReply {
-  const all = store.list().sort((a, b) => a.name.localeCompare(b.name)).slice(0, MAX_LISTED)
-  if (!all.length) return { text: 'No skills yet.' }
+/** Most used first, then by name. */
+export function skillsView(skills: SkillEntry[], page = 0): SkillsReply {
+  if (!skills.length) return { text: 'No skills yet. Ask me to learn one, or add one under ~/.claude/skills.' }
+  const sorted = [...skills].sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name))
+  const pages = Math.ceil(sorted.length / PAGE)
+  page = Math.min(Math.max(page, 0), pages - 1)
+  const shown = sorted.slice(page * PAGE, (page + 1) * PAGE)
+  const rows: InlineKeyboardButton[][] = []
+  for (let i = 0; i < shown.length; i += 2) {
+    rows.push(shown.slice(i, i + 2).map(s => ({ text: s.name, callback_data: `sk:o:${s.command}` })))
+  }
+  if (pages > 1) {
+    rows.push([
+      ...(page > 0 ? [{ text: '« Prev', callback_data: `sk:p:${page - 1}` }] : []),
+      ...(page < pages - 1 ? [{ text: 'Next »', callback_data: `sk:p:${page + 1}` }] : []),
+    ])
+  }
+  const text = `🧩 Skills (${sorted.length})${pages > 1 ? `, page ${page + 1}/${pages}` : ''}. Tap one to run or manage it.`
+  return { text, keyboard: { inline_keyboard: rows } }
+}
+
+/** One skill; `own` adds Archive and Remove for skills in the chat's skill store. */
+export function skillView(s: SkillEntry, own: boolean): SkillsReply {
+  const row: InlineKeyboardButton[] = [
+    { text: '▶️ Run', callback_data: `sk:r:${s.command}` },
+    { text: '📄 Show', callback_data: `sk:s:${s.command}` },
+  ]
+  const manage: InlineKeyboardButton[] = own
+    ? [{ text: '📦 Archive', callback_data: `sk:a:${s.command}` }, { text: '🗑 Remove', callback_data: `sk:d:${s.command}` }]
+    : []
   return {
-    text: all.map(s => `• ${s.name}${s.metadata.source === 'tg' ? ' (learned)' : ''}: ${s.description}`).join('\n'),
-    keyboard: { inline_keyboard: all.map(s => [
-      { text: s.name, callback_data: `skc:show:${s.name}` },
-      { text: '📦', callback_data: `skc:arch:${s.name}` },
-      { text: '🗑', callback_data: `skc:rm:${s.name}` },
-    ]) },
+    text: `🧩 ${s.name}\n\n${s.description || '(no description)'}\n\nTo pass arguments, send /skills ${s.command} <args>.`,
+    keyboard: { inline_keyboard: [row, ...(manage.length ? [manage] : []), [{ text: '« Back', callback_data: 'sk:p:0' }]] },
   }
 }
 
-/** Runs one action; `changes` marks the ones that need an approver. */
-export function skillAction(store: SkillStore, action: SkillAction, name: string): SkillsReply {
-  if (!store.read(name)) return { text: `No skill named ${name}.` }
-  switch (action) {
-    case 'show': return { text: store.text(name)!.slice(0, 4000) }
-    case 'arch': store.archive(name); return { text: `📦 Archived ${name}`, changes: true }
-    case 'rm': store.remove(name); return { text: `🗑 Removed ${name}`, changes: true }
-  }
-}
-
-/** `/skills`, `/skills show <name>`, `/skills rm <name>`; undefined for an unknown subcommand. */
-export function parseSkillsArgs(args: string): { action: SkillAction; name: string } | 'list' | undefined {
-  const [sub, name] = args.trim().split(/\s+/)
-  if (!sub) return 'list'
-  if ((sub === 'show' || sub === 'rm') && name) return { action: sub, name }
+/** `/skills` lists; `/skills <command> [args]` runs that skill. */
+export function parseSkillsArgs(args: string): 'list' | { command: string; args: string } {
+  const m = args.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/)
+  return m ? { command: m[1]!.toLowerCase(), args: m[2]?.trim() ?? '' } : 'list'
 }

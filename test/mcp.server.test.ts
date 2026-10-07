@@ -41,3 +41,20 @@ test('lists the telegram and memory tools with the token', async () => {
     'memory_write', 'memory_update', 'memory_search', 'memory_read', 'memory_delete',
   ])
 })
+
+test('a tool after an async handler is still reached (007 schedule_* regression)', async () => {
+  const policy = { list: () => [] }
+  const s = startMcpServer({
+    authToken: 'secret', api: new Api('0:x'), botToken: '0:x',
+    memory: createMemoryTools(createMemoryStore(mkdtempSync(join(tmpdir(), 'tg-mem-'))), () => { throw new Error('unused') }),
+    history: { ...policy, call: async () => undefined } as any,
+    scheduler: { ...policy, call: (name: string) => name === 'schedule_list' ? { content: [{ type: 'text', text: 'no jobs' }] } : undefined } as any,
+  })
+  const res = await fetch(`http://127.0.0.1:${s.port}/mcp?key=123`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer secret', 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'schedule_list', arguments: {} } }),
+  })
+  s.stop()
+  expect(((await res.json()) as any).result.content[0].text).toBe('no jobs')
+})

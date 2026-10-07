@@ -1,36 +1,29 @@
 import { expect, test } from 'bun:test'
-import { existsSync, mkdtempSync } from 'fs'
-import { tmpdir } from 'os'
-import { join } from 'path'
-import { createSkillStore } from '../skills/store'
-import { listSkills, parseSkillsArgs, skillAction } from '../skills/commands'
+import { parseSkillsArgs, SKILLS_CALLBACK, skillsView, skillView } from '../skills/commands'
 
-const setup = () => {
-  const store = createSkillStore(mkdtempSync(join(tmpdir(), 'tg-skc-')))
-  store.create({ name: 'deploy-blog', description: 'Deploy the blog.', sections: { Steps: '1. build' } })
-  store.create({ name: 'tidy-notes', description: 'Tidy notes.', sections: { Steps: '1. tidy' } })
-  return store
-}
+const skill = (name: string, uses = 0) => ({ name, command: name.replace(/\W/g, '_'), description: `${name} desc`, uses })
 
-test('/skills lists with show, archive and remove buttons', () => {
-  const r = listSkills(setup())
-  expect(r.text).toBe('• deploy-blog (learned): Deploy the blog.\n• tidy-notes (learned): Tidy notes.')
-  expect(r.keyboard!.inline_keyboard[0]!.map(b => 'callback_data' in b && b.callback_data)).toEqual(['skc:show:deploy-blog', 'skc:arch:deploy-blog', 'skc:rm:deploy-blog'])
-  expect(listSkills(createSkillStore(mkdtempSync(join(tmpdir(), 'tg-skc-')))).text).toBe('No skills yet.')
+test('FR12: /skills lists every skill as buttons, most used first, paged', () => {
+  const r = skillsView([skill('tidy'), skill('deploy-blog', 5)])
+  expect(r.keyboard!.inline_keyboard).toEqual([[
+    { text: 'deploy-blog', callback_data: 'sk:o:deploy_blog' },
+    { text: 'tidy', callback_data: 'sk:o:tidy' },
+  ]])
+  const many = Array.from({ length: 30 }, (_, i) => skill(`s${String(i).padStart(2, '0')}`))
+  const p1 = skillsView(many, 1)
+  expect(p1.text).toContain('page 2/3')
+  expect(p1.keyboard!.inline_keyboard.at(-1)).toEqual([{ text: '« Prev', callback_data: 'sk:p:0' }, { text: 'Next »', callback_data: 'sk:p:2' }])
+  expect(skillsView([]).keyboard).toBeUndefined()
 })
 
-test('show, archive and remove', () => {
-  const store = setup()
-  expect(skillAction(store, 'show', 'deploy-blog').text).toContain('name: deploy-blog')
-  expect(skillAction(store, 'arch', 'deploy-blog')).toEqual({ text: '📦 Archived deploy-blog', changes: true })
-  expect(skillAction(store, 'rm', 'tidy-notes').changes).toBe(true)
-  expect(existsSync(join(store.root, 'tidy-notes'))).toBe(false)
-  expect(skillAction(store, 'show', 'deploy-blog').text).toBe('No skill named deploy-blog.')
+test('FR12: a skill opens with Run and Show; Archive and Remove only for own skills', () => {
+  const data = (own: boolean) => skillView(skill('telegram:access'), own).keyboard!.inline_keyboard.flat().map(b => 'callback_data' in b ? b.callback_data : '')
+  expect(data(false)).toEqual(['sk:r:telegram_access', 'sk:s:telegram_access', 'sk:p:0'])
+  expect(data(true)).toEqual(['sk:r:telegram_access', 'sk:s:telegram_access', 'sk:a:telegram_access', 'sk:d:telegram_access', 'sk:p:0'])
+  for (const d of data(true)) expect(SKILLS_CALLBACK.test(d)).toBe(true)
 })
 
-test('argument parsing', () => {
-  expect(parseSkillsArgs('')).toBe('list')
-  expect(parseSkillsArgs('show deploy-blog')).toEqual({ action: 'show', name: 'deploy-blog' })
-  expect(parseSkillsArgs('rm')).toBeUndefined()
-  expect(parseSkillsArgs('nuke x')).toBeUndefined()
+test('parseSkillsArgs', () => {
+  expect(parseSkillsArgs(' ')).toBe('list')
+  expect(parseSkillsArgs('Deploy_blog staging now')).toEqual({ command: 'deploy_blog', args: 'staging now' })
 })
