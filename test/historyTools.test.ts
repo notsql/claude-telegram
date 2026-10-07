@@ -73,3 +73,16 @@ test('summarizeHits asks for citations and returns the answer', async () => {
   expect(prompt).toContain('Cite excerpts as [n]')
   expect(prompt).toContain('Question: q?')
 })
+
+test('summarizeSession sends the newest messages in order and returns the summary', async () => {
+  const { summarizeSession } = await import('../history/summarize')
+  const { openHistoryDb } = await import('../history/db')
+  const db = openHistoryDb(':memory:')
+  db.run("INSERT INTO messages (session_id, role, text) VALUES ('s', 'user', 'old ' || printf('%.30000c', 'x')), ('s', 'user', 'use pnpm'), ('s', 'assistant', 'ok, pnpm it is')")
+  let input = ''
+  const r = await summarizeSession(db, 's', async (_a, i) => { input = i; return { summary: 'Uses pnpm.' } })
+  expect(r).toBe('Uses pnpm.')
+  expect(input).toEndWith('user: use pnpm\nassistant: ok, pnpm it is')
+  expect(input).not.toContain('old ')
+  expect(await summarizeSession(db, 'none', async () => { throw new Error('not called') })).toBe('')
+})

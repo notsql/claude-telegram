@@ -18,4 +18,4 @@ Depends on: 002 (sessions.json, inbound wrapper), 003 (historyScope)
   *Verify:* AC4.
 - [x] **T509** Expose functions for 008 `/search`, with `t.me/c/...` links.
   *Verify:* AC5.
-- [ ] **T510** Provide a session-summary helper used by 002's session rotation and 006's skill extraction.
+- [x] **T510** Provide a session-summary helper used by 002's session rotation and 006's skill extraction.
