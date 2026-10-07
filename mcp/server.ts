@@ -11,6 +11,8 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import type { Api } from 'grammy'
 import { registerTelegramTools } from './telegramTools.ts'
 import { parseKey } from '../sessions/key.ts'
+import { loadAccess } from '../access.ts'
+import { chatTypeOf, resolvePolicy } from '../policy/resolve.ts'
 
 export type McpServerOpts = {
   /** Bearer token clients must send; random per daemon start. */
@@ -40,7 +42,7 @@ export function startMcpServer(opts: McpServerOpts): { port: number; stop: () =>
       }
 
       const mcp = new Server({ name: 'tg', version: '1.0.0' }, { capabilities: { tools: {} } })
-      registerTelegramTools(mcp, opts.api, opts.botToken, key)
+      registerTelegramTools(mcp, opts.api, opts.botToken, key, resolvePolicy(loadAccess(), key, chatTypeOf(key)))
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,

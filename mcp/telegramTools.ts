@@ -13,15 +13,18 @@ import { loadAccess, assertAllowedChat } from '../access.ts'
 import { MAX_CHUNK_LIMIT, MAX_ATTACHMENT_BYTES, PHOTO_EXTS, assertSendable, chunk, threadOpts } from '../telegram/send.ts'
 import { parseKey } from '../sessions/key.ts'
 import { downloadAttachment } from '../telegram/attachments.ts'
+import { visibleTools } from '../policy/tools.ts'
+import type { Policy } from '../policy/schema.ts'
 
 /**
  * `key` is the session the daemon's MCP request is bound to; replies to its
  * chat land in its forum topic (002 FR4). The stdio channel passes none.
+ * `policy` is the session's resolved policy; tools it doesn't allow are hidden.
  */
-export function registerTelegramTools(mcp: Server, api: Api, token: string, key?: string): void {
+export function registerTelegramTools(mcp: Server, api: Api, token: string, key?: string, policy: Policy = {}): void {
   const bound = key ? parseKey(key) : undefined
   mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
+    tools: visibleTools([
       {
         name: 'reply',
         description:
@@ -91,7 +94,7 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
           required: ['chat_id', 'message_id', 'text'],
         },
       },
-    ],
+    ], policy),
   }))
 
   mcp.setRequestHandler(CallToolRequestSchema, async req => {
