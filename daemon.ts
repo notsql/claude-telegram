@@ -1119,7 +1119,7 @@ bot.on('callback_query:data', async ctx => {
     return ctx.answerCallbackQuery().catch(() => {})
   }
   if (!approvals.decide(id, action, String(ctx.from.id))) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
-  const label = { allow: '✅ Allowed for this session', deny: '❌ Denied', always: '♾ Always allowed in this chat' }[action]
+  const label = { allow: '✅ Allowed for this session', deny: '❌ Denied', always: '♾ Always allowed' }[action]
   await ctx.answerCallbackQuery({ text: label }).catch(() => {})
   const msg = ctx.callbackQuery.message
   // Appending keeps the existing entities' offsets valid, so a See more code block stays formatted.
