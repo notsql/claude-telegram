@@ -21,8 +21,8 @@ export type ReflectionOpts = {
   existing: (key: string) => string | null
   /** 006: the skills block for this turn's `delta`, or null when skill learning is off. */
   skills?: (key: string, delta: string, payload: Record<string, unknown>) => string | null
-  /** `delta` is the dialogue the proposals came from (006 refinement reads it). */
-  apply: (key: string, proposals: Proposals, delta: string) => Promise<void> | void
+  /** `delta` is the dialogue the proposals came from (006 refinement reads it); `payload` is the hook's (009 recurrence check). */
+  apply: (key: string, proposals: Proposals, delta: string, payload: Record<string, unknown>) => Promise<void> | void
   debounceMs?: number
   dailyCap?: number
   log?: (line: string) => void
@@ -56,9 +56,9 @@ export function createReflectionWorker(opts: ReflectionOpts) {
       log(`reflection failed, retrying once: ${err}`)
       proposals = await opts.reflect(input)
     }
-    log(`reflection ${key}: ${proposals.memory.length} memory, ${proposals.user_model.length} user-model, ${proposals.skills.length} skill proposals`)
+    log(`reflection ${key}: ${proposals.memory.length} memory, ${proposals.user_model.length} user-model, ${proposals.skills.length} skill, ${proposals.agents.length} agent proposals`)
     if (proposals.skills.length) log(`reflection ${key} skills: ${JSON.stringify(proposals.skills)}`)
-    await opts.apply(key, proposals, text)
+    await opts.apply(key, proposals, text, payload)
   }
 
   function run(key: string): Promise<void> {

@@ -1,7 +1,8 @@
 /**
  * The reflector's instructions and proposal schema (004 FR6), with the 006
  * `skills` section: whether the exchange holds a reusable procedure worth a
- * new or patched skill (006 FR2, FR3).
+ * new or patched skill (006 FR2, FR3), and the 009 `agents` section: whether a
+ * recurring role deserves its own subagent (009 FR8).
  */
 
 import { z } from 'zod'
@@ -36,6 +37,19 @@ export const ProposalsSchema = z.object({
     reason: z.string(),
     confidence: z.number(),
   })),
+  agents: z.array(z.object({
+    op: z.enum(['create', 'patch', 'none']),
+    name: z.string(),
+    description: z.string(),
+    tools: z.array(z.string()),
+    model: z.string().optional(),
+    skills: z.array(z.string()).optional(),
+    memory: z.enum(['user', 'project', 'local']).optional(),
+    permissionMode: z.string().optional(),
+    body: z.string(),
+    reason: z.string(),
+    confidence: z.number(),
+  })),
   skill_outcomes: z.array(z.object({
     name: z.string(),
     outcome: z.enum(OUTCOMES),
@@ -65,10 +79,25 @@ Consider a skill only when at least one signal holds: the turn used many tool ca
 - confidence: 0 to 1, how sure you are this is worth saving. Propose at most one skill.
 Skill outcomes ("skill_outcomes"): for each skill the assistant invoked in the exchange ([tool Skill …] lines), report how it went: "success", "corrected" (the user corrected the approach) or "failed". If a skill was corrected or failed, also patch it with what went wrong. Empty when no skill was invoked.`
 
+export const AGENT_INSTRUCTIONS = `Agents ("agents"): a subagent is a recurring *role* with its own judgement, tools, model or memory (an issue triager, a release checker). Choose the right artefact:
+| Signal | Produce |
+|---|---|
+| A repeatable procedure (steps) | skill |
+| A repeatable procedure that needs isolation or heavy tool use | skill (mention context: fork in its sections) |
+| A recurring role with its own judgement, tools, model or memory | agent |
+Propose an agent only when the role recurs: the similar-task count below must be 3 or more. Otherwise return an empty "agents" array.
+- op "patch" with an existing learned agent's exact name when it covers the role (give the full definition); op "create" otherwise.
+- name: "tg-" plus kebab-case. description: short and trigger-oriented ("Use proactively when…").
+- tools: an explicit, minimal list (never "*", never Agent). Never set permissionMode to bypassPermissions or auto.
+- body: the system prompt, concise. No secrets or personal data.
+- confidence: 0 to 1. Propose at most one agent.`
+
 /** The `<skills_context>` block: existing learned skills (name and description only) and the turn's signals. */
-export function skillsContext(skills: { name: string; description: string }[], toolCalls: number, similar: string[]): string {
+export function skillsContext(skills: { name: string; description: string }[], toolCalls: number, similar: string[], agents: { name: string; description: string }[] = []): string {
   return [
     `Existing skills:\n${skills.map(s => `- ${s.name}: ${s.description}`).join('\n') || '(none)'}`,
+    `Existing learned agents:\n${agents.map(a => `- ${a.name}: ${a.description}`).join('\n') || '(none)'}`,
+    `Similar tasks including this one: ${similar.length + 1}`,
     `Tool calls this turn: ${toolCalls}`,
     `Possibly similar earlier requests:\n${similar.map(t => `- ${t}`).join('\n') || '(none found)'}`,
   ].join('\n\n')
@@ -80,8 +109,8 @@ export function reflectionInput(existing: string | null, delta: string, skills: 
     ? '(memory is off for this chat: return empty "memory" and "user_model")'
     : existing || '(empty)'
   const skillPart = skills === null
-    ? '\n\nSkills are off for this chat: return empty "skills" and "skill_outcomes" arrays.'
-    : `\n\n${SKILL_INSTRUCTIONS}\n\n<skills_context>\n${skills}\n</skills_context>`
+    ? '\n\nSkills are off for this chat: return empty "skills", "agents" and "skill_outcomes" arrays.'
+    : `\n\n${SKILL_INSTRUCTIONS}\n\n${AGENT_INSTRUCTIONS}\n\n<skills_context>\n${skills}\n</skills_context>`
   return `${REFLECTION_INSTRUCTIONS}${skillPart}\n\n<existing_memory>\n${memory}\n</existing_memory>\n\n<exchange>\n${delta}\n</exchange>`
 }
 

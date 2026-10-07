@@ -34,7 +34,7 @@ test('Stop is debounced per key, PreCompact runs at once, and policy off skips',
   const inputs: string[] = []
   let learning = true
   const w = createReflectionWorker({
-    reflect: async input => { inputs.push(input); return { memory: [], user_model: [], skills: [], skill_outcomes: [] } },
+    reflect: async input => { inputs.push(input); return { memory: [], user_model: [], skills: [], agents: [], skill_outcomes: [] } },
     existing: () => (learning ? 'prefers-pnpm (feedback): uses pnpm' : null),
     apply: () => {},
     debounceMs: 20,
@@ -73,7 +73,7 @@ function applier(autoLearn: 'auto' | 'propose' | 'off') {
 const pref = (name: string, description: string): Proposals => ({
   memory: [{ op: 'create', type: 'feedback', name, description, body: 'Use pnpm.', reason: 'said so' }],
   user_model: [],
-  skills: [],
+  skills: [], agents: [],
   skill_outcomes: [],
 })
 
@@ -98,7 +98,7 @@ test('user-model proposals land under users/<id>; secrets and extras are dropped
       { op: 'create', user_id: '42', name: 'name', description: 'Preferred name', body: 'Kai', reason: '' },
       { op: 'create', user_id: '../x', name: 'evil', description: 'x', body: 'x', reason: '' },
     ],
-    skills: [],
+    skills: [], agents: [],
     skill_outcomes: [],
   })
   expect(store.list()).toEqual([])
@@ -141,7 +141,7 @@ test('the skills block goes into the input only when skill learning is on', asyn
   const inputs: string[] = []
   const applied: string[] = []
   const w = createReflectionWorker({
-    reflect: async input => { inputs.push(input); return { memory: [], user_model: [], skills: [], skill_outcomes: [] } },
+    reflect: async input => { inputs.push(input); return { memory: [], user_model: [], skills: [], agents: [], skill_outcomes: [] } },
     existing: () => null,
     skills: (_k, delta) => skillsContext([{ name: 'deploy-blog', description: 'Deploy the blog' }], toolCalls(delta), ['deploy blog again']),
     apply: (_k, _p, delta) => { applied.push(delta) },
@@ -152,5 +152,5 @@ test('the skills block goes into the input only when skill learning is on', asyn
   expect(inputs[0]).toContain('memory is off for this chat')
   expect(applied).toEqual(['USER: deploy the blog'])
   expect(reflectionInput('', 'x')).toContain('Skills are off for this chat')
-  expect(ProposalsSchema.parse({ memory: [], user_model: [], skill_outcomes: [], skills: [{ op: 'create', name: 'a', description: 'b', sections: { Steps: '1.' }, reason: '', confidence: 0.9 }] }).skills).toHaveLength(1)
+  expect(ProposalsSchema.parse({ memory: [], user_model: [], skill_outcomes: [], agents: [], skills: [{ op: 'create', name: 'a', description: 'b', sections: { Steps: '1.' }, reason: '', confidence: 0.9 }] }).skills).toHaveLength(1)
 })

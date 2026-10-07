@@ -68,6 +68,7 @@ import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { createAgentUsage } from './agents/usage.ts'
 import { availableAgents, setPolicyAgent } from './agents/available.ts'
 import { AUTHOR, createAgentTools } from './agents/tools.ts'
+import { createAgentApplier, learnedAgents } from './agents/apply.ts'
 import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
@@ -245,6 +246,19 @@ const agentUsage = createAgentUsage(join(STATE_DIR, 'agents-usage.json'))
 const authorRuns = new Map<string, Set<string>>()
 const agentTools = createAgentTools(join(claudeDir(), 'agents'),
   key => policyOf(key).agent === AUTHOR || !!authorRuns.get(key)?.size)
+// 009 FR8: learned agents proposed by reflection.
+const agentApplier = createAgentApplier({
+  dir: join(claudeDir(), 'agents'),
+  policy: policyOf,
+  notify: (key, text) => { const t = parseKey(key); void bot.api.sendMessage(t.chatId, text, threadOpts(t)).catch(() => {}) },
+  ask: (key, text, id) => {
+    const t = parseKey(key)
+    void bot.api.sendMessage(t.chatId, text.slice(0, 4000), { ...threadOpts(t), reply_markup: { inline_keyboard: [[
+      { text: '✅ Save', callback_data: `agt:save:${id}` }, { text: '✖ Skip', callback_data: `agt:skip:${id}` },
+    ]] } }).catch(() => {})
+  },
+  log,
+})
 const isLearnedSkill = (key: string, name: string) => skillStoreFor(key).read(name)?.metadata.source === 'tg'
 
 /** 006 FR7, FR8: record outcomes; a skill that keeps failing gets a refinement proposal for approval (AC6). */
@@ -319,11 +333,12 @@ const reflection = createReflectionWorker({
     const p = policyOf(key)
     if (!p.autoLearn || p.autoLearn === 'off') return null
     const learned = skillStoreFor(key).list().filter(s => s.metadata.source === 'tg')
-    return skillsContext(learned, toolCalls(delta), similarRequests(key, delta, payload.session_id))
+    return skillsContext(learned, toolCalls(delta), similarRequests(key, delta, payload.session_id), learnedAgents(join(claudeDir(), 'agents')))
   },
-  apply: async (key, proposals, delta) => {
+  apply: async (key, proposals, delta, payload) => {
     applier.apply(key, proposals)
     skillApplier.apply(key, proposals)
+    if (proposals.agents.some(a => a.op !== 'none')) agentApplier.apply(key, proposals, similarRequests(key, delta, payload.session_id).length + 1)
     await skillOutcomes(key, proposals.skill_outcomes, delta)
   },
   log,
@@ -848,6 +863,16 @@ bot.callbackQuery(/^mem:(save|skip):([0-9a-f]+)$/, async ctx => {
   if (!r) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
   await ctx.answerCallbackQuery({ text: r.error ?? (r.change ? 'Saved' : 'Skipped') }).catch(() => {})
   if (r.change) await ctx.editMessageText(noticeText(r.change), { reply_markup: notices.undoKeyboard(r.change) }).catch(() => {})
+  else if (!r.error) await ctx.deleteMessage().catch(() => {})
+})
+
+// 009 FR8: Save or Skip a proposed learned agent.
+bot.callbackQuery(/^agt:(save|skip):([0-9a-f]+)$/, async ctx => {
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const r = agentApplier.decide(ctx.match[2]!, ctx.match[1] === 'save')
+  if (!r) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
+  await ctx.answerCallbackQuery({ text: r.error ?? (r.text ? 'Saved' : 'Skipped') }).catch(() => {})
+  if (r.text) await ctx.editMessageText(r.text).catch(() => {})
   else if (!r.error) await ctx.deleteMessage().catch(() => {})
 })
 
