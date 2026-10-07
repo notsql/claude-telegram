@@ -24,7 +24,7 @@ CREATE INDEX idx_messages_session ON messages(session_id);
 `session_key` comes from joining with `sessions.json`. The join is refreshed whenever the store changes.
 
 ## Parsing notes
-- The inbound wrapper `<telegram chat_id=… message_id=…>` from 002 appears in user content. `parse.ts` extracts `tg_*` from it and strips the wrapper from the indexed text.
+- The inbound wrapper `<channel source="telegram" chat_id=… message_id=…>` from 002 appears in user content (line shapes: `parse.ts` header, T501). `parse.ts` extracts `tg_*` from it and strips the wrapper from the indexed text.
 - Assistant text and `reply` tool inputs (`text`) are both indexed, because in Telegram the text sent to the user lives in the reply tool call.
 - The JSONL format is internal to Claude Code and could change. Parsing is defensive: unknown line types are skipped, and parse failures are counted in metrics.
 

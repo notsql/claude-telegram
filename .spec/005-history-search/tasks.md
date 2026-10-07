@@ -1,7 +1,7 @@
 # 005 — Tasks
 Depends on: 002 (sessions.json, inbound wrapper), 003 (historyScope)
 
-- [ ] **T501** Inspect the current Claude Code JSONL line shapes (user, assistant, tool_use, summary) and document them in `parse.ts` comments, with test fixtures.
+- [x] **T501** Inspect the current Claude Code JSONL line shapes (user, assistant, tool_use, summary) and document them in `parse.ts` comments, with test fixtures.
 - [ ] **T502** `history/db.ts` schema, migrations and FTS sync triggers.
   *Verify:* unit test inserts a row and searches it.
 - [ ] **T503** `parse.ts`: extract Telegram meta, strip the wrapper, summarise tools, skip tool results.
