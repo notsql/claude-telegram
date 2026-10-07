@@ -482,6 +482,20 @@ bot.on(['message:forum_topic_created', 'message:forum_topic_edited'], ctx => {
   }
 })
 
+/**
+ * FR5: `yes abcde` answers a pending approval through the same resolver as
+ * the buttons. Only the request's approvers count. True if it was handled.
+ */
+function textApproval(ctx: Context, text: string): boolean {
+  const reply = parseTextReply(text)
+  const key = reply && approvals.keyOf(reply.id)
+  if (!reply || !key || !isApprover(key, ctx.from!.id)) return false
+  if (!approvals.decide(reply.id, reply.decision, String(ctx.from!.id))) return false
+  const msgId = ctx.message?.message_id
+  if (msgId != null) void setReaction(String(ctx.chat!.id), msgId, reply.decision === 'allow' ? '👍' : '👎')
+  return true
+}
+
 async function handleInbound(
   ctx: Context,
   text: string,
@@ -497,8 +511,9 @@ async function handleInbound(
       text,
     })
   }
+  // FR5: answers count without an @mention, so they work in groups too.
   if (result.action === 'drop') {
-    if (result.unmentioned) bufferContext()
+    if (result.unmentioned && !textApproval(ctx, text)) bufferContext()
     return
   }
   if (result.action === 'pair') {
@@ -513,14 +528,7 @@ async function handleInbound(
   const msgId = ctx.message?.message_id
 
   const key = sessionKey(ctx.msg!)
-
-  // FR5: `yes abcde` answers a pending approval through the same resolver as the buttons.
-  const reply = parseTextReply(text)
-  const replyKey = reply && approvals.keyOf(reply.id)
-  if (reply && replyKey && isApprover(replyKey, from.id) && approvals.decide(reply.id, reply.decision, String(from.id))) {
-    if (msgId != null) void setReaction(chat_id, msgId, reply.decision === 'allow' ? '👍' : '👎')
-    return
-  }
+  if (textApproval(ctx, text)) return
 
   // 003 FR12: non-owners in groups feed the context buffer but never start a turn.
   if (!canStartTurn(access, key, String(from.id))) {

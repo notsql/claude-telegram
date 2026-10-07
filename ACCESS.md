@@ -119,7 +119,7 @@ What the bot may do in a chat is separate from who can reach it. Policies live i
 - **DMs**: the normal permission prompts, global memory, all history.
 - **Groups**: only owners (`allowFrom`) start turns; other members' messages are kept as context for the owner's next turn. `allowOthersOnSubscription: true`, set from the terminal, lets them trigger turns on your subscription. Read-only tools (Bash and file edits are denied outright), chat-scoped memory and history, no scheduler.
 
-When the agent wants a tool that no rule allows, the chat gets **See more / ✅ Allow / ❌ Deny / ♾ Always (this chat)** buttons. Only `approvers` (default: `allowFrom`) can answer; `yes abcde` / `no abcde` also works. Unanswered prompts deny after 5 minutes. **Always** saves a rule such as `Bash(npm test *)` to that chat's `alwaysAllow`.
+When the agent wants a tool that no rule allows, the chat gets **See more / ✅ Allow / ❌ Deny / ♾ Always (this chat)** buttons. Only `approvers` (default: `allowFrom`) can answer; `yes abcde` / `no abcde` also works, in groups without an @mention (with privacy mode on, send it as a reply to the prompt so the bot receives it). Unanswered prompts deny after 5 minutes. **Always** saves a rule such as `Bash(npm test *)` to that chat's `alwaysAllow`.
 
 The owner can also edit common fields with `/policy` in the chat. `bypassPermissions`, `cwd` and `trustedDirs` can only be set from the terminal. Policy changes and approval decisions are logged to `audit.log` in the state directory.
 
