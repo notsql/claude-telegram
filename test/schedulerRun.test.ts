@@ -3,7 +3,7 @@ import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createEngine } from '../scheduler/engine'
-import { narrowPolicy, runJob, type JobRunDeps } from '../scheduler/run'
+import { failureNotice, narrowPolicy, runJob, type JobRunDeps } from '../scheduler/run'
 import { loadJobs, saveJobs, type Job } from '../scheduler/store'
 import type { TurnOutcome } from '../agent/runner'
 import type { StreamEvent } from '../agent/stream'
@@ -65,6 +65,34 @@ test('errors and denied permissions are recorded', async () => {
   expect(loadJobs(d)[0]).toMatchObject({ lastStatus: 'error', failures: 1 })
   expect(await runJob('j_3', deps(d, { result: result({ permission_denials: [{ tool_name: 'Bash' }] }), exitCode: 0 }).r)).toBe('needs_approval')
   expect(loadJobs(d)[0]).toMatchObject({ lastStatus: 'needs_approval', failures: 1 })
+})
+
+test('AC5: a job that always fails is disabled after 3 runs and the owner is told each time', async () => {
+  const d = dir()
+  saveJobs(d, [{ ...base, id: 'j_5', kind: 'cron', expr: '0 9 * * *', title: 'Broken' }])
+  const notices: { enabled: boolean; text: string; buttons: string[] }[] = []
+  const { r } = deps(d, { result: result({ is_error: true, errors: ['boom'] }), exitCode: 1 })
+  r.onFailure = (job, reason) => {
+    const n = failureNotice(job, reason)
+    notices.push({ enabled: job.enabled, text: n.text, buttons: n.keyboard.inline_keyboard[0]!.map(b => b.callback_data) })
+  }
+  for (let i = 0; i < 4; i++) await runJob('j_5', r)
+  expect(notices.map(n => n.enabled)).toEqual([true, true, false])
+  expect(notices[0]).toEqual({ enabled: true, text: '⚠️ Scheduled job j_5 "Broken" failed: boom', buttons: ['sch:retry:j_5', 'sch:off:j_5'] })
+  expect(notices[2]!.text).toEndWith('Disabled after 3 failures in a row.')
+  expect(notices[2]!.buttons).toEqual(['sch:retry:j_5'])
+  expect(loadJobs(d)[0]).toMatchObject({ enabled: false, failures: 3, lastStatus: 'error' })
+})
+
+test('a usage-limit stop is deferred, not a failure', async () => {
+  const d = dir()
+  saveJobs(d, [{ ...base, id: 'j_6', kind: 'cron', expr: '0 9 * * *', failures: 2 }])
+  const { r } = deps(d, { pausedUntil: 5000, result: result({ is_error: true }), exitCode: 1 })
+  let failed = false
+  r.onFailure = () => { failed = true }
+  expect(await runJob('j_6', r)).toBe('deferred')
+  expect(failed).toBe(false)
+  expect(loadJobs(d)[0]).toMatchObject({ enabled: true, failures: 2, lastStatus: 'deferred' })
 })
 
 test('disabled or missing jobs do not run', async () => {

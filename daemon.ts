@@ -76,9 +76,9 @@ import { START_TEXT, helpText, pairingStatus } from './commands/help.ts'
 import { buildMenus, createMenu, type MenuSkill } from './commands/menu.ts'
 import { scopeFor } from './history/tools.ts'
 import { createEngine } from './scheduler/engine.ts'
-import { runJob } from './scheduler/run.ts'
+import { failureNotice, runJob } from './scheduler/run.ts'
 import { createScheduleTools } from './scheduler/tools.ts'
-import type { Job } from './scheduler/store.ts'
+import { loadJobs, saveJobs, type Job } from './scheduler/store.ts'
 import type { Policy } from './policy/schema.ts'
 import type { StreamEvent } from './agent/stream.ts'
 
@@ -503,10 +503,44 @@ async function jobTurn(job: Job, prompt: string, policy: Policy, onEvent: (ev: S
 
 async function fireJob(id: string): Promise<void> {
   if (turnAbort.signal.aborted) return
-  const status = await runJob(id, { stateDir: STATE_DIR, policy: policyOf, turn: jobTurn, post: notifyKey })
+  let deferUntil = 0
+  const status = await runJob(id, {
+    stateDir: STATE_DIR,
+    policy: policyOf,
+    turn: async (job, prompt, policy, onEvent) => {
+      const outcome = await jobTurn(job, prompt, policy, onEvent)
+      if (outcome.pausedUntil) pausedUntil = deferUntil = outcome.pausedUntil
+      return outcome
+    },
+    post: notifyKey,
+    // FR8: the owner hears about each failure, with Retry and Disable.
+    onFailure: (job, reason) => {
+      const { text, keyboard } = failureNotice(job, reason)
+      return Promise.all(loadAccess().allowFrom.map(owner => bot.api.sendMessage(owner, text, { reply_markup: keyboard }).catch(() => {})))
+    },
+  })
   if (status) log(`job ${id}: ${status}`)
+  // FR11: a run stopped by the usage limit runs again after the reset.
+  if (deferUntil) setTimeout(() => queueJob(id), deferUntil - Date.now()).unref()
   scheduler.reload()
 }
+
+bot.callbackQuery(/^sch:(retry|off):(j_[0-9a-f]+)$/, async ctx => {
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const [, action, id] = ctx.match as unknown as [string, 'retry' | 'off', string]
+  const jobs = loadJobs(STATE_DIR)
+  const job = jobs.find(j => j.id === id)
+  if (!job) return ctx.answerCallbackQuery({ text: 'Job is gone.' }).catch(() => {})
+  // Retry re-enables an auto-disabled job with a clean failure count.
+  if (action === 'retry') Object.assign(job, { enabled: true, failures: 0 })
+  else job.enabled = false
+  saveJobs(STATE_DIR, jobs)
+  scheduler.reload()
+  if (action === 'retry') queueJob(id)
+  const label = action === 'retry' ? '🔁 Retrying' : '⏸ Disabled'
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {})
+})
 
 const queueJob = (id: string) => turns.enqueue(JOB_PREFIX + id, { prompt: '', text: '' })
 const scheduler = createEngine({ stateDir: STATE_DIR, fire: queueJob })

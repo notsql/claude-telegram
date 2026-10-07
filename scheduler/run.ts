@@ -13,7 +13,11 @@ import type { Policy } from '../policy/schema.ts'
 import { parseKey } from '../sessions/key.ts'
 import { loadJobs, saveJobs, type Job } from './store.ts'
 
-export type JobStatus = 'ok' | 'error' | 'needs_approval'
+/** `deferred`: the usage limit was hit; not a failure (FR11). */
+export type JobStatus = 'ok' | 'error' | 'needs_approval' | 'deferred'
+
+/** FR8: consecutive failures before a job is disabled. */
+export const MAX_FAILURES = 3
 
 export type JobRunDeps = {
   stateDir: string
@@ -22,6 +26,8 @@ export type JobRunDeps = {
   /** Runs the turn: fresh, or resuming the chat's session for `mode: session` (FR4). */
   turn: (job: Job, prompt: string, policy: Policy, onEvent: (ev: StreamEvent) => void) => Promise<TurnOutcome>
   post: (key: string, text: string) => Promise<unknown>
+  /** FR8: after a failed run, with the job as stored (`enabled: false` once auto-disabled). */
+  onFailure?: (job: Job, reason: string) => unknown
   now?: () => number
 }
 
@@ -53,14 +59,39 @@ export function narrowPolicy(base: Policy, override?: Policy): Policy {
 export const jobTitle = (job: Job) => job.title ?? job.prompt.slice(0, 60)
 
 function statusOf(outcome: TurnOutcome): JobStatus {
+  if (outcome.pausedUntil) return 'deferred'
   if (outcome.refused || !outcome.result || outcome.result.is_error) return 'error'
   if (outcome.result.permission_denials?.length) return 'needs_approval'
   return 'ok'
 }
 
-function update(stateDir: string, id: string, change: (job: Job) => Job | null): void {
-  const jobs = loadJobs(stateDir).flatMap(j => (j.id === id ? [change(j)].filter((x): x is Job => !!x) : [j]))
+function failureReason(outcome: TurnOutcome): string {
+  if (outcome.refused) return outcome.refused.join('; ')
+  const r = outcome.result
+  return r?.errors?.join('; ') || r?.result?.trim().slice(0, 300) || `exited with code ${outcome.exitCode} and no result`
+}
+
+/** Applies `change` to the stored job and returns what was stored (null if removed). */
+function update(stateDir: string, id: string, change: (job: Job) => Job | null): Job | null {
+  let stored: Job | null = null
+  const jobs = loadJobs(stateDir).flatMap(j => {
+    if (j.id !== id) return [j]
+    stored = change(j)
+    return stored ? [stored] : []
+  })
   saveJobs(stateDir, jobs)
+  return stored
+}
+
+/** FR8: the owner's failure notice, with Retry and Disable buttons. */
+export function failureNotice(job: Job, reason: string) {
+  const head = `⚠️ Scheduled job ${job.id} "${jobTitle(job)}" failed: ${reason}`
+  const text = job.enabled ? head : `${head}\nDisabled after ${MAX_FAILURES} failures in a row.`
+  const keyboard = { inline_keyboard: [[
+    { text: '🔁 Retry', callback_data: `sch:retry:${job.id}` },
+    ...(job.enabled ? [{ text: '⏸ Disable', callback_data: `sch:off:${job.id}` }] : []),
+  ]] }
+  return { text, keyboard }
 }
 
 /** Runs the job with this id, if it still exists and is enabled. */
@@ -83,11 +114,11 @@ export async function runJob(id: string, deps: JobRunDeps): Promise<JobStatus | 
   const status = statusOf(outcome)
   const text = outcome.result?.result?.trim()
   if (!replied && status === 'ok' && text) await deps.post(job.sessionKey, text)
-  update(deps.stateDir, id, j => (status === 'ok' && j.kind === 'at' ? null : {
-    ...j,
-    lastRun: now,
-    lastStatus: status,
-    failures: status === 'error' ? j.failures + 1 : status === 'ok' ? 0 : j.failures,
-  }))
+  const stored = update(deps.stateDir, id, j => {
+    if (status === 'ok' && j.kind === 'at') return null
+    const failures = status === 'error' ? j.failures + 1 : status === 'ok' ? 0 : j.failures
+    return { ...j, lastRun: now, lastStatus: status, failures, enabled: j.enabled && failures < MAX_FAILURES }
+  })
+  if (status === 'error' && stored) await deps.onFailure?.(stored, failureReason(outcome))
   return status
 }
