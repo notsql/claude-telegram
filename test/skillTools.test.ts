@@ -30,7 +30,7 @@ test('create, list, read, patch; one write per turn', () => {
   tools.startTurn('1')
   expect(out(tools.call('skill_patch', { name: 'deploy-blog', sections: { Pitfalls: 'Install first.' } }, '1', p))).toBe('updated skill deploy-blog (v2)')
   expect(store.read('deploy-blog')!.description).toBe('Deploy the blog. Use when asked to publish.')
-  expect(out(tools.call('skill_list', {}, '1', p))).toBe('deploy-blog (v2, hermes): Deploy the blog. Use when asked to publish.')
+  expect(out(tools.call('skill_list', {}, '1', p))).toBe('deploy-blog (v2, learned): Deploy the blog. Use when asked to publish.')
   expect(out(tools.call('skill_read', { name: 'deploy-blog' }, '1', p))).toContain('## Pitfalls\nInstall first.')
   expect(tools.call('skill_patch', { name: 'nope', sections: {} }, '1', p)!.isError).toBe(true)
   expect(tools.call('memory_write', {}, '1', p)).toBeUndefined()

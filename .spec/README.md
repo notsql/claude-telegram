@@ -1,6 +1,6 @@
-# Hermes-style Claude Telegram Agent — Spec Index
+# Claude Telegram Agent — Spec Index
 
-Turn this fork of the official Claude Code Telegram channel plugin into an **always-on, self-improving personal agent**. It applies the principles of Nous Research's [Hermes Agent](https://hermes-agent.nousresearch.com/docs) on top of **Claude Code itself**. The daemon runs the unmodified `claude` CLI (`claude -p`) and integrates only through hooks and MCP. There is no Agent SDK and no direct API call (constitution VIII).
+Turn this fork of the official Claude Code Telegram channel plugin into an **always-on, self-improving personal agent**. It is built on top of **Claude Code itself**. The daemon runs the unmodified `claude` CLI (`claude -p`) and integrates only through hooks and MCP. There is no Agent SDK and no direct API call (constitution VIII).
 
 Start with [constitution.md](./constitution.md). Each feature folder follows spec-kit format:
 
@@ -25,18 +25,18 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 
 Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](https://code.claude.com/docs/en/headless), [hooks](https://code.claude.com/docs/en/hooks), [sub-agents](https://code.claude.com/docs/en/sub-agents), [skills](https://code.claude.com/docs/en/skills), [agent-teams](https://code.claude.com/docs/en/agent-teams).
 
-## Hermes → Claude Code mapping
+## Capability → Claude Code mapping
 
-| Hermes concept | This project |
+| Capability | This project |
 |---|---|
 | Always-on gateway process | `daemon.ts`: a grammY long-poller that spawns `claude -p --resume` for each turn, run under launchd or systemd (001) |
-| Agent loop / model access | The unmodified `claude` CLI on the owner's subscription. Hermes' direct-API approach is avoided (see [Auth](#auth)) |
+| Agent loop / model access | The unmodified `claude` CLI on the owner's subscription. Direct API calls are avoided (see [Auth](#auth)) |
 | Persistent notes (`MEMORY.md`) | Claude Code auto-memory: one markdown file per fact with typed frontmatter, plus a `MEMORY.md` index (004) |
-| User model (Honcho / `USER.md`) | Per-Telegram-user `type: user` memory files, refined by the reflection pass (004) |
+| User model (`USER.md`) | Per-Telegram-user `type: user` memory files, refined by the reflection pass (004) |
 | FTS5 session search + LLM summary | An indexer over Claude Code's own `~/.claude/projects/**/*.jsonl` transcripts → `bun:sqlite` FTS5 cache (005) |
 | Skills created from experience | The reflection pass writes or patches `~/.claude/skills/<name>/SKILL.md` and tracks usage (006) |
-| "Nudges" to persist knowledge | `Stop` and `PreCompact` hooks trigger a reflection pass (`claude -p --agent hermes-reflector --json-schema`) shared by 004, 006 and 009 |
-| Specialised workers / delegation | Custom subagents in `~/.claude/agents/hermes-*` with their own model, tools, preloaded skills and `memory: user`. Chats can run as a named agent (`--agent`). The loop learns new agents for recurring roles (009) |
+| "Nudges" to persist knowledge | `Stop` and `PreCompact` hooks trigger a reflection pass (`claude -p --agent tg-reflector --json-schema`) shared by 004, 006 and 009 |
+| Specialised workers / delegation | Custom subagents in `~/.claude/agents/tg-*` with their own model, tools, preloaded skills and `memory: user`. Chats can run as a named agent (`--agent`). The loop learns new agents for recurring roles (009) |
 | Parallel multi-agent teams | Claude Code agent teams: deferred until they work in `-p` (010) |
 | Context assembly | `SessionStart` and `UserPromptSubmit` hooks inject memory, the user model and recalled history (004/005) |
 | Scheduled automations | A daemon-owned `croner` scheduler, with results delivered to the originating chat or topic (007) |
@@ -73,13 +73,13 @@ Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](http
 │                                                    reflection        │
 │  ┌──────────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
 │  │ reflection       │  │ history      │  │ scheduler            │   │
-│  │ --agent hermes-  │  │ indexer (005)│  │ (croner, 007)        │   │
+│  │ --agent tg-  │  │ indexer (005)│  │ (croner, 007)        │   │
 │  │ reflector (009)  │  │ JSONL→FTS5   │  │ → runTurn() → chat   │   │
 │  └────────┬─────────┘  └──────────────┘  └──────────────────────┘   │
 └───────────┼─────────────────────────────────────────────────────────┘
             ▼
  ~/.claude/  (one brain, shared with the CLI)
-   CLAUDE.md · projects/<daemon>/memory/** · skills/** · agents/hermes-* · agent-memory/** · projects/**/*.jsonl
+   CLAUDE.md · projects/<daemon>/memory/** · skills/** · agents/tg-* · agent-memory/** · projects/**/*.jsonl
  ~/.claude/channels/telegram/  (daemon state)
    .env · access.json · sessions.json · jobs.json · history.db · skills-usage.json · inbox/
 ```
@@ -97,7 +97,7 @@ Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](http
 - Other people's requests must not be routed through the owner's subscription. In groups, only the owner triggers turns (003 FR12).
 - Always-on use (cron jobs, reflection) uses up usage windows faster. Hence Haiku for background passes, budgets, and pause-on-limit (001 FR10).
 
-**Why the CLI and not the Agent SDK:** Hermes called the Anthropic API directly with Claude Code login tokens. Those requests were billed to "extra usage" credits instead of the plan, and failed with "out of extra usage" errors ([hermes-agent#32243](https://github.com/NousResearch/hermes-agent/issues/32243)). The fix requested by its users is to call `claude -p` ([#48320](https://github.com/NousResearch/hermes-agent/issues/48320)). Anthropic's billing guidance also groups Agent SDK usage with third-party apps, and moving those to separate billing is only paused. Running the unmodified `claude` binary is ordinary Claude Code usage, the clearest case for drawing on the subscription. The daemon never touches tokens.
+**Why the CLI and not the Agent SDK:** Agents that call the Anthropic API directly with Claude Code login tokens have been billed to "extra usage" credits instead of the plan, failing with "out of extra usage" errors; calling `claude -p` avoids this. Anthropic's billing guidance also groups Agent SDK usage with third-party apps, and moving those to separate billing is only paused. Running the unmodified `claude` binary is ordinary Claude Code usage, the clearest case for drawing on the subscription. The daemon never touches tokens.
 
 ## Baseline notes
 

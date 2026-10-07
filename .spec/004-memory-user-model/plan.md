@@ -9,7 +9,7 @@ src/memory/
   tools.ts       memory_* tools on the daemon MCP server, scope-checked against resolvePolicy(key)
   guard.ts       secret pattern rejection, size limits, name slugging
 src/reflection/
-  worker.ts      queue of {sessionKey, transcriptPath, fromOffset}; fed by Stop/PreCompact hooks; debounced; runs agent/oneshot.ts (--agent hermes-reflector, 009)
+  worker.ts      queue of {sessionKey, transcriptPath, fromOffset}; fed by Stop/PreCompact hooks; debounced; runs agent/oneshot.ts (--agent tg-reflector, 009)
   prompt.ts      reflection system prompt + JSON schema for proposals
   apply.ts       dedup/merge → apply or propose (inline keyboard), emits notices
 ```
@@ -33,7 +33,7 @@ The `source`, `session_key` and `user_id` fields are extensions. Claude Code ign
 ## Reflection worker
 - **Trigger**: the `Stop` hook POSTs `{session_id, transcript_path}` plus `TG_SESSION_KEY`. The worker enqueues `{key, transcriptPath, fromOffset}`, where `fromOffset` is the byte offset reflected up to last time. Calls are debounced (30 seconds of quiet per key) so that a fast back-and-forth is reflected on once. `PreCompact` triggers an immediate, non-debounced pass so knowledge is saved before compaction drops it.
 - **Input**: the turn delta parsed from the transcript JSONL (user and assistant text plus a summary of tool calls, capped at about 8k tokens, reusing 005's `parse.ts`), the relevant indexes, and the sender's user-model files.
-- **Model**: `agent/oneshot.ts` runs `claude -p --agent hermes-reflector --output-format json --json-schema <proposals schema> --settings '{"disableAllHooks":true}'` (009). `disableAllHooks` stops it from triggering reflection on itself. Claude Code enforces the schema and returns `structured_output`. zod re-validates it, with one retry on failure.
+- **Model**: `agent/oneshot.ts` runs `claude -p --agent tg-reflector --output-format json --json-schema <proposals schema> --settings '{"disableAllHooks":true}'` (009). `disableAllHooks` stops it from triggering reflection on itself. Claude Code enforces the schema and returns `structured_output`. zod re-validates it, with one retry on failure.
 - **Output schema**:
   ```ts
   { memory: Array<{op:'create'|'update'|'delete', scope, type, name, description, body, reason}>,
@@ -42,7 +42,7 @@ The `source`, `session_key` and `user_id` fields are extensions. Claude Code ign
     agents: Array<...> /* 009 */ }
   ```
 - **apply.ts**: skips chats with `memoryScope: none`, runs guard checks, deduplicates by name and by token overlap with existing descriptions (a simple Jaccard score over 0.6 means update instead of create), and handles `autoLearn` modes.
-- The reflection prompt borrows from Hermes' "nudge" idea and from Claude Code's memory guidance: what to save, what not to save, and to prefer updating over adding.
+- The reflection prompt follows Claude Code's memory guidance: what to save, what not to save, and to prefer updating over adding.
 
 ## Injection
 `inject.ts` builds:
@@ -53,7 +53,7 @@ The `source`, `session_key` and `user_id` fields are extensions. Claude Code ign
 This block is returned as `additionalContext` from the **`SessionStart`** hook, once per session (including resumes). The **`UserPromptSubmit`** hook adds a delta only when an index has changed since then (an mtime check) or when a new group participant speaks. This keeps the prompt prefix stable for caching. The append-system-prompt text stays static.
 
 ## Risks
-- **Memory bloat or drift**: handled by the limits and the consolidation pass (a weekly 007 job run as `--agent hermes-curator`, 009). The curator also reviews subagent memories in `~/.claude/agent-memory/hermes-*/`.
+- **Memory bloat or drift**: handled by the limits and the consolidation pass (a weekly 007 job run as `--agent tg-curator`, 009). The curator also reviews subagent memories in `~/.claude/agent-memory/tg-*/`.
 - **Reflection recursion or cost**: one-shots run without daemon hooks, and use Haiku with debounce and a daily cap.
 - **Hook latency**: the `SessionStart` and `UserPromptSubmit` handlers must answer in under 200ms. Indexes are cached in memory and invalidated by fs watch.
 - **Privacy in groups**: memory is shared by design, so anything learned in a group is visible to the bot in every chat (owner decision 2026-10-07). User-model files for group participants are only written when the group policy is `autoLearn != off`; set `memoryScope: none` on a chat that should neither read nor add to memory.

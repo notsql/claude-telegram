@@ -1,7 +1,7 @@
 # 004 — Persistent Memory & User Model
 
 ## Problem
-Each Claude session starts with almost no knowledge of the user. Hermes keeps curated notes and a deepening model of each user, and it decides **on its own** what is worth remembering. We want the same thing, stored in Claude Code's native memory format so the CLI benefits too.
+Each Claude session starts with almost no knowledge of the user. The agent should keep curated notes and a deepening model of each user, and decide **on its own** what is worth remembering, stored in Claude Code's native memory format so the CLI benefits too.
 
 ## User stories
 - **US1**: I mention "I prefer pnpm over npm" once. From then on, in Telegram and in the terminal, the agent uses pnpm without being reminded.
@@ -25,7 +25,7 @@ Each Claude session starts with almost no knowledge of the user. Hermes keeps cu
   - Everything is subject to a token budget (default 4k), and the most recent and most relevant items are kept.
 - **FR4**: Tools: `memory_write(type, name, description, body)`, `memory_search(query)`, `memory_read(name)`, `memory_delete(name)` and `memory_update(name, patch)`. The daemon stamps `session_key` on writes; with `memoryScope: none` the tools are hidden (003 tool filtering) and refused in code.
 - **FR5** (autonomy, inline): `TELEGRAM_INSTRUCTIONS` (`--append-system-prompt`) includes save, curate and recall guidance in the same spirit as Claude Code's own memory instructions. Save corrections, durable preferences, project facts and references. Don't save anything derivable from code or anything that only matters within the conversation.
-- **FR6** (autonomy, reflection): the `Stop` hook (after each turn) and the `PreCompact` hook (before context is lost) enqueue a shared **reflection worker** (also used by 006). It runs as the `hermes-reflector` agent (009: Haiku, no tools, `--json-schema`) over the turn delta, read from the hook's `transcript_path`, plus the current indexes, and returns structured proposals: `{memory: [...], user_model: [...], skills: [...]}`. Proposals pass dedup and validation, then are either applied (`autoLearn: auto`) or offered as buttons (`autoLearn: propose`).
+- **FR6** (autonomy, reflection): the `Stop` hook (after each turn) and the `PreCompact` hook (before context is lost) enqueue a shared **reflection worker** (also used by 006). It runs as the `tg-reflector` agent (009: Haiku, no tools, `--json-schema`) over the turn delta, read from the hook's `transcript_path`, plus the current indexes, and returns structured proposals: `{memory: [...], user_model: [...], skills: [...]}`. Proposals pass dedup and validation, then are either applied (`autoLearn: auto`) or offered as buttons (`autoLearn: propose`).
 - **FR7**: Curation. The reflection pass must prefer `update` or `delete` over adding a near-duplicate. Proposals are checked by name, by description similarity, and by keyword overlap with existing entries.
 - **FR8**: Limits: at most 3 memory writes per turn, at most 2KB per file, and an index of at most 200 lines. When the index exceeds the limit, a consolidation pass is triggered.
 - **FR9**: Each write sends a compact notice ("🧠 Saved *pnpm preference* · Undo") to the session target. Undo deletes the file or restores the previous version.

@@ -12,12 +12,12 @@ Telegram's `/` menu is the most discoverable way to control a bot. Under the con
 
 ## Functional requirements
 - **FR1**: Session commands: `/new`, `/resume [n]`, `/sessions`, `/stop`, `/model [name]`, `/compact`, `/cost`, `/status`.
-- **FR2**: Hermes commands: `/remember <text>`, `/forget <name|query>`, `/memory`, `/search <query>`, `/skills [show|rm] [name]`, `/agents`, `/agent [name|off]` (009), `/cron`, `/policy`.
+- **FR2**: Agent commands: `/remember <text>`, `/forget <name|query>`, `/memory`, `/search <query>`, `/skills [show|rm] [name]`, `/agents`, `/agent [name|off]` (009), `/cron`, `/policy`.
 - **FR3**: Legacy commands remain: `/start`, `/help` and `/status` keep the current pairing-aware behaviour from `server.ts`, extended for the new features.
 - **FR4**: **Skill commands**: discover all skills (user, project and plugin), map each `name` to Telegram's charset (`[a-z0-9_]{1,32}`: lowercase, `-`→`_`, truncate, deduplicate with a numeric suffix), and use the skill `description` truncated to 256 chars as the command description. A collision table is kept in `commands.json`.
 - **FR5**: Invoking a skill command passes the **native skill invocation** `/<original-skill-name> <args>` as the `claude -p` prompt in the current session. Claude Code expands it, including `$ARGUMENTS` and named `arguments`. This also works for `disable-model-invocation` skills. Skills with `user-invocable: false` are never put in the menu.
 - **FR6**: Menus are registered per scope with `setMyCommands` + `BotCommandScope`:
-  - `all_private_chats`: session, Hermes and skill commands
+  - `all_private_chats`: session, agent and skill commands
   - `all_group_chats`: `/new`, `/stop`, `/search`, `/status`, and the skills allowed by group policy
   - `chat_administrators` / a per-chat scope for groups with custom policy: adds `/policy` and `/cron`
   Telegram's limit is 100 commands per scope. Built-in commands come first, then skills ranked by usage (006 `skills-usage.json`).
@@ -45,7 +45,7 @@ Telegram's `/` menu is the most discoverable way to control a bot. Under the con
 - Localised command descriptions (possible later via `language_code`).
 
 ## Acceptance criteria
-- **AC1** (FR6): The DM `/` menu shows the session, Hermes and skill commands. The group `/` menu shows the reduced set.
+- **AC1** (FR6): The DM `/` menu shows the session, agent and skill commands. The group `/` menu shows the reduced set.
 - **AC2** (FR4, FR7): A newly learned skill appears in the menu within 1 minute of the notice.
 - **AC3** (FR5): `/deploy_blog staging` invokes the skill with that argument.
 - **AC4** (FR4): Two skills that normalise to the same command name both appear, with distinct suffixes.

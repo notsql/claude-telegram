@@ -1,9 +1,9 @@
 # 001 — Headless Daemon (`claude -p` + hooks)
 
 ## Problem
-The fork runs as an MCP *channel* inside an interactive `claude --channels` session, so the agent is reachable only while a terminal session is open. Hermes-style behaviour needs an agent that is always on, survives reboots, runs scheduled work, and starts Claude Code turns by itself.
+The fork runs as an MCP *channel* inside an interactive `claude --channels` session, so the agent is reachable only while a terminal session is open. A personal assistant needs an agent that is always on, survives reboots, runs scheduled work, and starts Claude Code turns by itself.
 
-Hermes itself hit a billing problem: it called the Anthropic API directly with the Claude Code login token. Those requests were billed to "extra usage" credits instead of the plan ([hermes-agent#32243](https://github.com/NousResearch/hermes-agent/issues/32243)). Anthropic's billing guidance also groups Agent SDK usage with third-party apps. We therefore run **only the unmodified `claude` binary** and integrate through its documented flags, hooks and MCP (constitution VIII).
+Third-party agents that call the Anthropic API directly with the Claude Code login token have had those requests billed to "extra usage" credits instead of the plan. Anthropic's billing guidance also groups Agent SDK usage with third-party apps. We therefore run **only the unmodified `claude` binary** and integrate through its documented flags, hooks and MCP (constitution VIII).
 
 ## User stories
 - **US1**: As the owner, I message the bot at any time, even with no terminal open, and get a reply.
@@ -22,7 +22,7 @@ Hermes itself hit a billing problem: it called the Anthropic API directly with t
   ```
   The child process gets the env vars `TG_SESSION_KEY`, `TG_DAEMON_URL` and `TG_HOOK_TOKEN`.
 - **FR2**: The normal Claude Code configuration (CLAUDE.md, skills, memory, user settings) loads as usual because this is the real CLI. Daemon-specific hooks are added **only** through `--settings`, so terminal sessions are unaffected unless the owner opts in (004 FR10).
-- **FR3**: Telegram and Hermes tools are served by an **MCP server inside the daemon** (streamable HTTP on `127.0.0.1`, bearer-token auth). `mcp.json` points the CLI to it. The tools reuse `server.ts` logic and share the daemon's in-memory state.
+- **FR3**: Telegram and daemon tools are served by an **MCP server inside the daemon** (streamable HTTP on `127.0.0.1`, bearer-token auth). `mcp.json` points the CLI to it. The tools reuse `server.ts` logic and share the daemon's in-memory state.
 - **FR4**: A **hook endpoint** inside the daemon (localhost HTTP, same token) receives Claude Code **`http`-type hooks** directly. Claude Code POSTs the hook JSON to `${TG_DAEMON_URL}/hook/<event>` with an `Authorization` header filled from env through `allowedEnvVars`, so no hook scripts are needed. Hooks used:
   - `SessionStart`, `UserPromptSubmit` (004/005)
   - `PreToolUse`, `PermissionRequest` (003)

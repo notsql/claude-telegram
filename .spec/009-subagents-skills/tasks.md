@@ -9,11 +9,11 @@ Depends on: 001 (runner, http hooks), 003 (policy), 004/006 (reflection, skill s
   - `memory: user` path
   - background subagent wait behaviour in `-p`
   - `/skill-name args` expansion in a `-p` prompt
-- [ ] **T902** Write the shipped agents (`assets/agents/hermes-*.md`) and guidance skills (`assets/skills/hermes-*`).
+- [ ] **T902** Write the shipped agents (`assets/agents/tg-*.md`) and guidance skills (`assets/skills/tg-*`).
   *Verify:* `claude plugin validate ~/.claude/agents/` passes after install.
 - [ ] **T903** `agents/install.ts`: checksum-aware install and upgrade.
   *Verify:* AC2, and a user-edited agent is not overwritten.
-- [ ] **T904** Switch `oneshot.ts` to `--agent hermes-reflector` / `hermes-summarizer` + `--json-schema` + `disableAllHooks`.
+- [ ] **T904** Switch `oneshot.ts` to `--agent tg-reflector` / `tg-summarizer` + `--json-schema` + `disableAllHooks`.
   *Verify:* AC7, with no hook events during one-shots.
 - [ ] **T905** Runner: `--agent` from policy, subagent progress lines, `--forward-subagent-text`, background wait ceiling env.
   *Verify:* AC1, AC3, AC4.

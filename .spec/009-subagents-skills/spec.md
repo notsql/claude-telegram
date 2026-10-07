@@ -19,16 +19,16 @@ Docs checked 2026-10-03 against CLI 2.1.288: [sub-agents](https://code.claude.co
 ## Functional requirements
 
 ### Shipped agents
-- **FR1**: The daemon installs a set of **hermes agents** into `~/.claude/agents/`, named with a `hermes-` prefix and carrying `metadata`-style markers in the body header. On upgrade they are updated only if the user hasn't changed them (checksum).
+- **FR1**: The daemon installs a set of **tg agents** into `~/.claude/agents/`, named with a `tg-` prefix and carrying `metadata`-style markers in the body header. On upgrade they are updated only if the user hasn't changed them (checksum).
 
   | Agent | Model | Tools | Memory | Role |
   |---|---|---|---|---|
-  | `hermes-reflector` | haiku | none (outputs JSON) | — | Post-turn reflection for 004/006, run as `claude -p --agent hermes-reflector --json-schema …` |
-  | `hermes-curator` | sonnet | Read, Glob, Grep, `mcp__tg__memory_*` | — | Weekly memory consolidation (004 FR8, through 007) |
-  | `hermes-skill-author` | sonnet | Read, Glob, Grep, `mcp__tg__skill_*`, `mcp__tg__agent_*` | `user` | Drafts and patches skills and agents (006, FR8) with preloaded `skill-authoring` guidance |
-  | `hermes-researcher` | sonnet | WebSearch, WebFetch, Read, Grep, Glob | `user` | Delegated research. Returns a summary with sources |
-  | `hermes-job-runner` | inherit | per job policy | — | Default agent for scheduled jobs (007). `maxTurns` bound |
-  | `hermes-summarizer` | haiku | none | — | History summaries and session-rotation summaries (005) |
+  | `tg-reflector` | haiku | none (outputs JSON) | — | Post-turn reflection for 004/006, run as `claude -p --agent tg-reflector --json-schema …` |
+  | `tg-curator` | sonnet | Read, Glob, Grep, `mcp__tg__memory_*` | — | Weekly memory consolidation (004 FR8, through 007) |
+  | `tg-skill-author` | sonnet | Read, Glob, Grep, `mcp__tg__skill_*`, `mcp__tg__agent_*` | `user` | Drafts and patches skills and agents (006, FR8) with preloaded `skill-authoring` guidance |
+  | `tg-researcher` | sonnet | WebSearch, WebFetch, Read, Grep, Glob | `user` | Delegated research. Returns a summary with sources |
+  | `tg-job-runner` | inherit | per job policy | — | Default agent for scheduled jobs (007). `maxTurns` bound |
+  | `tg-summarizer` | haiku | none | — | History summaries and session-rotation summaries (005) |
 
 - **FR2**: Descriptions are short and trigger-oriented ("Use proactively when…"), stay within the combined description budget, and are tested with delegation evals (FR12).
 
@@ -51,8 +51,8 @@ Docs checked 2026-10-03 against CLI 2.1.288: [sub-agents](https://code.claude.co
   - `tools` must be listed explicitly (no inherit-all)
   - `Agent` is disallowed unless the owner allows it
   - `mcpServers` cannot be defined inline (only references to existing servers)
-  - names use the `hermes-` prefix
-  - only agents whose metadata says `source: hermes` can be patched
+  - names use the `tg-` prefix
+  - only agents whose metadata says `source: tg` can be patched
   - `autoLearn` modes from 003 apply, with group-originated proposals always set to `propose`
 
 ### Full skill usage (with 006)
@@ -66,22 +66,22 @@ Docs checked 2026-10-03 against CLI 2.1.288: [sub-agents](https://code.claude.co
   - `user-invocable: false` for background knowledge
   - `model` / `effort` overrides
   - supporting files (`reference.md`, `scripts/`) for long material
-- **FR11**: Agents preload the relevant skills through their `skills:` field (for example, the skill-author preloads `skill-authoring`, and the researcher preloads `research-method`). The daemon ships these guidance skills, also with the `hermes-` prefix.
-- **FR12**: Evaluation: when the `skill-creator` plugin is installed, the weekly maintenance job (007) runs its evals against hermes skills and agents with enough usage, and feeds the results into refinement (006 FR8).
+- **FR11**: Agents preload the relevant skills through their `skills:` field (for example, the skill-author preloads `skill-authoring`, and the researcher preloads `research-method`). The daemon ships these guidance skills, also with the `tg-` prefix.
+- **FR12**: Evaluation: when the `skill-creator` plugin is installed, the weekly maintenance job (007) runs its evals against tg skills and agents with enough usage, and feeds the results into refinement (006 FR8).
 
 ## Non-goals
 - Agent teams (deferred to [010](../010-agent-teams/spec.md)).
-- Plugin packaging of the hermes agents (they live as plain user-scope files).
+- Plugin packaging of the tg agents (they live as plain user-scope files).
 
 ## Acceptance criteria
-- **AC1** (FR1, FR5): A research question in the DM is delegated to `hermes-researcher`, the progress message shows "🔎 hermes-researcher…", and the reply is a summary with sources.
-- **AC2** (FR1): The terminal `claude` lists the same hermes agents in `/agents`.
+- **AC1** (FR1, FR5): A research question in the DM is delegated to `tg-researcher`, the progress message shows "🔎 tg-researcher…", and the reply is a summary with sources.
+- **AC2** (FR1): The terminal `claude` lists the same tg agents in `/agents`.
 - **AC3** (FR3): A topic with `agent: infra-ops` runs turns as that agent, and a Bash command outside its tools is denied.
 - **AC4** (FR6): A background subagent task finishes after the main reply, and its result arrives as a second message.
-- **AC5** (FR8, FR9): After 3 similar triage tasks, the loop proposes `hermes-issue-triager` with explicit tools. A proposal containing `bypassPermissions` is rejected.
+- **AC5** (FR8, FR9): After 3 similar triage tasks, the loop proposes `tg-issue-triager` with explicit tools. A proposal containing `bypassPermissions` is rejected.
 - **AC6** (FR10): A learned skill with `arguments: [issue]` invoked as `/triage_issue 123` from Telegram receives `123` as `$issue`.
-- **AC7** (FR1): Reflection runs through `--agent hermes-reflector --json-schema` and returns `structured_output` that passes zod.
+- **AC7** (FR1): Reflection runs through `--agent tg-reflector --json-schema` and returns `structured_output` that passes zod.
 
 ## Open questions
-- Should `hermes-researcher` default to Sonnet or Haiku? (Proposal: Sonnet. Research quality matters, and it's invoked on demand only.)
+- Should `tg-researcher` default to Sonnet or Haiku? (Proposal: Sonnet. Research quality matters, and it's invoked on demand only.)
 - Should learned agents be allowed `memory: user`? (Proposal: yes. Memory is inspectable markdown under `~/.claude/agent-memory/<name>/`, and 004's guard rules apply when the curator reviews it.)

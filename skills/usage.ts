@@ -1,5 +1,5 @@
 /**
- * Skill usage (006 FR7, FR8) in `skills-usage.json`: per hermes skill, how
+ * Skill usage (006 FR7, FR8) in `skills-usage.json`: per learned skill, how
  * often it was invoked, when last, and how those runs went. Invocations come
  * from the `PostToolUse` hook (matcher `Skill`); outcomes come from the
  * reflection pass. More than REFINE_AFTER - 1 failed or corrected outcomes

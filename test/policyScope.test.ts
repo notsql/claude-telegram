@@ -55,8 +55,8 @@ test('policyArgs maps the policy to CLI flags', async () => {
   expect(policyArgs({ permissionMode: 'default', alwaysAllow: ['Bash(ls *)'] })).toEqual([
     '--permission-mode', 'default', '--allowedTools', 'mcp__tg', 'Bash(ls *)',
   ])
-  expect(policyArgs({ model: 'sonnet', agent: 'hermes-x', allowedTools: ['Read', 'mcp__tg'] })).toEqual([
-    '--model', 'sonnet', '--allowedTools', 'mcp__tg', 'Read', '--agent', 'hermes-x',
+  expect(policyArgs({ model: 'sonnet', agent: 'tg-x', allowedTools: ['Read', 'mcp__tg'] })).toEqual([
+    '--model', 'sonnet', '--allowedTools', 'mcp__tg', 'Read', '--agent', 'tg-x',
   ])
   // Groups ask rather than block: nothing is disallowed by default.
   expect(policyArgs(defaultPolicy('group'))).not.toContain('--disallowedTools')

@@ -1,6 +1,6 @@
 /**
  * Condense search hits into a cited answer (005 FR5). A one-shot model call
- * (001 `oneshot.ts`); it uses haiku until 009 ships the `hermes-summarizer` agent.
+ * (001 `oneshot.ts`); it uses haiku until 009 ships the `tg-summarizer` agent.
  */
 
 import type { Database } from 'bun:sqlite'

@@ -1,6 +1,6 @@
 import type { Policy } from './schema.ts'
 
-/** Policy flags a Hermes MCP tool can require (FR7); 004–007 tools set one. */
+/** Policy flags a daemon MCP tool can require (FR7); 004–007 tools set one. */
 export type ToolFlag = 'schedulerAllowed' | 'teamsAllowed'
 
 /**

@@ -4,7 +4,7 @@
  * most one is acted on per call (one skill write per turn). A proposal is
  * matched to an existing skill by name, else by a description whose token
  * overlap is over SIMILAR, and then becomes a patch (patch over create).
- * A skill not written by hermes is never changed directly: the owner gets a
+ * A skill not written by this bot is never changed directly: the owner gets a
  * diff with ✅ Apply / ✖ Skip. Otherwise the chat's `autoLearn` decides:
  * `auto` writes and notifies, `propose` asks with ✅ Save / ✏️ Edit / ✖ Skip,
  * `off` does nothing. New names that clash with a built-in or installed
@@ -34,7 +34,7 @@ export type Planned = {
   name: string
   description: string
   sections: Record<string, string>
-  /** Patching a skill hermes did not write: only after the owner approves the diff. */
+  /** Patching a skill this bot did not write: only after the owner approves the diff. */
   foreign: boolean
 }
 
@@ -96,7 +96,7 @@ export function createSkillApplier(opts: SkillApplyOpts) {
     const sections = clean(p.sections)
     const existing = matchSkill(store, p.name, p.description)
     if (existing) {
-      return { store, op: 'patch', name: existing.name, description: p.description || existing.description, sections, foreign: existing.metadata.source !== 'hermes' }
+      return { store, op: 'patch', name: existing.name, description: p.description || existing.description, sections, foreign: existing.metadata.source !== 'tg' }
     }
     const why = nameRefusal(p.name, opts.taken(store))
     if (why) return void log(`skills: dropped ${p.name}: ${why}`)

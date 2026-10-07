@@ -22,7 +22,7 @@ const SECTIONS_SCHEMA = {
 const READ_TOOLS = [
   {
     name: 'skill_list',
-    description: 'List the skills in this chat\'s skills folder: name, version, whether hermes wrote it, and description.',
+    description: 'List the skills in this chat\'s skills folder: name, version, whether this bot wrote it, and description.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -49,7 +49,7 @@ const WRITE_TOOLS = [
   },
   {
     name: 'skill_patch',
-    description: 'Fix or extend an existing skill: replaces only the given sections. Skills hermes did not write are sent to the owner as a diff instead.',
+    description: 'Fix or extend an existing skill: replaces only the given sections. Skills this bot did not write are sent to the owner as a diff instead.',
     inputSchema: {
       type: 'object',
       properties: { name: { type: 'string' }, description: { type: 'string' }, sections: SECTIONS_SCHEMA },
@@ -79,7 +79,7 @@ export function createSkillTools(storeFor: (key: string) => SkillStore, applier:
         case 'skill_list': {
           const all = store().list()
           return text(all.length
-            ? all.map(s => `${s.name} (v${s.metadata.version ?? '1'}${s.metadata.source === 'hermes' ? ', hermes' : ''}): ${s.description}`).join('\n')
+            ? all.map(s => `${s.name} (v${s.metadata.version ?? '1'}${s.metadata.source === 'tg' ? ', learned' : ''}): ${s.description}`).join('\n')
             : 'no skills yet')
         }
         case 'skill_read': {
