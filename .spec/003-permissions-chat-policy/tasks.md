@@ -20,7 +20,7 @@ Depends on: 001 (hook endpoint T006, MCP server T005), 002 (session keys)
 - [x] **T308** MCP `tools/list` filtered by policy `requires` flags. This is groundwork for 004–007.
 - [x] **T309** `/policy` inline editor in Telegram (owner only, no bypass option).
   *Verify:* AC6.
-- [ ] **T310** Extend the `/telegram:access` skill with policy subcommands and update ACCESS.md.
+- [x] **T310** Extend the `/telegram:access` skill with policy subcommands and update ACCESS.md.
 - [x] **T311** `audit.log` for policy changes and approval decisions.
   *Verify:* entries appear with key, user, tool and decision.
 - [ ] **T312** Owner-only turn trigger in groups (FR12): non-owner messages go to the group context buffer only. Add `allowOthersOnSubscription`, settable from the terminal skill only, with a warning and an audit entry.
