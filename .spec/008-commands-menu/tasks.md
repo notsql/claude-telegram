@@ -12,7 +12,7 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* AC5.
 - [x] **T806** Skills handler (`/skills`) with show, rm and archive buttons, wired to 006.
 - [ ] **T807** `/cron` inline manager wired to 007, and `/policy` wired to the 003 editor.
-- [ ] **T808** `menu.ts`: per-scope lists, ranking, ≤100 commands, diff-and-debounce refresh on `skills-changed` and policy change.
+- [x] **T808** `menu.ts`: per-scope lists, ranking, ≤100 commands, diff-and-debounce refresh on `skills-changed` and policy change.
   *Verify:* AC1, AC2.
 - [ ] **T809** Skill command invocation with args.
   *Verify:* AC3.
