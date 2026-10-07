@@ -25,4 +25,4 @@ Depends on: 001, 002, 003 (policy scopes, tool registry)
   *Verify:* the agent addresses the user by their preferred name or style after one session.
 - [ ] **T411** CLI bridge opt-in: (a) an `@import` line in `~/.claude/CLAUDE.md` and/or (b) the `SessionStart` memory hook in `~/.claude/settings.json`. Both need confirmation and are reversible.
   *Verify:* AC3.
-- [ ] **T412** Expose functions for 008 (`/remember`, `/forget`, `/memory`).
+- [x] **T412** Expose functions for 008 (`/remember`, `/forget`, `/memory`).
