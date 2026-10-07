@@ -24,7 +24,9 @@ export function startHookServer(opts: HookServerOpts): { port: number; stop: () 
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: opts.port ?? 0,
-    async fetch(req) {
+    async fetch(req, server) {
+      // A PermissionRequest is held until the user answers (003 FR4), far past Bun's 10s idle default.
+      server.timeout(req, 0)
       const event = new URL(req.url).pathname.match(/^\/hook\/([a-z-]+)$/)?.[1]
       if (!event || req.method !== 'POST') return new Response('not found', { status: 404 })
       if (req.headers.get('authorization') !== `Bearer ${opts.authToken}`) {

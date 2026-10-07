@@ -49,3 +49,17 @@ test('disables the Telegram channel plugin so turns never start a second poller'
   const settings = renderHookSettings({ port: 4321, approvalTimeoutSec: 300 }) as any
   expect(settings.enabledPlugins).toEqual({ 'telegram@claude-plugins-official': false })
 })
+
+test('a handler may hold the request past the 10s idle default', async () => {
+  const slow = startHookServer({
+    authToken: 't',
+    handlers: { 'permission-request': () => new Promise(r => setTimeout(() => r({ ok: 1 }), 11_000)) },
+    log: () => {},
+  })
+  try {
+    const res = await fetch(`http://127.0.0.1:${slow.port}/hook/permission-request`, {
+      method: 'POST', headers: { authorization: 'Bearer t', 'x-tg-session-key': '1' }, body: '{}',
+    })
+    expect(await res.json()).toEqual({ ok: 1 })
+  } finally { slow.stop() }
+}, 15_000)
