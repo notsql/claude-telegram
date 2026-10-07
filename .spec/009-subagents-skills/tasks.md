@@ -14,7 +14,7 @@ Depends on: 001 (runner, http hooks), 003 (policy), 004/006 (reflection, skill s
   *Verify:* `claude plugin validate ~/.claude/agents/` passes after install.
 - [x] **T903** `agents/install.ts`: checksum-aware install and upgrade.
   *Verify:* AC2, and a user-edited agent is not overwritten.
-- [ ] **T904** Switch `oneshot.ts` to `--agent tg-reflector` / `tg-summarizer` + `--json-schema` + `disableAllHooks`.
+- [x] **T904** Switch `oneshot.ts` to `--agent tg-reflector` / `tg-summarizer` + `--json-schema` + `disableAllHooks`.
   *Verify:* AC7, with no hook events during one-shots.
 - [ ] **T905** Runner: `--agent` from policy, subagent progress lines, `--forward-subagent-text`, background wait ceiling env.
   *Verify:* AC1, AC3, AC4.
