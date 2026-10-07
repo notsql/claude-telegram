@@ -17,8 +17,9 @@ Depends on: 001 (T005, T007, T009)
   *Verify:* unit test where the user text contains `</telegram>`.
 - [x] **T208** Topic name cache from service messages.
   *Verify:* renaming a topic updates `topic=` in the next prompt.
-- [ ] **T209** Expose session lifecycle functions to 008 (`/new`, `/resume`, `/sessions`).
+- [x] **T209** Expose session lifecycle functions to 008 (`/new`, `/resume`, `/sessions`).
   *Verify:* AC5.
+  *Verified live 2026-10-07: /new dropped context, /resume restored it.*
 - [x] **T210** grammY `auto-retry` and throttling for outbound sends.
   *Verify:* a burst of 50 chunks completes without 429 errors.
   *Verified 2026-10-06: 50 concurrent DM sends, 0 failures, 0 raw 429s, ~49s (the per-chat limiter sends 1/s).*
