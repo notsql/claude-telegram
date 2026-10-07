@@ -5,9 +5,9 @@ Depends on: 001, 002, 003 (policy scopes, tool registry)
   - (a) Does `claude -p` in the workspace cwd load that project's auto-memory?
   - (b) Does `SessionStart`/`UserPromptSubmit` `additionalContext` reach the model in `-p` mode, including on `--resume`?
   - (c) Does the `Stop` hook input include `transcript_path`?
-- [ ] **T402** `memory/paths.ts` + `store.ts` (frontmatter, index maintenance, `.bak` versions).
+- [x] **T402** `memory/paths.ts` + `store.ts` (frontmatter, index maintenance, `.bak` versions).
   *Verify:* unit tests for create, update, delete and index sync.
-- [ ] **T403** `memory/guard.ts`: secret patterns, size limits, slugging.
+- [x] **T403** `memory/guard.ts`: secret patterns, size limits, slugging.
   *Verify:* AC7.
 - [ ] **T404** `memory/tools.ts` on the shared store, stamping `session_key`; refused when the policy has `memoryScope: none`.
   *Verify:* AC4.
