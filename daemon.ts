@@ -68,7 +68,7 @@ import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { createAgentUsage } from './agents/usage.ts'
 import { availableAgents, setPolicyAgent } from './agents/available.ts'
 import { AUTHOR, createAgentTools } from './agents/tools.ts'
-import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
+import { staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
 import { toolCalls } from './reflection/transcript.ts'
@@ -82,7 +82,10 @@ import { scopeFor } from './history/tools.ts'
 import { createEngine } from './scheduler/engine.ts'
 import { failureNotice, runJob } from './scheduler/run.ts'
 import { createScheduleTools } from './scheduler/tools.ts'
-import { loadJobs, saveJobs, type Job } from './scheduler/store.ts'
+import type { Job } from './scheduler/store.ts'
+import { chatJobs, deleteJob, setJobEnabled } from './scheduler/manage.ts'
+import { CRON_CALLBACK, cronView, type CronAction } from './commands/cron.ts'
+import { startSystemJobs, type SystemJobId } from './scheduler/system.ts'
 import type { Policy } from './policy/schema.ts'
 import type { StreamEvent } from './agent/stream.ts'
 
@@ -257,11 +260,10 @@ async function skillOutcomes(key: string, outcomes: Proposals['skill_outcomes'],
   }
 }
 
-// 006 FR8: weekly archive proposals to the owners, for the skills their DMs learn into.
+// 006 FR8: weekly archive proposals (a 007 system job) to the owners, for the skills their DMs learn into.
 const MAX_PRUNE_PROPOSALS = 5
 const archiveAsks = new Map<string, { key: string; name: string }>()
 function proposeArchives(): void {
-  if (!pruneDue(join(STATE_DIR, 'skills-prune.json'))) return
   for (const owner of loadAccess().allowFrom) {
     for (const name of staleSkills(skillStoreFor(owner), skillUsage).slice(0, MAX_PRUNE_PROPOSALS)) {
       const id = randomBytes(6).toString('hex')
@@ -275,7 +277,6 @@ function proposeArchives(): void {
     }
   }
 }
-setInterval(proposeArchives, 24 * 60 * 60 * 1000).unref()
 
 /** 006 FR2: earlier user requests like this turn's first one, as hints that the task repeats. */
 function similarRequests(key: string, delta: string, sessionId: unknown): string[] {
@@ -428,7 +429,9 @@ const setReaction = (chat_id: string, msgId: number, emoji: string | undefined) 
 const turns = createTurnQueue<Inbound>({
   concurrency: config.maxConcurrentSessions,
   // 007 FR9: scheduled runs share the slots, keyed `job:<id>` so one job never overlaps itself.
-  run: (key, batch) => (key.startsWith(JOB_PREFIX) ? fireJob(key.slice(JOB_PREFIX.length)) : runBatch(key, batch))
+  run: (key, batch) => (key.startsWith(JOB_PREFIX) ? fireJob(key.slice(JOB_PREFIX.length))
+    : key.startsWith(SYS_PREFIX) ? fireSystemJob(key.slice(SYS_PREFIX.length) as SystemJobId)
+    : runBatch(key, batch))
     .catch(err => log(`turn failed: ${err}`)),
   onQueued: (key, item) => {
     item.queued = true
@@ -558,13 +561,8 @@ async function fireJob(id: string): Promise<void> {
 bot.callbackQuery(/^sch:(retry|off):(j_[0-9a-f]+)$/, async ctx => {
   if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
   const [, action, id] = ctx.match as unknown as [string, 'retry' | 'off', string]
-  const jobs = loadJobs(STATE_DIR)
-  const job = jobs.find(j => j.id === id)
-  if (!job) return ctx.answerCallbackQuery({ text: 'Job is gone.' }).catch(() => {})
   // Retry re-enables an auto-disabled job with a clean failure count.
-  if (action === 'retry') Object.assign(job, { enabled: true, failures: 0 })
-  else job.enabled = false
-  saveJobs(STATE_DIR, jobs)
+  if (!setJobEnabled(STATE_DIR, id, action === 'retry')) return ctx.answerCallbackQuery({ text: 'Job is gone.' }).catch(() => {})
   scheduler.reload()
   if (action === 'retry') queueJob(id)
   const label = action === 'retry' ? '🔁 Retrying' : '⏸ Disabled'
@@ -582,6 +580,32 @@ try {
   log(`scheduler: could not load jobs.json: ${err}`)
 }
 
+// 007 FR10: weekly maintenance, kept out of jobs.json and the agent's schedule_list.
+const SYS_PREFIX = 'sys:'
+const CONSOLIDATE_PROMPT = 'Run the weekly memory consolidation pass: merge duplicate or overlapping memories, drop stale ones, and keep the index within its line limit.'
+
+/** 004 FR8: a fresh turn in the first owner's DM, run as tg-curator (009). */
+async function consolidateMemory(): Promise<void> {
+  const owner = loadAccess().allowFrom[0]
+  if (!owner) return
+  const prompt = renderInbound(CONSOLIDATE_PROMPT, { origin: 'scheduler', chat_id: owner, job_title: 'Weekly memory consolidation', ts: new Date().toISOString() })
+  const outcome = await jobTurn({ mode: 'fresh', sessionKey: owner } as Job, prompt, { ...policyOf(owner), agent: 'tg-curator' }, () => {})
+  log(`memory consolidation: ${outcome.refused?.join('; ') ?? (outcome.result?.is_error ? 'error' : 'done')}`)
+}
+
+async function fireSystemJob(id: SystemJobId): Promise<void> {
+  if (turnAbort.signal.aborted) return
+  if (id === 'memory-consolidation') await consolidateMemory()
+  else proposeArchives()
+}
+
+const systemJobs = startSystemJobs({
+  stateFile: join(STATE_DIR, 'system-jobs.json'),
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  run: id => turns.enqueue(SYS_PREFIX + id, { prompt: '', text: '' }),
+})
+if (systemJobs.caughtUp.length) log(`scheduler: catching up system jobs ${systemJobs.caughtUp.join(', ')}`)
+
 let shuttingDown = false
 function shutdown(): void {
   if (shuttingDown) return
@@ -593,6 +617,7 @@ function shutdown(): void {
   setTimeout(() => process.exit(0), SHUTDOWN_DEADLINE_MS).unref()
   turnAbort.abort()
   scheduler.stop()
+  systemJobs.stop()
   stopIndexer()
   void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
@@ -829,6 +854,34 @@ bot.callbackQuery(/^pol:(\w+):(\w+)$/, async ctx => {
   const [text, opts] = showPolicy(key)
   await ctx.editMessageText(text, opts).catch(() => {})
   await ctx.answerCallbackQuery({ text: `${field} → ${value}` }).catch(() => {})
+})
+
+// 008 T807, 007 US5: this chat's jobs with pause/resume, delete and run-now buttons.
+commands.push({ name: 'cron', description: "Manage this chat's scheduled jobs", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
+  const { text, keyboard } = cronView(chatJobs(STATE_DIR, sessionKey(ctx.msg!)))
+  await ctx.reply(text, keyboard ? { reply_markup: keyboard } : {})
+} })
+
+bot.callbackQuery(CRON_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg) return ctx.answerCallbackQuery().catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  if (!canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  const [, action, id] = ctx.match as unknown as [string, CronAction, string]
+  if (!chatJobs(STATE_DIR, key).some(j => j.id === id)) return ctx.answerCallbackQuery({ text: 'Job is gone.' }).catch(() => {})
+  let label: string
+  if (action === 'run') {
+    queueJob(id)
+    label = '▶️ Running now'
+  } else {
+    if (action === 'del') deleteJob(STATE_DIR, id)
+    else setJobEnabled(STATE_DIR, id, action === 'resume')
+    scheduler.reload()
+    label = { del: '🗑 Deleted', pause: '⏸ Paused', resume: '▶ Resumed' }[action]
+  }
+  await ctx.answerCallbackQuery({ text: label }).catch(() => {})
+  const { text, keyboard } = cronView(chatJobs(STATE_DIR, key))
+  await ctx.editMessageText(text, keyboard ? { reply_markup: keyboard } : {}).catch(() => {})
 })
 
 // 004 FR9: Undo on a memory notice.

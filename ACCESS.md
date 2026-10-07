@@ -125,7 +125,7 @@ The owner can also edit common fields with `/policy` in the chat; in a group the
 
 ## Commands
 
-Bot commands (see the README's command table) only answer senders in `allowFrom`. Commands that change state (`/model`, `/forget`, `/policy`, and removing or archiving a skill from `/skills`) also need the chat's `approvers` in groups; others get a refusal. Commands addressed to another bot (`/new@otherbot`) are ignored, and an unknown `/foo` goes to the agent as a normal message.
+Bot commands (see the README's command table) only answer senders in `allowFrom`. Commands that change state (`/model`, `/forget`, `/cron`, `/policy`, and removing or archiving a skill from `/skills`) also need the chat's `approvers` in groups; others get a refusal. Commands addressed to another bot (`/new@otherbot`) are ignored, and an unknown `/foo` goes to the agent as a normal message.
 
 ## Config file
 
