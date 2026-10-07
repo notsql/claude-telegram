@@ -27,7 +27,7 @@ test('FR14: Bash writes still ask', () => {
   for (const c of [
     'rm -rf list', 'npm install', 'git commit -m x', 'git push', 'git branch -D x', 'git stash', 'echo x > f',
     'ls; rm x', 'ls && touch y', 'cat $(rm x)', 'find . -delete', 'sed -i s/a/b/ f', 'curl -X POST https://x',
-    'curl -o out https://x', 'python3 -c "import os" list', 'sudo ls', 'kubectl delete pod x', 'gh pr create', 'ls & rm x', 'git tag v1', 'xargs rm',
+    'curl -o out https://x', 'python3 -c "import os" list', 'sudo ls', 'python3 x.py list', 'python3 -c "import os; os.remove(1)"', 'python3 -c "open(\'f\',\'w\')"', 'python3 -c "import sys; sys.modules[1]"', 'kubectl delete pod x', 'gh pr create', 'ls & rm x', 'git tag v1', 'xargs rm',
   ]) expect([c, bash(c)]).toEqual([c, false])
 })
 
@@ -39,9 +39,22 @@ test('FR14: loops, variables and quoted pipes, as the agent writes them', () => 
     `/opt/homebrew/bin/gh pr list`,
   ]) expect([c, bash(c)]).toEqual([c, true])
   for (const c of [
-    `T=rm; $T -rf x`, `$X history`, `for f in *; do rm $f; done`, `echo "$(rm x)"`, 'echo "`rm x`"', `cat x 2>&1 >out`,
+    `T=rm; $T -rf x`, `$X history`, `for f in *; do rm $f; done`, `echo "$(rm x)"`, 'echo "`rm x`"', 'echo $(ls; rm x)', `cat x 2>&1 >out`,
     `ls "unterminated`, `ls |& tee x`, `cat <<EOF\nx\nEOF`, `echo ';rm x' ; rm y`,
   ]) expect([c, bash(c)]).toEqual([c, false])
   expect(bash(`echo ';rm x'`)).toBe(true)
+})
+
+test('FR14: [ ] tests, read-only substitutions and inline Python that only reads', () => {
+  for (const c of [
+    `for d in ~/.local/bin ~/go/bin /opt/homebrew/bin; do [ -x $d/tgcli ] && echo $d/tgcli; done`,
+    `~/.local/bin/tgcli chats list --limit 200 -o json 2>&1 | python3 -I -c '
+import json,sys
+d=json.load(sys.stdin)
+items=d if isinstance(d,list) else d.get("chats") or d.get("dialogs") or d
+print(json.dumps(items[0],indent=1)[:800]) if items else print("empty")
+'`,
+    'echo "today is $(date +%F)"', 'echo `whoami`',
+  ]) expect([c, bash(c)]).toEqual([c, true])
 })
 
