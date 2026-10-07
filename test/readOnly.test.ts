@@ -30,3 +30,18 @@ test('FR14: Bash writes still ask', () => {
     'curl -o out https://x', 'python3 -c "import os" list', 'sudo ls', 'kubectl delete pod x', 'gh pr create', 'ls & rm x', 'git tag v1', 'xargs rm',
   ]) expect([c, bash(c)]).toEqual([c, false])
 })
+
+test('FR14: loops, variables and quoted pipes, as the agent writes them', () => {
+  for (const c of [
+    `T=~/.local/bin/tgcli; for p in @ruii_h @miryoe; do echo "== $p"; $T history $p --limit 5 2>&1; done; $T history --help 2>&1 | sed -n '1,15p'`,
+    `for d in ~/go/bin ~/.local/bin /opt/homebrew/bin; do ls $d 2>/dev/null | grep -i tg | sed "s|^|$d/|"; done; ls -d ~/*tg* ~/.*tg* 2>/dev/null`,
+    `if git diff --quiet; then echo clean; else git status; fi`,
+    `/opt/homebrew/bin/gh pr list`,
+  ]) expect([c, bash(c)]).toEqual([c, true])
+  for (const c of [
+    `T=rm; $T -rf x`, `$X history`, `for f in *; do rm $f; done`, `echo "$(rm x)"`, 'echo "`rm x`"', `cat x 2>&1 >out`,
+    `ls "unterminated`, `ls |& tee x`, `cat <<EOF\nx\nEOF`, `echo ';rm x' ; rm y`,
+  ]) expect([c, bash(c)]).toEqual([c, false])
+  expect(bash(`echo ';rm x'`)).toBe(true)
+})
+
