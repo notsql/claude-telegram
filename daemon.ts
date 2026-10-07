@@ -45,6 +45,7 @@ import { memoryRoot, userDir } from './memory/paths.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
 import { createInjector } from './memory/inject.ts'
+import { bridgePaths, importEnabled } from './memory/bridge.ts'
 import { createNotices, noticeText } from './memory/notices.ts'
 import { createReflectionWorker } from './reflection/worker.ts'
 import { createApplier } from './reflection/apply.ts'
@@ -144,7 +145,7 @@ const memory = createMemoryStore(memoryRoot(config.cwd))
 const userStore = (id: string) => createMemoryStore(userDir(memory.dir, id))
 const notices = createNotices(bot.api)
 const memoryTools = createMemoryTools(memory, userStore, (key, change) => void notices.notify(key, change))
-const injector = createInjector({ store: memory, userStore })
+const injector = createInjector({ store: memory, userStore, indexImported: () => importEnabled(bridgePaths(memory.dir)) })
 const policyOf = (key: string) => resolvePolicy(loadAccess(), key, chatTypeOf(key))
 
 // 004 FR3: whose user model to inject: the latest sender first, then others active recently.

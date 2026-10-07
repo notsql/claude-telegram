@@ -9,8 +9,9 @@
  * in a resumed transcript (T401 b), so a resume, like each later prompt, only
  * gets what changed since: a newer index, or a participant not yet sent.
  * When the turn's cwd is the workspace, Claude Code already loads the index
- * natively (T401 a), so only a changed index is sent. Everything fits a token
- * budget (~4 chars per token); the newest user-model files win.
+ * natively (T401 a), as does the bridge import (FR10), so only a changed
+ * index is sent. Everything fits a token budget (~4 chars per token); the
+ * newest user-model files win.
  */
 
 import type { Policy } from '../policy/schema.ts'
@@ -26,11 +27,13 @@ export type InjectOpts = {
   /** The user-model store for a Telegram user id. */
   userStore: (userId: string) => MemoryStore
   budgetTokens?: number
+  /** True when the FR10 bridge import already loads the index in every session. */
+  indexImported?: () => boolean
 }
 
 const attr = (v: string) => v.replace(/[^\w-]/g, '')
 
-export function createInjector({ store, userStore, budgetTokens = DEFAULT_BUDGET_TOKENS }: InjectOpts) {
+export function createInjector({ store, userStore, budgetTokens = DEFAULT_BUDGET_TOKENS, indexImported = () => false }: InjectOpts) {
   const sent = new Map<string, Sent>()
 
   function userBlock(userId: string, maxChars: number): string {
@@ -53,7 +56,7 @@ export function createInjector({ store, userStore, budgetTokens = DEFAULT_BUDGET
   function build(payload: Record<string, unknown>, policy: Policy, participants: string[]): string {
     if (policy.memoryScope === 'none') return ''
     const sessionId = String(payload.session_id ?? '')
-    const native = typeof payload.cwd === 'string' && memoryRoot(payload.cwd) === store.dir
+    const native = (typeof payload.cwd === 'string' && memoryRoot(payload.cwd) === store.dir) || indexImported()
     const prev = sent.get(sessionId)
     const now: Sent = { indexMtime: store.indexMtime(), users: new Map(prev?.users) }
     let budget = budgetTokens * 4

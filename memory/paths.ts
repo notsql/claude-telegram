@@ -15,8 +15,12 @@ export function projectDirName(cwd: string): string {
   return real.replace(/[^A-Za-z0-9]/g, '-')
 }
 
-export function memoryRoot(cwd: string, home = homedir()): string {
-  return join(home, '.claude', 'projects', projectDirName(cwd), 'memory')
+/** Claude Code's config dir: `CLAUDE_CONFIG_DIR`, else `~/.claude`. */
+export const claudeDir = (env: Record<string, string | undefined> = process.env, home = homedir()) =>
+  env.CLAUDE_CONFIG_DIR || join(home, '.claude')
+
+export function memoryRoot(cwd: string, base = claudeDir()): string {
+  return join(base, 'projects', projectDirName(cwd), 'memory')
 }
 
 export const usersDir = (root: string) => join(root, 'users')
