@@ -29,12 +29,12 @@ src/telegram/policyUi.ts   /policy inline keyboard editor (owner only)
 - `readAccessFile()` gains a zod parse. Unknown fields are kept so newer and older versions can coexist.
 
 ## Approval flow (PermissionRequest http hook)
-1. Claude Code evaluates its permission rules: the CLI flags from `args.ts` plus `alwaysAllow`, rendered into the per-turn `--settings` `permissions.allow`. Calls that match are allowed or denied natively, and no hook fires.
+1. Claude Code evaluates its permission rules: the CLI flags from `args.ts` plus `alwaysAllow`, appended to `--allowedTools`. Calls that match are allowed or denied natively, and no hook fires.
 2. For anything that would prompt, Claude Code POSTs the `PermissionRequest` payload (`tool_name`, `tool_input`, `tool_use_id`, `permission_rule`) to `/hook/permission-request?key=…`. The HTTP request stays open until a decision is made.
 3. The daemon creates a 5-letter `request_id` with the existing alphabet, stores it in `pending` with a resolver and timer, and sends the keyboard to the session target.
 4. The `callback_query:data` handler (moved from `server.ts`) checks `ctx.from.id ∈ approvers`, resolves the request, and edits the message to show the outcome.
 5. The response body is `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow|deny"}}}`. Confirm the exact shape in 001 T003.
-6. **Always**: `rules.ts` derives the rule, persists it to `alwaysAllow` (so later turns get it through `--settings`), and also returns `decision.updatedPermissions` (`addRules`, destination `session`) so the current session stops asking.
+6. **Always**: `rules.ts` derives the rule, persists it to `alwaysAllow` (so later turns get it through `--allowedTools`), and also returns `decision.updatedPermissions` (`addRules`, destination `session`) so the current session stops asking.
 
 The daemon's MCP tools (for example `memory_*` with a scope) read the policy of their bound session key directly. They do not ask the model to behave.
 

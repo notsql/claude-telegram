@@ -21,6 +21,8 @@ import {
 import { createApprovals, parseTextReply } from './policy/approvals.ts'
 import { addAlwaysAllow, chatTypeOf, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
+import { expandPath, isTrustedCwd, policyArgs } from './policy/args.ts'
+import { homedir } from 'os'
 import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
@@ -216,6 +218,13 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
     await notify(`Daily turn budget (${config.dailyTurnBudget}) used up. Try again tomorrow.`)
     return
   }
+  const access = loadAccess()
+  const policy = resolvePolicy(access, key, chatTypeOf(key))
+  // FR13: never run a turn in a cwd the owner hasn't trusted.
+  if (policy.cwd && !isTrustedCwd(policy.cwd, access.trustedDirs)) {
+    await notify(`Turn refused: cwd ${policy.cwd} is not in trustedDirs. Add it with /telegram:access.`)
+    return
+  }
   const turn = new AbortController()
   runningTurns.set(key, turn)
   const progress = startProgress(bot.api, target)
@@ -224,8 +233,9 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
     mcpPort: mcpServer.port,
     mcpToken,
     hookToken,
-    cwd: config.cwd,
-    maxTurns: config.maxTurns,
+    cwd: policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd,
+    maxTurns: policy.maxTurns ?? config.maxTurns,
+    policyArgs: policyArgs(policy),
     signal: AbortSignal.any([turnAbort.signal, turn.signal]),
     onEvent: progress.onEvent,
   }).finally(() => {

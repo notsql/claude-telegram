@@ -1,5 +1,6 @@
 import { homedir } from 'os'
 import { resolve, sep } from 'path'
+import type { Policy } from './schema.ts'
 
 /** `~` and relative paths resolved against `base`. */
 export function expandPath(p: string, base: string, home = homedir()): string {
@@ -17,4 +18,20 @@ export function isInside(path: string, dir: string): boolean {
 export function isTrustedCwd(cwd: string, trustedDirs: string[] = [], home = homedir()): boolean {
   const path = expandPath(cwd, home, home)
   return trustedDirs.some(d => isInside(path, expandPath(d, home, home)))
+}
+
+/**
+ * Policy → `claude -p` flags (FR1, FR7), so Claude Code enforces them
+ * natively. Always rules join `--allowedTools`, which takes the same rule
+ * syntax as settings `permissions.allow`. The daemon's own tools never prompt.
+ */
+export function policyArgs(p: Policy): string[] {
+  const allowed = [...new Set(['mcp__tg', ...(p.allowedTools ?? []), ...(p.alwaysAllow ?? [])])]
+  return [
+    ...(p.model ? ['--model', p.model] : []),
+    ...(p.permissionMode ? ['--permission-mode', p.permissionMode] : []),
+    '--allowedTools', ...allowed,
+    ...(p.disallowedTools?.length ? ['--disallowedTools', ...p.disallowedTools] : []),
+    ...(p.agent ? ['--agent', p.agent] : []),
+  ]
 }

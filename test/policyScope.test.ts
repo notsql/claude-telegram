@@ -34,3 +34,17 @@ test('isTrustedCwd', () => {
   expect(isTrustedCwd('~/infra2', ['~/infra'])).toBe(false)
   expect(isTrustedCwd('~/x', [])).toBe(false)
 })
+
+test('policyArgs maps the policy to CLI flags', async () => {
+  const { policyArgs } = await import('../policy/args.ts')
+  const { defaultPolicy } = await import('../policy/schema.ts')
+  expect(policyArgs({ permissionMode: 'default', alwaysAllow: ['Bash(ls *)'] })).toEqual([
+    '--permission-mode', 'default', '--allowedTools', 'mcp__tg', 'Bash(ls *)',
+  ])
+  expect(policyArgs({ model: 'sonnet', agent: 'hermes-x', allowedTools: ['Read', 'mcp__tg'] })).toEqual([
+    '--model', 'sonnet', '--allowedTools', 'mcp__tg', 'Read', '--agent', 'hermes-x',
+  ])
+  // AC5: group defaults deny edits natively, with no prompt.
+  const group = policyArgs(defaultPolicy('group'))
+  expect(group.slice(group.indexOf('--disallowedTools'))).toContain('Edit')
+})

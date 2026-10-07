@@ -20,6 +20,8 @@ export type RunTurnOpts = {
   hookToken: string
   cwd: string
   maxTurns: number
+  /** Policy flags from `policy/args.ts`. */
+  policyArgs: string[]
   /** Claude Code session to `--resume`; omitted for a fresh session. */
   resume?: string
   /** Every parsed event, for logging and progress. */
@@ -71,8 +73,7 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     '--settings', opts.settingsFile,
     '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key)),
     '--append-system-prompt', TELEGRAM_INSTRUCTIONS,
-    // The daemon's own tools never prompt.
-    '--allowedTools', 'mcp__tg',
+    ...opts.policyArgs,
     '--max-turns', String(opts.maxTurns),
   ], {
     cwd: opts.cwd,
