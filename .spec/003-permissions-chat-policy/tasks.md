@@ -1,7 +1,7 @@
 # 003 — Tasks
 Depends on: 001 (hook endpoint T006, MCP server T005), 002 (session keys)
 
-- [ ] **T301** `policy/schema.ts` and defaults per chat type. Extend `readAccessFile` with tolerant zod parsing.
+- [x] **T301** `policy/schema.ts` and defaults per chat type. Extend `readAccessFile` with tolerant zod parsing.
   *Verify:* an existing `access.json` loads without changes.
 - [ ] **T302** `policy/resolve.ts` with a topic → chat → default merge.
   *Verify:* unit tests.
