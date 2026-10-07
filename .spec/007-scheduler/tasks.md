@@ -15,5 +15,5 @@ Depends on: 001 (runner, budget), 002 (session targets, semaphore), 003 (policy 
   *Verify:* AC4.
 - [x] **T707** Failure notifications with Retry and Disable buttons, plus auto-disable after 3 failures.
   *Verify:* AC5.
-- [ ] **T708** `system.ts`: register the weekly memory consolidation (004) and skill pruning (006) jobs.
+- [x] **T708** `system.ts`: register the weekly memory consolidation (004) and skill pruning (006) jobs.
 - [ ] **T709** Expose functions for the 008 `/cron` inline manager.

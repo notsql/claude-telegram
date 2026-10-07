@@ -68,7 +68,7 @@ import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { createAgentUsage } from './agents/usage.ts'
 import { availableAgents, setPolicyAgent } from './agents/available.ts'
 import { AUTHOR, createAgentTools } from './agents/tools.ts'
-import { pruneDue, staleSkills, STALE_DAYS } from './skills/prune.ts'
+import { staleSkills, STALE_DAYS } from './skills/prune.ts'
 import { createSkillNotices, skillNoticeText } from './skills/notices.ts'
 import { RefinementSchema, refinementInput, skillsContext, type Proposals } from './reflection/prompt.ts'
 import { toolCalls } from './reflection/transcript.ts'
@@ -83,6 +83,7 @@ import { createEngine } from './scheduler/engine.ts'
 import { failureNotice, runJob } from './scheduler/run.ts'
 import { createScheduleTools } from './scheduler/tools.ts'
 import { loadJobs, saveJobs, type Job } from './scheduler/store.ts'
+import { startSystemJobs, type SystemJobId } from './scheduler/system.ts'
 import type { Policy } from './policy/schema.ts'
 import type { StreamEvent } from './agent/stream.ts'
 
@@ -257,11 +258,10 @@ async function skillOutcomes(key: string, outcomes: Proposals['skill_outcomes'],
   }
 }
 
-// 006 FR8: weekly archive proposals to the owners, for the skills their DMs learn into.
+// 006 FR8: weekly archive proposals (a 007 system job) to the owners, for the skills their DMs learn into.
 const MAX_PRUNE_PROPOSALS = 5
 const archiveAsks = new Map<string, { key: string; name: string }>()
 function proposeArchives(): void {
-  if (!pruneDue(join(STATE_DIR, 'skills-prune.json'))) return
   for (const owner of loadAccess().allowFrom) {
     for (const name of staleSkills(skillStoreFor(owner), skillUsage).slice(0, MAX_PRUNE_PROPOSALS)) {
       const id = randomBytes(6).toString('hex')
@@ -275,7 +275,6 @@ function proposeArchives(): void {
     }
   }
 }
-setInterval(proposeArchives, 24 * 60 * 60 * 1000).unref()
 
 /** 006 FR2: earlier user requests like this turn's first one, as hints that the task repeats. */
 function similarRequests(key: string, delta: string, sessionId: unknown): string[] {
@@ -428,7 +427,9 @@ const setReaction = (chat_id: string, msgId: number, emoji: string | undefined) 
 const turns = createTurnQueue<Inbound>({
   concurrency: config.maxConcurrentSessions,
   // 007 FR9: scheduled runs share the slots, keyed `job:<id>` so one job never overlaps itself.
-  run: (key, batch) => (key.startsWith(JOB_PREFIX) ? fireJob(key.slice(JOB_PREFIX.length)) : runBatch(key, batch))
+  run: (key, batch) => (key.startsWith(JOB_PREFIX) ? fireJob(key.slice(JOB_PREFIX.length))
+    : key.startsWith(SYS_PREFIX) ? fireSystemJob(key.slice(SYS_PREFIX.length) as SystemJobId)
+    : runBatch(key, batch))
     .catch(err => log(`turn failed: ${err}`)),
   onQueued: (key, item) => {
     item.queued = true
@@ -582,6 +583,32 @@ try {
   log(`scheduler: could not load jobs.json: ${err}`)
 }
 
+// 007 FR10: weekly maintenance, kept out of jobs.json and the agent's schedule_list.
+const SYS_PREFIX = 'sys:'
+const CONSOLIDATE_PROMPT = 'Run the weekly memory consolidation pass: merge duplicate or overlapping memories, drop stale ones, and keep the index within its line limit.'
+
+/** 004 FR8: a fresh turn in the first owner's DM, run as tg-curator (009). */
+async function consolidateMemory(): Promise<void> {
+  const owner = loadAccess().allowFrom[0]
+  if (!owner) return
+  const prompt = renderInbound(CONSOLIDATE_PROMPT, { origin: 'scheduler', chat_id: owner, job_title: 'Weekly memory consolidation', ts: new Date().toISOString() })
+  const outcome = await jobTurn({ mode: 'fresh', sessionKey: owner } as Job, prompt, { ...policyOf(owner), agent: 'tg-curator' }, () => {})
+  log(`memory consolidation: ${outcome.refused?.join('; ') ?? (outcome.result?.is_error ? 'error' : 'done')}`)
+}
+
+async function fireSystemJob(id: SystemJobId): Promise<void> {
+  if (turnAbort.signal.aborted) return
+  if (id === 'memory-consolidation') await consolidateMemory()
+  else proposeArchives()
+}
+
+const systemJobs = startSystemJobs({
+  stateFile: join(STATE_DIR, 'system-jobs.json'),
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  run: id => turns.enqueue(SYS_PREFIX + id, { prompt: '', text: '' }),
+})
+if (systemJobs.caughtUp.length) log(`scheduler: catching up system jobs ${systemJobs.caughtUp.join(', ')}`)
+
 let shuttingDown = false
 function shutdown(): void {
   if (shuttingDown) return
@@ -593,6 +620,7 @@ function shutdown(): void {
   setTimeout(() => process.exit(0), SHUTDOWN_DEADLINE_MS).unref()
   turnAbort.abort()
   scheduler.stop()
+  systemJobs.stop()
   stopIndexer()
   void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
