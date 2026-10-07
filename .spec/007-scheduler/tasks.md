@@ -1,7 +1,7 @@
 # 007 — Tasks
 Depends on: 001 (runner, budget), 002 (session targets, semaphore), 003 (policy gating)
 
-- [ ] **T701** Add `croner`. `scheduler/store.ts` with zod schema and atomic IO.
+- [x] **T701** Add `croner`. `scheduler/store.ts` with zod schema and atomic IO.
   *Verify:* unit tests.
 - [ ] **T702** `engine.ts`: load, schedule and reschedule on change, with tz support.
   *Verify:* a job fires in a test with a short interval.
