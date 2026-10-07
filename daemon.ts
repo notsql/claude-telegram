@@ -22,6 +22,7 @@ import { createApprovals, parseTextReply } from './policy/approvals.ts'
 import { addAlwaysAllow, chatTypeOf, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
+import { applyPolicyEdit, policyKeyboard, renderPolicy } from './telegram/policyUi.ts'
 import { expandPath, isTrustedCwd, policyArgs } from './policy/args.ts'
 import { homedir } from 'os'
 import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
@@ -344,7 +345,8 @@ bot.command('help', async ctx => {
     `/stop: interrupt the running turn in this chat\n` +
     `/new: start a fresh session here\n` +
     `/sessions: list earlier sessions\n` +
-    `/resume <n>: switch back to an earlier session`
+    `/resume <n>: switch back to an earlier session\n` +
+    `/policy: view or edit this chat's policy`
   )
 })
 
@@ -364,6 +366,36 @@ bot.command('status', async ctx => {
     }
   }
   await ctx.reply(`Not paired. Send me a message to get a pairing code.`)
+})
+
+// 003 T309: owner-only policy editor for this chat or topic.
+const showPolicy = (key: string) => {
+  const p = resolvePolicy(loadAccess(), key, chatTypeOf(key))
+  return [renderPolicy(key, p), { reply_markup: policyKeyboard(p) }] as const
+}
+
+bot.command('policy', async ctx => {
+  if (!isOwner(ctx)) return
+  const [text, opts] = showPolicy(sessionKey(ctx.msg!))
+  await ctx.reply(text, opts)
+})
+
+bot.callbackQuery(/^pol:(\w+):(\w+)$/, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const [, field, value] = ctx.match
+  const access = loadAccess()
+  try {
+    const stored = applyPolicyEdit(access, key, field!, value!)
+    saveAccess(access)
+    audit({ event: 'policy', key, user: String(ctx.from.id), field: field!, value: stored ?? 'default' })
+  } catch (err) {
+    return ctx.answerCallbackQuery({ text: (err as Error).message }).catch(() => {})
+  }
+  const [text, opts] = showPolicy(key)
+  await ctx.editMessageText(text, opts).catch(() => {})
+  await ctx.answerCallbackQuery({ text: `${field} → ${value}` }).catch(() => {})
 })
 
 const isApprover = (key: string, userId: number) =>
@@ -544,6 +576,7 @@ for (let attempt = 1; ; attempt++) {
             { command: 'new', description: 'Start a fresh session' },
             { command: 'sessions', description: 'List past sessions' },
             { command: 'resume', description: 'Resume a past session: /resume <n>' },
+            { command: 'policy', description: 'View or edit this chat\'s policy' },
           ],
           { scope: { type: 'all_private_chats' } },
         ).catch(() => {})
