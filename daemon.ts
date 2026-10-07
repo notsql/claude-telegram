@@ -511,7 +511,9 @@ async function fireJob(id: string): Promise<void> {
 const queueJob = (id: string) => turns.enqueue(JOB_PREFIX + id, { prompt: '', text: '' })
 const scheduler = createEngine({ stateDir: STATE_DIR, fire: queueJob })
 try {
-  scheduler.reload()
+  const { due, missed } = scheduler.boot()
+  if (due.length) log(`scheduler: catching up ${due.join(', ')}`)
+  if (missed.length) log(`scheduler: skipped runs missed beyond the catch-up window: ${missed.join(', ')}`)
 } catch (err) {
   log(`scheduler: could not load jobs.json: ${err}`)
 }

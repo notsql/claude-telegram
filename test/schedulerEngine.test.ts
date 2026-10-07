@@ -42,3 +42,25 @@ test('reload picks up changes: disabled jobs and past one-offs are not scheduled
   expect(jobs.map(j => j.nextRun)).toEqual([null, null, Date.parse('2099-01-01T00:00:00Z')])
   engine.stop()
 })
+
+test('AC4: on boot a run missed inside the catch-up window runs once; older ones are skipped and noted', () => {
+  const d = dir()
+  const now = Date.now()
+  const hour = 60 * 60 * 1000
+  saveJobs(d, [
+    job({ id: 'recent', expr: '0 9 * * *', nextRun: now - hour }),
+    job({ id: 'old', expr: '0 9 * * *', nextRun: now - 7 * hour }),
+    { ...job({ id: 'old-once', nextRun: now - 7 * hour }), kind: 'at', at: new Date(now - 7 * hour).toISOString() } as Job,
+    job({ id: 'future', expr: '0 9 * * *', nextRun: now + hour }),
+    job({ id: 'off', expr: '0 9 * * *', nextRun: now - hour, enabled: false }),
+  ])
+  const fired: string[] = []
+  const engine = createEngine({ stateDir: d, fire: id => fired.push(id) })
+  expect(engine.boot(6 * hour, now)).toEqual({ due: ['recent'], missed: ['old', 'old-once'] })
+  engine.stop()
+  expect(fired).toEqual(['recent'])
+  const byId = Object.fromEntries(loadJobs(d).map(j => [j.id, j]))
+  expect(byId.old).toMatchObject({ lastStatus: 'missed', enabled: true })
+  expect(byId['old-once']).toMatchObject({ lastStatus: 'missed', enabled: false })
+  expect(byId.recent!.nextRun).toBeGreaterThan(now)
+})

@@ -11,7 +11,7 @@ Depends on: 001 (runner, budget), 002 (session targets, semaphore), 003 (policy 
   *Verify:* AC2.
 - [x] **T705** `tools.ts`: `schedule_*` tools gated by `schedulerAllowed`, with narrowing-only `policyOverride`.
   *Verify:* AC3, AC6.
-- [ ] **T706** Catch-up on boot within `catchUpWindow`.
+- [x] **T706** Catch-up on boot within `catchUpWindow`.
   *Verify:* AC4.
 - [ ] **T707** Failure notifications with Retry and Disable buttons, plus auto-disable after 3 failures.
   *Verify:* AC5.
