@@ -53,7 +53,11 @@ Arguments passed: `$ARGUMENTS`
       "createdAt": <ms>, "expiresAt": <ms>
     }
   },
-  "mentionPatterns": ["@mybot"]
+  "mentionPatterns": ["@mybot"],
+  "chats": {
+    "<chatId or chatId:threadId>": { "policy": { "model": "sonnet", "alwaysAllow": [] } }
+  },
+  "trustedDirs": ["~/infra"]
 }
 ```
 
@@ -102,8 +106,55 @@ Parse `$ARGUMENTS` (space-separated). If empty or unrecognized, show status.
 
 ### `policy <mode>`
 
-1. Validate `<mode>` is one of `pairing`, `allowlist`, `disabled`.
-2. Read (create default if missing), set `dmPolicy`, write.
+Only when the single argument is `pairing`, `allowlist` or `disabled`.
+
+1. Read (create default if missing), set `dmPolicy`, write.
+
+### `policy show <key>`
+
+Per-chat policy (spec 003). `<key>` is a chat id, or `<chatId>:<threadId>`
+for a forum topic. Show `chats[<key>].policy` and, for a topic, the chat's
+entry it inherits from. Unset fields fall back to the chat-type defaults:
+DMs get `memoryScope: global`, `historyScope: all`, `autoLearn: auto`;
+groups get read-only tools (`Read Glob Grep WebSearch WebFetch mcp__tg`),
+`Bash`/`Edit`/`Write` denied, `memoryScope: chat`, `historyScope: chat`,
+`autoLearn: propose`, `schedulerAllowed: false`.
+
+### `policy <key> <field> <value>`
+
+Set one field of `chats[<key>].policy`. Validate:
+- `permissionMode`: `default` | `acceptEdits` | `plan` | `bypassPermissions`.
+  `bypassPermissions` can only be set here, never from Telegram. Confirm with
+  the user before setting it: every tool call in that chat runs unprompted.
+- `allowedTools`, `disallowedTools`, `alwaysAllow`, `approvers`: JSON array
+  of strings (rules use Claude Code syntax, e.g. `Bash(git status *)`).
+- `model`, `agent`: string. `cwd`: path; it must be inside a `trustedDirs`
+  entry, otherwise refuse and suggest `trust add <dir>` first (the daemon
+  also refuses turns in an untrusted cwd).
+- `maxTurns`: positive integer.
+- `memoryScope`: `global` | `chat` | `none`; `historyScope`: `all` | `chat` |
+  `none`; `autoLearn`: `off` | `propose` | `auto`.
+- `schedulerAllowed`, `teamsAllowed`: `true` | `false`.
+
+Read, set, write, then append an audit line (see below).
+
+### `policy reset <key>`
+
+Read, `delete chats[<key>]`, write, audit with `field: "*"`, `value: null`.
+
+### `trust add <dir>` / `trust rm <dir>`
+
+Edit `trustedDirs` (dedupe). Only directories the user trusts to run their
+`.claude/settings.json` hooks and `.mcp.json` servers: `claude -p` runs them
+without a trust prompt. Audit with `key: "*"`, `field: "trustedDirs"`.
+
+### Audit
+
+Every policy change appends one JSON line to `<state-dir>/audit.log`:
+
+```bash
+echo '{"ts":"<ISO time>","event":"policy","key":"<key>","user":"terminal","field":"<field>","value":<json>}' >> <state-dir>/audit.log
+```
 
 ### `group add <groupId>` (optional: `--no-mention`, `--allow id1,id2`)
 

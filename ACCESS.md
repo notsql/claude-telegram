@@ -107,6 +107,21 @@ Configure outbound behavior with `/telegram:access set <key> <value>`.
 | `/telegram:access group add -1001654782309` | Enable a group. Flags: `--no-mention` (also requires disabling privacy mode), `--allow id1,id2`. |
 | `/telegram:access group rm -1001654782309` | Disable a group. |
 | `/telegram:access set ackReaction 👀` | Set a config key: `ackReaction`, `replyToMode`, `textChunkLimit`, `chunkMode`, `mentionPatterns`. |
+| `/telegram:access policy show -1001654782309:42` | Show a chat's or topic's policy overrides. |
+| `/telegram:access policy -1001654782309 model sonnet` | Set a policy field for a chat (`<chatId>`) or topic (`<chatId>:<threadId>`). |
+| `/telegram:access policy reset -1001654782309` | Drop a chat's policy overrides. |
+| `/telegram:access trust add ~/infra` | Allow chats to use a `cwd` inside this directory. |
+
+## Chat policy
+
+What the bot may do in a chat is separate from who can reach it. Policies live in `chats`, keyed by chat id or `chatId:threadId` for a forum topic. A topic inherits its chat's entry, which overrides the defaults for the chat type:
+
+- **DMs**: the normal permission prompts, global memory, all history.
+- **Groups**: read-only tools (Bash and file edits are denied outright), chat-scoped memory and history, no scheduler.
+
+When the agent wants a tool that no rule allows, the chat gets **See more / ✅ Allow / ❌ Deny / ♾ Always (this chat)** buttons. Only `approvers` (default: `allowFrom`) can answer; `yes abcde` / `no abcde` also works. Unanswered prompts deny after 5 minutes. **Always** saves a rule such as `Bash(npm test *)` to that chat's `alwaysAllow`.
+
+The owner can also edit common fields with `/policy` in the chat. `bypassPermissions`, `cwd` and `trustedDirs` can only be set from the terminal. Policy changes and approval decisions are logged to `audit.log` in the state directory.
 
 ## Config file
 
@@ -130,6 +145,14 @@ Configure outbound behavior with `/telegram:access set <key> <value>`.
       "allowFrom": []
     }
   },
+
+  // Per-chat or per-topic policy (see Chat policy).
+  "chats": {
+    "-1001654782309:42": { "policy": { "cwd": "~/infra", "allowedTools": ["Bash(kubectl get *)"] } }
+  },
+
+  // Directories a chat cwd may point into. Terminal only.
+  "trustedDirs": ["~/infra"],
 
   // Case-insensitive regexes that count as a mention.
   "mentionPatterns": ["^hey claude\\b"],
