@@ -14,6 +14,15 @@ import { deriveRule } from './rules.ts'
 /** 5 lowercase letters without 'l', the alphabet of the `yes xxxxx` text reply (FR5). */
 const ID_ALPHABET = 'abcdefghijkmnopqrstuvwxyz'
 
+/** `yes abcde` / `no abcde` typed in chat (FR5), same as the legacy channel. */
+export const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
+
+/** The request id and decision of a text reply, or undefined if `text` isn't one. */
+export function parseTextReply(text: string): { id: string; decision: 'allow' | 'deny' } | undefined {
+  const m = PERMISSION_REPLY_RE.exec(text)
+  return m ? { id: m[2]!.toLowerCase(), decision: m[1]!.toLowerCase().startsWith('y') ? 'allow' : 'deny' } : undefined
+}
+
 export type Decision = 'allow' | 'deny' | 'always'
 
 type Pending = {

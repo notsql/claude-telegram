@@ -18,7 +18,7 @@ import {
   STATE_DIR, initAccess, setBotUsername, loadAccess,
   gate, groupVerdict, dmCommandGate, checkApprovals, saveAccess,
 } from './access.ts'
-import { createApprovals } from './policy/approvals.ts'
+import { createApprovals, parseTextReply } from './policy/approvals.ts'
 import { addAlwaysAllow, chatTypeOf, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
@@ -353,6 +353,9 @@ bot.command('status', async ctx => {
   await ctx.reply(`Not paired. Send me a message to get a pairing code.`)
 })
 
+const isApprover = (key: string, userId: number) =>
+  (resolvePolicy(loadAccess(), key, chatTypeOf(key)).approvers ?? []).includes(String(userId))
+
 // Approval buttons: `perm:<allow|deny|always|more>:<id>` (003 FR2). Only the
 // key's approvers may answer (FR3); the first tap wins.
 bot.on('callback_query:data', async ctx => {
@@ -361,8 +364,7 @@ bot.on('callback_query:data', async ctx => {
   const [, action, id] = m as unknown as [string, 'allow' | 'deny' | 'always' | 'more', string]
   const key = approvals.keyOf(id)
   if (!key) return ctx.answerCallbackQuery({ text: 'Already decided.' }).catch(() => {})
-  const approvers = resolvePolicy(loadAccess(), key, chatTypeOf(key)).approvers ?? []
-  if (!approvers.includes(String(ctx.from.id))) {
+  if (!isApprover(key, ctx.from.id)) {
     return ctx.answerCallbackQuery({ text: 'Not authorised to approve.' }).catch(() => {})
   }
   if (action === 'more') {
@@ -465,6 +467,15 @@ async function handleInbound(
   const msgId = ctx.message?.message_id
 
   const key = sessionKey(ctx.msg!)
+
+  // FR5: `yes abcde` answers a pending approval through the same resolver as the buttons.
+  const reply = parseTextReply(text)
+  const replyKey = reply && approvals.keyOf(reply.id)
+  if (reply && replyKey && isApprover(replyKey, from.id) && approvals.decide(reply.id, reply.decision)) {
+    if (msgId != null) void setReaction(chat_id, msgId, reply.decision === 'allow' ? '👍' : '👎')
+    return
+  }
+
   topicNames.learn(ctx.msg!)
   void bot.api.sendChatAction(chat_id, 'typing', threadOpts(parseKey(key))).catch(() => {})
   if (access.ackReaction && msgId != null) {

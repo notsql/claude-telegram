@@ -91,3 +91,11 @@ test('keyboard has Always and keyOf tracks pending requests', async () => {
   a.decide(id, 'deny')
   expect(a.keyOf(id)).toBeUndefined()
 })
+
+test('parseTextReply', async () => {
+  const { parseTextReply } = await import('../policy/approvals.ts')
+  expect(parseTextReply('Yes ABCDE')).toEqual({ id: 'abcde', decision: 'allow' })
+  expect(parseTextReply(' n qwert ')).toEqual({ id: 'qwert', decision: 'deny' })
+  expect(parseTextReply('yes')).toBeUndefined()
+  expect(parseTextReply('yes hello there')).toBeUndefined()
+})
