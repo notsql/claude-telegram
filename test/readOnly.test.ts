@@ -39,7 +39,7 @@ test('FR14: loops, variables and quoted pipes, as the agent writes them', () => 
     `/opt/homebrew/bin/gh pr list`,
   ]) expect([c, bash(c)]).toEqual([c, true])
   for (const c of [
-    `T=rm; $T -rf x`, `$X history`, `for f in *; do rm $f; done`, `echo "$(rm x)"`, 'echo "`rm x`"', 'echo $(ls; rm x)', `cat x 2>&1 >out`,
+    `T=rm; $T -rf x`, `$X history`, `T=rm; ~/$T list`, `for d in a; do $d/rm list; done`, `for f in *; do rm $f; done`, `echo "$(rm x)"`, 'echo "`rm x`"', 'echo $(ls; rm x)', `cat x 2>&1 >out`,
     `ls "unterminated`, `ls |& tee x`, `cat <<EOF\nx\nEOF`, `echo ';rm x' ; rm y`,
   ]) expect([c, bash(c)]).toEqual([c, false])
   expect(bash(`echo ';rm x'`)).toBe(true)
@@ -55,6 +55,7 @@ items=d if isinstance(d,list) else d.get("chats") or d.get("dialogs") or d
 print(json.dumps(items[0],indent=1)[:800]) if items else print("empty")
 '`,
     'echo "today is $(date +%F)"', 'echo `whoami`',
+    'for d in ~/.local/bin /opt/homebrew/bin ~/go/bin; do [ -x $d/wacli ] && $d/wacli --help 2>&1 | head -40 && $d/wacli chats --help 2>&1 | head -30; done; true',
   ]) expect([c, bash(c)]).toEqual([c, true])
 })
 

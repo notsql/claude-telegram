@@ -171,15 +171,12 @@ function readOnlySegment(words: string[], vars: Map<string, string>): boolean {
     for (const [k, v] of assigns) vars.set(k, v)
     return true
   }
-  let cmd = words[0]!
-  const ref = /^\$\{?(\w+)\}?$/.exec(cmd)
-  if (ref) {
-    const value = vars.get(ref[1]!)
-    if (!value) return false
-    cmd = value
-  }
+  // Known variables are filled in; `$d/wacli` with `$d` a loop directory is judged by its name, `wacli`.
+  let cmd = words[0]!.replace(/\$\{?(\w+)\}?/g, (ref, k: string) => vars.get(k) ?? ref)
   // `/opt/homebrew/bin/gh` is judged as `gh`.
   cmd = cmd.split('/').pop()!
+  // A program name that is still a variable (`$X history`) could be anything.
+  if (cmd.includes('$')) return false
   const args = words.slice(1)
   if (!cmd || WRITERS.has(cmd)) return false
   if (cmd === 'git') return readOnlyGit(args)
