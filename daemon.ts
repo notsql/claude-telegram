@@ -22,6 +22,7 @@ import { createApprovals, parseTextReply } from './policy/approvals.ts'
 import { addAlwaysAllow, canStartTurn, chatTypeOf, policyKey, removeAlwaysAllow, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
+import { CLOSE_CALLBACK, withClose } from './telegram/close.ts'
 import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from './telegram/policyUi.ts'
 import { expandPath, isTrustedCwd, policyArgs } from './policy/args.ts'
 import { homedir } from 'os'
@@ -708,7 +709,7 @@ commands.push({ name: 'search', description: 'Search past conversations: /search
 
 // 008 T805: memory curation over 004's command functions; writes get the Undo notice.
 const memoryReply = async (ctx: Context, r: CommandResult) =>
-  ctx.reply(r.text, r.change ? { reply_markup: notices.undoKeyboard(r.change) } : r.keyboard ? { reply_markup: r.keyboard } : {})
+  ctx.reply(r.text, r.change ? { reply_markup: notices.undoKeyboard(r.change) } : r.keyboard ? { reply_markup: withClose(r.keyboard) } : {})
 
 // 008 FR13: /memory is the one entry point; Add, Forget and About you are buttons.
 commands.push({ name: 'memory', description: 'See, add and forget what I remember', menu: ['private', 'group'], handler: async ctx => {
@@ -725,7 +726,7 @@ bot.callbackQuery(MEMORY_CALLBACK, async ctx => {
   const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
   const policy = policyOf(key)
   const [, action, arg] = ctx.match as unknown as [string, 'o' | 'd' | 'p' | 'a' | 'u', string]
-  const edit = (r: CommandResult) => ctx.editMessageText(r.text, r.keyboard ? { reply_markup: r.keyboard } : {}).catch(() => {})
+  const edit = (r: CommandResult) => ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
   if (action === 'd') {
     if (!canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
     void ctx.answerCallbackQuery({ text: '🧠 Forgotten' }).catch(() => {})
@@ -766,7 +767,7 @@ commands.push({ name: 'skills', description: 'Browse, run and manage skills', me
   const parsed = parseSkillsArgs(args)
   if (parsed === 'list') {
     const r = skillsView(allSkills())
-    return void await ctx.reply(r.text, r.keyboard ? { reply_markup: r.keyboard } : {})
+    return void await ctx.reply(r.text, r.keyboard ? { reply_markup: withClose(r.keyboard) } : {})
   }
   const skill = allSkills().find(s => s.command === parsed.command || s.name === parsed.command)
   if (!skill) return void await ctx.reply(`No skill named ${parsed.command}. Send /skills to see them all.`)
@@ -780,7 +781,7 @@ bot.callbackQuery(SKILLS_CALLBACK, async ctx => {
   const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
   const [, action, arg] = ctx.match as unknown as [string, SkillAction | 'p', string]
   const edit = (r: { text: string; keyboard?: InlineKeyboardMarkup }) =>
-    ctx.editMessageText(r.text, r.keyboard ? { reply_markup: r.keyboard } : {}).catch(() => {})
+    ctx.editMessageText(r.text, r.keyboard ? { reply_markup: withClose(r.keyboard) } : {}).catch(() => {})
   if (action === 'p') {
     await ctx.answerCallbackQuery().catch(() => {})
     return void await edit(skillsView(allSkills(), Number(arg)))
@@ -823,7 +824,7 @@ commands.push({ name: 'sessions', description: 'New, resume or compact this sess
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
   const r = sessionsView(sessionStatus(sessionDeps, key, policyOf(key)))
-  await ctx.reply(r.text, { reply_markup: r.keyboard })
+  await ctx.reply(r.text, { reply_markup: withClose(r.keyboard) })
 } })
 
 bot.callbackQuery(SESSIONS_CALLBACK, async ctx => {
@@ -832,7 +833,7 @@ bot.callbackQuery(SESSIONS_CALLBACK, async ctx => {
   const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
   const [, action, arg] = ctx.match as unknown as [string, 'n' | 'c' | 'l' | 'r' | 'b', string]
   const edit = (text: string, keyboard?: InlineKeyboardMarkup) =>
-    ctx.editMessageText(text, keyboard ? { reply_markup: keyboard } : {}).catch(() => {})
+    ctx.editMessageText(text, keyboard ? { reply_markup: withClose(keyboard) } : {}).catch(() => {})
   await ctx.answerCallbackQuery().catch(() => {})
   switch (action) {
     case 'n':
@@ -865,7 +866,7 @@ commands.push({ name: 'usage', description: 'Plan usage limits and when they res
   if (!isOwner(ctx)) return
   void ctx.replyWithChatAction('typing').catch(() => {})
   try {
-    await ctx.reply(formatUsage(await planUsage()).slice(0, 4000))
+    await ctx.reply(formatUsage(await planUsage()).slice(0, 4000), { reply_markup: withClose() })
   } catch (err) {
     await ctx.reply(`Couldn't read usage: ${err instanceof Error ? err.message : err}`)
   }
@@ -924,7 +925,7 @@ commands.push({ name: 'settings', description: "This chat's settings and permiss
   if (!isOwner(ctx)) return
   const key = policyKey(sessionKey(ctx.msg!))
   const r = policyView(key, policyAt(key))
-  await ctx.reply(r.text, { reply_markup: r.keyboard })
+  await ctx.reply(r.text, { reply_markup: withClose(r.keyboard) })
 } })
 
 bot.callbackQuery(POLICY_CALLBACK, async ctx => {
@@ -933,7 +934,7 @@ bot.callbackQuery(POLICY_CALLBACK, async ctx => {
   const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
   const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y', string?, string?]
   const show = (r: { text: string; keyboard: InlineKeyboardMarkup }) =>
-    ctx.editMessageText(r.text, { reply_markup: r.keyboard }).catch(() => {})
+    ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
   const user = String(ctx.from.id)
   switch (action) {
     case 's': {
@@ -981,7 +982,7 @@ bot.callbackQuery(POLICY_CALLBACK, async ctx => {
 // 008 T807, 007 US5: this chat's jobs with pause/resume, delete and run-now buttons.
 commands.push({ name: 'cron', description: "Manage this chat's scheduled jobs", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
   const { text, keyboard } = cronView(chatJobs(STATE_DIR, sessionKey(ctx.msg!)))
-  await ctx.reply(text, keyboard ? { reply_markup: keyboard } : {})
+  await ctx.reply(text, { reply_markup: withClose(keyboard) })
 } })
 
 bot.callbackQuery(CRON_CALLBACK, async ctx => {
@@ -1003,7 +1004,14 @@ bot.callbackQuery(CRON_CALLBACK, async ctx => {
     return failed(ctx, err instanceof Error ? err.message : String(err))
   }
   const { text, keyboard } = cronView(chatJobs(STATE_DIR, key))
-  await ctx.editMessageText(text, keyboard ? { reply_markup: keyboard } : {}).catch(() => {})
+  await ctx.editMessageText(text, { reply_markup: withClose(keyboard) }).catch(() => {})
+})
+
+// 008 FR16: ✖ Close on any menu; owner only, like the menus.
+bot.callbackQuery(CLOSE_CALLBACK, async ctx => {
+  if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  await ctx.answerCallbackQuery().catch(() => {})
+  await ctx.deleteMessage().catch(() => ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {}))
 })
 
 // 004 FR9: Undo on a memory notice.
