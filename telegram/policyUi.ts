@@ -110,6 +110,7 @@ export function policyView(key: string, p: Policy): PolicyView {
   const lines = [`⚙️ Settings for ${key}`, '']
   for (const f of SETTINGS) lines.push(`${label(f)}: ${value(p, f)}`, `${ABOUT[f].what}`, '')
   lines.push(`🔐 Permissions: ${value(p, 'permissionMode')} mode. Which tools run without asking.`)
+  lines.push('🧩 Skills & plugins: which ones are on in this chat.')
   if (p.agent) lines.push(`Agent: ${p.agent}`)
   if (p.cwd) lines.push(`Working directory: ${p.cwd}`)
   lines.push('', 'Tap a setting to change it.')
@@ -118,6 +119,7 @@ export function policyView(key: string, p: Policy): PolicyView {
     keyboard: { inline_keyboard: [
       ...SETTINGS.map(f => [button(`${label(f)}: ${value(p, f)}`, `pol:f:${f}`)]),
       [button('🔐 Permissions', 'pol:p')],
+      [button('🧩 Skills & plugins', 'ext:m')],
       [button('↺ Reset to defaults', 'pol:z')],
     ] },
   }
@@ -189,7 +191,7 @@ export function ruleView(p: Policy, c: number, i: number): PolicyView {
 /** Reset asks first, naming what changes and what stays. */
 export function resetView(): PolicyView {
   return {
-    text: `↺ Reset ${(Object.keys(EDITABLE) as EditableField[]).map(label).join(', ')} to this chat's defaults?\n\nThis also removes every permission rule here: ${RULES.map(r => r.heading.toLowerCase()).join(', ')}.`,
+    text: `↺ Reset ${(Object.keys(EDITABLE) as EditableField[]).map(label).join(', ')} to this chat's defaults?\n\nThis also removes every permission rule here (${RULES.map(r => r.heading.toLowerCase()).join(', ')}) and turns every skill and plugin back to how it is installed.`,
     keyboard: { inline_keyboard: [[button('↺ Reset', 'pol:y'), button('« Back', 'pol:m')]] },
   }
 }
@@ -199,10 +201,10 @@ export function alwaysRuleAt(p: Policy, i: number): string | undefined {
   return p.alwaysAllow?.[i]
 }
 
-/** Clears every Telegram-editable field and permission rule from the key's own policy, so defaults apply. Mutates `access`. */
+/** Clears every Telegram-editable field, permission rule and skill or plugin switch from the key's own policy, so defaults apply. Mutates `access`. */
 export function resetPolicy(access: Access, key: string): void {
   const policy = access.chats?.[key]?.policy as Record<string, unknown> | undefined
-  if (policy) for (const f of [...Object.keys(EDITABLE), ...RULES.map(r => r.field)]) delete policy[f]
+  if (policy) for (const f of [...Object.keys(EDITABLE), ...RULES.map(r => r.field), 'disabledSkills', 'plugins']) delete policy[f]
 }
 
 /**

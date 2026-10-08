@@ -17,7 +17,7 @@ export type HookEvent =
 /** `PermissionRequest` → `permission-request`, the endpoint's route slug. */
 export const hookSlug = (event: HookEvent) => event.replace(/(?<!^)([A-Z])/g, '-$1').toLowerCase()
 
-const CHANNEL_PLUGIN = 'telegram@claude-plugins-official'
+export const CHANNEL_PLUGIN = 'telegram@claude-plugins-official'
 
 /** Observational hooks: fire-and-forget so they never slow a turn. */
 const ASYNC: HookEvent[] = ['PostToolUse', 'SubagentStart', 'SubagentStop', 'Stop', 'PreCompact']

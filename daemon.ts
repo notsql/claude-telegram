@@ -23,13 +23,15 @@ import { addAlwaysAllow, canStartTurn, chatTypeOf, policyKey, removeAlwaysAllow,
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
 import { CLOSE_CALLBACK, withClose } from './telegram/close.ts'
+import { EXTENSIONS_CALLBACK, extensionsView, pluginSwitchesView, skillSwitchesView, togglePlugin, toggleSkill } from './telegram/extensionsUi.ts'
+import { installedPlugins } from './skills/plugins.ts'
 import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from './telegram/policyUi.ts'
-import { expandPath, isTrustedCwd, policyArgs } from './policy/args.ts'
+import { expandPath, isTrustedCwd, policyArgs, policySettings } from './policy/args.ts'
 import { homedir } from 'os'
 import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
-import { writeHookSettings } from './hooks/settings.ts'
+import { writeHookSettings, CHANNEL_PLUGIN } from './hooks/settings.ts'
 import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from './agent/runner.ts'
 import { parseKey, sessionKey } from './sessions/key.ts'
 import { threadOpts } from './telegram/send.ts'
@@ -519,6 +521,7 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
     cwd: policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd,
     maxTurns: policy.maxTurns ?? config.maxTurns,
     policyArgs: policyArgs({ ...policy, model: lifecycle.model(key) ?? policy.model, alwaysAllow: [...policy.alwaysAllow ?? [], ...lifecycle.allowed(key)] }),
+    settings: policySettings(policy),
     signal: AbortSignal.any([turnAbort.signal, turn.signal]),
     onEvent: progress.onEvent,
   }).finally(() => {
@@ -567,6 +570,7 @@ async function jobTurn(job: Job, prompt: string, policy: Policy, onEvent: (ev: S
     cwd: policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd,
     maxTurns: policy.maxTurns ?? config.maxTurns,
     policyArgs: policyArgs(policy),
+    settings: policySettings(policy),
     signal: turnAbort.signal,
     onEvent,
   }
@@ -1000,6 +1004,37 @@ bot.callbackQuery(POLICY_CALLBACK, async ctx => {
   if (action === 'r') return void await show(ruleView(p, Number(a), Number(b)))
   if (action === 'z') return void await show(resetView())
   if (a && a in EDITABLE) await show(fieldView(a as EditableField, p))
+})
+
+// 008 FR19: 🧩 Skills & plugins, switched per chat and passed to turns as settings.
+bot.callbackQuery(EXTENSIONS_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
+  const [, action, a, b] = ctx.match as unknown as [string, 'm' | 's' | 't' | 'p' | 'u', string?, string?]
+  const show = (r: { text: string; keyboard: InlineKeyboardMarkup }) =>
+    ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
+  const p = policyAt(key)
+  // The channel plugin is always off in daemon turns (hooks/settings.ts), so it isn't offered.
+  const plugins = installedPlugins(claudeDir(), p.cwd ? expandPath(p.cwd, homedir()) : config.cwd).filter(x => x.id !== CHANNEL_PLUGIN)
+  const user = String(ctx.from.id)
+  if (action === 't' || action === 'u') {
+    const skill = action === 't' ? allSkills().find(x => x.command === a) : undefined
+    const plugin = action === 'u' ? plugins.find(x => x.id === a) : undefined
+    const name = skill?.name ?? plugin?.name
+    if (!name) return ctx.answerCallbackQuery({ text: 'That one is gone.' }).catch(() => {})
+    const access = loadAccess()
+    const on = skill ? toggleSkill(access, key, skill.name) : togglePlugin(access, key, plugin!)
+    saveAccess(access)
+    audit({ event: 'policy', key, user, field: skill ? 'disabledSkills' : 'plugins', value: `${on ? '+' : '-'}${skill?.name ?? plugin!.id}` })
+    void ctx.answerCallbackQuery({ text: `${on ? '✅' : '🚫'} ${name} ${on ? 'on' : 'off'} here` }).catch(() => {})
+    const now = policyAt(key)
+    return void await show(skill ? skillSwitchesView(now, allSkills(), Number(b ?? 0)) : pluginSwitchesView(now, plugins))
+  }
+  await ctx.answerCallbackQuery().catch(() => {})
+  if (action === 'm') return void await show(extensionsView(p, allSkills(), plugins))
+  if (action === 's') return void await show(skillSwitchesView(p, allSkills(), Number(a ?? 0)))
+  await show(pluginSwitchesView(p, plugins))
 })
 
 // 008 T807, 007 US5: this chat's jobs with pause/resume, delete and run-now buttons.

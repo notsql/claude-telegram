@@ -6,6 +6,7 @@
  * string reaches the server, `${VAR}` in `headers` is interpolated).
  */
 
+import { readFileSync } from 'fs'
 import { parseStreamJson, type InitEvent, type ResultEvent, type StreamEvent } from './stream.ts'
 import { TELEGRAM_INSTRUCTIONS } from './prompt.ts'
 import { createInitGuard } from './initGuard.ts'
@@ -22,6 +23,8 @@ export type RunTurnOpts = {
   maxTurns: number
   /** Policy flags from `policy/args.ts`. */
   policyArgs: string[]
+  /** Extra settings merged over the hook settings file (`policySettings`). */
+  settings?: Record<string, unknown>
   /** Claude Code session to `--resume`; omitted for a fresh session. */
   resume?: string
   /** Every parsed event, for logging and progress. */
@@ -74,7 +77,7 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     '--output-format', 'stream-json', '--verbose',
     // 009 FR5: subagent text in the stream (T901: present without it in 2.1.292).
     '--forward-subagent-text',
-    '--settings', opts.settingsFile,
+    '--settings', opts.settings ? mergeSettings(opts.settingsFile, opts.settings) : opts.settingsFile,
     '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key)),
     '--append-system-prompt', TELEGRAM_INSTRUCTIONS,
     ...opts.policyArgs,
@@ -120,4 +123,11 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
  */
 export function isMissingSession(outcome: TurnOutcome): boolean {
   return !outcome.init && !!outcome.result?.errors?.some(e => e.startsWith('No conversation found'))
+}
+
+/** The hook settings file with `extra` over it; `enabledPlugins` merges, but the file's own entries win (the channel plugin stays off). */
+export function mergeSettings(file: string, extra: Record<string, unknown>): string {
+  const base = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+  const plugins = { ...(extra.enabledPlugins as object), ...(base.enabledPlugins as object) }
+  return JSON.stringify({ ...base, ...extra, ...(Object.keys(plugins).length && { enabledPlugins: plugins }) })
 }

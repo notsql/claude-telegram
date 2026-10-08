@@ -36,3 +36,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/planUsage.test.ts` passes.
 - [x] **T820** `/cron` ➕ New job: how often, day, hour, then the prompt by reply (FR18).
   *Verify:* `test/cronCommand.test.ts` passes.
+- [x] **T821** `/settings` 🧩 Skills & plugins: per-chat switches passed as `skillOverrides` and `enabledPlugins` (FR19).
+  *Verify:* `test/extensionsUi.test.ts` and `test/policyUi.test.ts` pass.
