@@ -33,7 +33,8 @@ import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from '.
 import { parseKey, sessionKey } from './sessions/key.ts'
 import { threadOpts } from './telegram/send.ts'
 import { createSessionStore } from './sessions/store.ts'
-import { createSessionLifecycle, formatCost, formatSessions, MODELS } from './sessions/lifecycle.ts'
+import { createSessionLifecycle } from './sessions/lifecycle.ts'
+import { resumeView, SESSIONS_CALLBACK, sessionsView } from './sessions/commands.ts'
 import { createSessionTools, sessionStatus } from './agent/sessionTools.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
@@ -697,13 +698,6 @@ commands.push({ name: 'stop', description: 'Interrupt the running turn here', me
   turn.abort()
 } })
 
-// 002 FR9, owner-only like /stop. 008 moves these into its command handlers.
-commands.push({ name: 'new', description: 'Start a fresh session', menu: ['private', 'group'], handler: async ctx => {
-  if (!isOwner(ctx)) return
-  lifecycle.new(sessionKey(ctx.msg!))
-  await ctx.reply('New session. The next message starts with no earlier context.')
-} })
-
 // 005 US4: owner-only like /stop, scoped by the chat's historyScope. 008 moves it into its handlers.
 commands.push({ name: 'search', description: 'Search past conversations: /search <words>', menu: ['private', 'group'], handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
@@ -823,43 +817,47 @@ bot.callbackQuery(SKILLS_CALLBACK, async ctx => {
   }
 })
 
-commands.push({ name: 'sessions', description: 'List past sessions', menu: ['private', 'group'], handler: async ctx => {
-  if (!isOwner(ctx)) return
-  await ctx.reply(formatSessions(lifecycle.list(sessionKey(ctx.msg!))))
-} })
-
-commands.push({ name: 'resume', description: 'Resume a past session: /resume <n>', menu: ['private', 'group'], handler: async (ctx, args) => {
+// 008 FR14: /sessions is the one entry point; New, Resume and Compact are buttons.
+commands.push({ name: 'sessions', description: 'New, resume or compact this session', menu: ['private', 'group'], handler: async ctx => {
   if (!isOwner(ctx)) return
   const key = sessionKey(ctx.msg!)
-  const arg = args.trim()
-  if (!arg) {
-    await ctx.reply(`${formatSessions(lifecycle.list(key))}\n\nSend /resume <n> to switch.`)
-    return
-  }
-  try {
-    const picked = lifecycle.resume(key, Number(arg))
-    await ctx.reply(`Resumed: ${picked.title || '(untitled)'}`)
-  } catch (err) {
-    await ctx.reply((err as Error).message)
-  }
+  const r = sessionsView(sessionStatus(sessionDeps, key, policyOf(key)))
+  await ctx.reply(r.text, { reply_markup: r.keyboard })
 } })
 
-// 008 FR1, US4: bare /model opens a picker; the choice lasts for this session.
-const modelKeyboard = () => ({ inline_keyboard: [[...MODELS, 'default'].map(m => ({ text: m, callback_data: `mdl:${m}` }))] })
-
-commands.push({ name: 'model', description: 'Pick the model for this session', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {
-  const key = sessionKey(ctx.msg!)
-  if (!args) {
-    await ctx.reply(`Model: ${lifecycle.model(key) ?? policyOf(key).model ?? 'default'}. Pick one for this session:`, { reply_markup: modelKeyboard() })
-    return
+bot.callbackQuery(SESSIONS_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg || !isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const [, action, arg] = ctx.match as unknown as [string, 'n' | 'c' | 'l' | 'r' | 'b', string]
+  const edit = (text: string, keyboard?: InlineKeyboardMarkup) =>
+    ctx.editMessageText(text, keyboard ? { reply_markup: keyboard } : {}).catch(() => {})
+  await ctx.answerCallbackQuery().catch(() => {})
+  switch (action) {
+    case 'n':
+      lifecycle.new(key)
+      return void await edit('🆕 New session. The next message starts with no earlier context.')
+    case 'c':
+      if (!sessions.current(key)) return void await edit('No session to compact yet.')
+      turns.enqueue(key, { prompt: '/compact', text: '/compact' })
+      return void await edit('🗜 Compacting this session.')
+    case 'l': {
+      const r = resumeView(lifecycle.list(key), Number(arg))
+      return void await edit(r.text, r.keyboard)
+    }
+    case 'r':
+      try {
+        const picked = lifecycle.resume(key, Number(arg))
+        return void await edit(`⏪ Resumed: ${picked.title || '(untitled)'}`)
+      } catch (err) {
+        return void await edit((err as Error).message)
+      }
+    case 'b': {
+      const r = sessionsView(sessionStatus(sessionDeps, key, policyOf(key)))
+      return void await edit(r.text, r.keyboard)
+    }
   }
-  try {
-    lifecycle.setModel(key, args.toLowerCase())
-    await ctx.reply(`Model for this session: ${args.toLowerCase()}.`)
-  } catch (err) {
-    await ctx.reply((err as Error).message)
-  }
-} })
+})
 
 // 009 FR3, FR4: owner-only. Set on the session key, so a forum topic can run as its own agent (US3).
 commands.push({ name: 'agent', description: 'Run this chat as an agent: /agent [name|off]', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {
@@ -882,35 +880,6 @@ commands.push({ name: 'agent', description: 'Run this chat as an agent: /agent [
   saveAccess(access)
   audit({ event: 'policy', key, user: String(ctx.from!.id), field: 'agent', value: name === 'off' ? 'default' : name })
   await ctx.reply(name === 'off' ? 'Agent cleared.' : `Turns here now run as ${name}.`)
-} })
-
-bot.callbackQuery(/^mdl:(\w+)$/, async ctx => {
-  const msg = ctx.callbackQuery.message
-  if (!msg) return ctx.answerCallbackQuery().catch(() => {})
-  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
-  if (!authorised({ requiresApprover: true }, msg.chat.type !== 'private', isApprover(key, ctx.from.id), isOwner(ctx))) {
-    return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
-  }
-  lifecycle.setModel(key, ctx.match[1]!)
-  await ctx.editMessageText(`Model for this session: ${ctx.match[1]}.`).catch(() => {})
-  await ctx.answerCallbackQuery().catch(() => {})
-})
-
-// Claude Code compacts on its own; this forces it in the key's session.
-commands.push({ name: 'compact', description: "Compact this session's context", menu: ['private', 'group'], handler: async ctx => {
-  if (!isOwner(ctx)) return
-  const key = sessionKey(ctx.msg!)
-  if (!sessions.current(key)) {
-    await ctx.reply('No session to compact yet.')
-    return
-  }
-  turns.enqueue(key, { prompt: '/compact', text: '/compact' })
-  await ctx.reply('Compacting this session.')
-} })
-
-commands.push({ name: 'cost', description: 'What this session has cost', menu: ['private', 'group'], handler: async ctx => {
-  if (!isOwner(ctx)) return
-  await ctx.reply(formatCost(lifecycle.stats(sessionKey(ctx.msg!))))
 } })
 
 // The rest are DM-only, as in the channel server: no pairing-code leaks to groups.

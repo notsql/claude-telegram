@@ -1,6 +1,6 @@
 /**
  * Session tools on the daemon MCP server (008 FR9 parity): the agent can do
- * what `/new`, `/resume`, `/model` and `/status` do when asked in plain words.
+ * what `/sessions` and `/status` do when asked in plain words.
  * A new or resumed session takes effect from the next message; the turn
  * calling the tool is not interrupted.
  */

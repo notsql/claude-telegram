@@ -22,3 +22,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/skillCommands.test.ts` and `test/menu.test.ts` pass.
 - [x] **T813** `/memory` buttons with Add, Forget and About you, replacing `/remember` and `/forget` (FR13).
   *Verify:* `test/memoryCommands.test.ts` passes.
+- [x] **T814** `/sessions` buttons with New, Resume and Compact, replacing `/new`, `/resume` and `/compact`; drop `/model` and `/cost` (FR1, FR14).
+  *Verify:* `test/sessionCommands.test.ts` passes.
