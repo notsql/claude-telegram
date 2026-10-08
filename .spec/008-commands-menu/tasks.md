@@ -24,3 +24,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/memoryCommands.test.ts` passes.
 - [x] **T814** `/sessions` buttons with New, Resume and Compact, replacing `/new`, `/resume` and `/compact`; drop `/model` and `/cost` (FR1, FR14).
   *Verify:* `test/sessionCommands.test.ts` passes.
+- [x] **T815** `/usage` from `claude -p /usage`; `/settings` replaces `/policy` with per-setting pages and a 🔐 Permissions page (FR1, FR15).
+  *Verify:* `test/policyUi.test.ts` passes and `planUsage()` returns the usage report.

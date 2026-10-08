@@ -164,7 +164,7 @@ export function toolLabel(toolName: string): string {
 }
 
 /** Splits snake, kebab, camel and Pascal case into Title Case words; acronyms (`URL`) stay whole. */
-function words(name: string): string {
+export function words(name: string): string {
   return name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')

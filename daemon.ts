@@ -19,10 +19,10 @@ import {
   gate, groupVerdict, dmCommandGate, checkApprovals, saveAccess,
 } from './access.ts'
 import { createApprovals, parseTextReply } from './policy/approvals.ts'
-import { addAlwaysAllow, canStartTurn, chatTypeOf, policyKey, resolvePolicy } from './policy/resolve.ts'
+import { addAlwaysAllow, canStartTurn, chatTypeOf, policyKey, removeAlwaysAllow, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
-import { applyPolicyEdit, policyKeyboard, renderPolicy } from './telegram/policyUi.ts'
+import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, ruleLabel, ruleView, type EditableField } from './telegram/policyUi.ts'
 import { expandPath, isTrustedCwd, policyArgs } from './policy/args.ts'
 import { homedir } from 'os'
 import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
@@ -36,6 +36,7 @@ import { createSessionStore } from './sessions/store.ts'
 import { createSessionLifecycle } from './sessions/lifecycle.ts'
 import { resumeView, SESSIONS_CALLBACK, sessionsView } from './sessions/commands.ts'
 import { createSessionTools, sessionStatus } from './agent/sessionTools.ts'
+import { planUsage } from './agent/planUsage.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
 import { renderInbound, renderSkillInvocation } from './agent/inbound.ts'
@@ -859,6 +860,17 @@ bot.callbackQuery(SESSIONS_CALLBACK, async ctx => {
   }
 })
 
+// 008 FR1: the subscription's usage limits, from Claude Code's own /usage.
+commands.push({ name: 'usage', description: 'Plan usage limits and when they reset', menu: ['private', 'group'], handler: async ctx => {
+  if (!isOwner(ctx)) return
+  void ctx.replyWithChatAction('typing').catch(() => {})
+  try {
+    await ctx.reply((await planUsage()).slice(0, 4000))
+  } catch (err) {
+    await ctx.reply(`Couldn't read usage: ${err instanceof Error ? err.message : err}`)
+  }
+} })
+
 // 009 FR3, FR4: owner-only. Set on the session key, so a forum topic can run as its own agent (US3).
 commands.push({ name: 'agent', description: 'Run this chat as an agent: /agent [name|off]', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {
   if (!isOwner(ctx)) return
@@ -905,35 +917,54 @@ commands.push({ name: 'status', description: 'Session, model and cost', menu: ['
   await ctx.reply(pairingStatus(gated.access, gated.senderId, name, () => sessionStatus(sessionDeps, key, policyOf(key))))
 } })
 
-// 003 T309: owner-only policy editor for this chat or topic.
-const showPolicy = (key: string) => {
-  const p = resolvePolicy(loadAccess(), key, chatTypeOf(key))
-  return [renderPolicy(key, p), { reply_markup: policyKeyboard(p) }] as const
-}
+// 003 T309, 008 FR15: owner-only settings for this chat; settings open their values, Permissions lists every rule.
+const policyAt = (key: string) => resolvePolicy(loadAccess(), key, chatTypeOf(key))
 
-commands.push({ name: 'policy', description: "View or edit this chat's policy", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
+commands.push({ name: 'settings', description: "This chat's settings and permissions", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
   if (!isOwner(ctx)) return
-  const [text, opts] = showPolicy(policyKey(sessionKey(ctx.msg!)))
-  await ctx.reply(text, opts)
+  const key = policyKey(sessionKey(ctx.msg!))
+  const r = policyView(key, policyAt(key))
+  await ctx.reply(r.text, { reply_markup: r.keyboard })
 } })
 
-bot.callbackQuery(/^pol:(\w+):(\w+)$/, async ctx => {
+bot.callbackQuery(POLICY_CALLBACK, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
   const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
-  const [, field, value] = ctx.match
-  const access = loadAccess()
-  try {
-    const stored = applyPolicyEdit(access, key, field!, value!)
-    saveAccess(access)
-    audit({ event: 'policy', key, user: String(ctx.from.id), field: field!, value: stored ?? 'default' })
-    menu.refresh()
-  } catch (err) {
-    return ctx.answerCallbackQuery({ text: (err as Error).message }).catch(() => {})
+  const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'r' | 'x', string?, string?]
+  const show = (r: { text: string; keyboard: InlineKeyboardMarkup }) =>
+    ctx.editMessageText(r.text, { reply_markup: r.keyboard }).catch(() => {})
+  const user = String(ctx.from.id)
+  switch (action) {
+    case 's': {
+      const access = loadAccess()
+      try {
+        const stored = applyPolicyEdit(access, key, a!, b!)
+        saveAccess(access)
+        audit({ event: 'policy', key, user, field: a!, value: stored ?? 'default' })
+        menu.refresh()
+      } catch (err) {
+        return ctx.answerCallbackQuery({ text: (err as Error).message }).catch(() => {})
+      }
+      void ctx.answerCallbackQuery({ text: `${label(a!)}: ${label(b!)}` }).catch(() => {})
+      return void await show(a === 'permissionMode' ? permissionsView(policyAt(key)) : policyView(key, policyAt(key)))
+    }
+    case 'x': {
+      const access = loadAccess()
+      const rule = alwaysRuleAt(resolvePolicy(access, key, chatTypeOf(key)), Number(a))
+      if (!rule || !removeAlwaysAllow(access, key, rule)) return ctx.answerCallbackQuery({ text: 'That rule is gone.' }).catch(() => {})
+      saveAccess(access)
+      audit({ event: 'policy', key, user, field: 'alwaysAllow', value: `-${rule}` })
+      void ctx.answerCallbackQuery({ text: `🗑 Removed ${ruleLabel(rule)}` }).catch(() => {})
+      return void await show(permissionsView(policyAt(key)))
+    }
   }
-  const [text, opts] = showPolicy(key)
-  await ctx.editMessageText(text, opts).catch(() => {})
-  await ctx.answerCallbackQuery({ text: `${field} → ${value}` }).catch(() => {})
+  await ctx.answerCallbackQuery().catch(() => {})
+  const p = policyAt(key)
+  if (action === 'm') return void await show(policyView(key, p))
+  if (action === 'p') return void await show(permissionsView(p))
+  if (action === 'r') return void await show(ruleView(p, Number(a)))
+  if (a && a in EDITABLE) await show(fieldView(a as EditableField, p))
 })
 
 // 008 T807, 007 US5: this chat's jobs with pause/resume, delete and run-now buttons.
