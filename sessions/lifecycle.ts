@@ -1,6 +1,6 @@
 import type { PastSession, SessionStore } from './store.ts'
 
-/** Models `session_set_model` may pick (008 FR1), as in the `/policy` editor. */
+/** Models `session_set_model` may pick (008 FR1), as in the `/settings` editor. */
 export const MODELS = ['sonnet', 'opus', 'haiku']
 
 export type TurnStats = { turns: number; costUsd: number }

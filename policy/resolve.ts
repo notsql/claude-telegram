@@ -38,6 +38,16 @@ export function addAlwaysAllow(access: Access, key: string, rule: string): void 
   if (!rules.includes(rule)) rules.push(rule)
 }
 
+/** Removes an Always rule from `alwaysAllow` under `key`; false when it isn't there. Mutates `access`. */
+export function removeAlwaysAllow(access: Access, key: string, rule: string): boolean {
+  const policy = access.chats?.[key]?.policy
+  const i = policy?.alwaysAllow?.indexOf(rule) ?? -1
+  if (i < 0) return false
+  policy!.alwaysAllow!.splice(i, 1)
+  if (!policy!.alwaysAllow!.length) delete policy!.alwaysAllow
+  return true
+}
+
 /**
  * FR12: in groups only owners start model turns unless the chat opts in with
  * `allowOthersOnSubscription`. DMs are already limited to `allowFrom` by gate().
