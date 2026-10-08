@@ -27,11 +27,13 @@ export function isTrustedCwd(cwd: string, trustedDirs: string[] = [], home = hom
  */
 export function policyArgs(p: Policy): string[] {
   const allowed = [...new Set(['mcp__tg', ...(p.allowedTools ?? []), ...(p.alwaysAllow ?? [])])]
+  // 008 FR19: a server-level deny drops all of a switched-off MCP server's tools.
+  const disallowed = [...(p.disallowedTools ?? []), ...(p.disabledMcpServers ?? []).map(s => `mcp__${s}`)]
   return [
     ...(p.model ? ['--model', p.model] : []),
     ...(p.permissionMode ? ['--permission-mode', p.permissionMode] : []),
     '--allowedTools', ...allowed,
-    ...(p.disallowedTools?.length ? ['--disallowedTools', ...p.disallowedTools] : []),
+    ...(disallowed.length ? ['--disallowedTools', ...disallowed] : []),
     ...(p.agent ? ['--agent', p.agent] : []),
   ]
 }

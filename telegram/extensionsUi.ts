@@ -2,16 +2,18 @@
  * `/settings` → 🧩 Skills & plugins (008 FR19): turn skills and plugins on or
  * off for this chat only. `ext:m` is the page, `ext:s:<page>` the skills
  * (tap `ext:t:<command>:<page>` to switch one), `ext:p` the plugins (tap
- * `ext:u:<id>`). Plugin skills follow their plugin, so they aren't listed.
+ * `ext:u:<id>`), `ext:c` the MCP servers (tap `ext:v:<prefix>`). Plugin
+ * skills follow their plugin, so they aren't listed.
  */
 
 import type { InlineKeyboardButton } from 'grammy/types'
 import type { Access } from '../access.ts'
 import type { Policy } from '../policy/schema.ts'
+import { mcpPrefix, type McpServer } from '../agent/loaded.ts'
 import type { Plugin } from '../skills/plugins.ts'
 import type { PolicyView } from './policyUi.ts'
 
-export const EXTENSIONS_CALLBACK = /^ext:(m|s|t|p|u)(?::([\w@.-]{1,58}))?(?::(\d+))?$/
+export const EXTENSIONS_CALLBACK = /^ext:(m|s|t|p|u|c|v)(?::([\w@.-]{1,58}))?(?::(\d+))?$/
 const PAGE = 12
 
 type Skill = { name: string; command: string }
@@ -21,18 +23,22 @@ const ownSkills = (skills: Skill[]) => skills.filter(s => !s.name.includes(':'))
 const pluginOn = (p: Policy, x: Plugin) => p.plugins?.[x.id] ?? x.on
 const skillsOff = (p: Policy, skills: Skill[]) => ownSkills(skills).filter(s => p.disabledSkills?.includes(s.name)).length
 
-export function extensionsView(p: Policy, skills: Skill[], plugins: Plugin[]): PolicyView {
+const serverOn = (p: Policy, s: McpServer) => !p.disabledMcpServers?.includes(mcpPrefix(s.name))
+
+export function extensionsView(p: Policy, skills: Skill[], plugins: Plugin[], servers: McpServer[]): PolicyView {
   const on = plugins.filter(x => pluginOn(p, x)).length
   return {
     text: [
-      '🧩 Skills & plugins', '',
-      'Turn skills and plugins on or off for this chat only. Your terminal and other chats are not affected.', '',
+      '🧩 Skills, plugins & MCP', '',
+      'Turn skills, plugins and MCP servers on or off for this chat only. Your terminal and other chats are not affected.', '',
       `Skills: ${ownSkills(skills).length - skillsOff(p, skills)} of ${ownSkills(skills).length} on`,
       `Plugins: ${on} of ${plugins.length} on`,
+      `MCP servers: ${servers.filter(s => serverOn(p, s)).length} of ${servers.length} on`,
     ].join('\n'),
     keyboard: { inline_keyboard: [
       [button('🧩 Skills', 'ext:s:0')],
       [button('🔌 Plugins', 'ext:p')],
+      [button('🛠 MCP servers', 'ext:c')],
       [button('« Back', 'pol:m')],
     ] },
   }
@@ -80,6 +86,33 @@ export function skillOn(p: Policy, name: string, plugins: Plugin[]): boolean {
   if (i < 0) return !p.disabledSkills?.includes(name)
   const plugin = plugins.find(x => x.name === name.slice(0, i))
   return !plugin || pluginOn(p, plugin)
+}
+
+const SOURCES: Record<string, string> = { claudeai: 'claude.ai connector', user: 'yours', project: 'this project', local: 'this project', plugin: 'from a plugin' }
+
+export function mcpSwitchesView(p: Policy, servers: McpServer[]): PolicyView {
+  const shown = servers.filter(s => mcpPrefix(s.name).length <= 58)
+  return {
+    text: shown.length
+      ? ['🛠 MCP servers here. ✅ on, 🚫 off. Tap one to switch all its tools for this chat.', '', ...shown.map(s => `${serverOn(p, s) ? '✅' : '🚫'} ${s.name}${s.source && SOURCES[s.source] ? ` (${SOURCES[s.source]})` : ''}`)].join('\n')
+      : 'No MCP servers found. Add them from the terminal with claude mcp add, or connect them on claude.ai.',
+    keyboard: { inline_keyboard: [
+      ...shown.map(s => [button(`${serverOn(p, s) ? '✅' : '🚫'} ${s.name}`, `ext:v:${mcpPrefix(s.name)}`)]),
+      [button('« Back', 'ext:m')],
+    ] },
+  }
+}
+
+/** Switches an MCP server off, or back on, for the key by its tool prefix. Mutates `access`; returns whether it is now on. */
+export function toggleMcpServer(access: Access, key: string, prefix: string): boolean {
+  const policy = policyOf(access, key)
+  const off = new Set(policy.disabledMcpServers)
+  const on = off.has(prefix)
+  if (on) off.delete(prefix)
+  else off.add(prefix)
+  if (off.size) policy.disabledMcpServers = [...off].sort()
+  else delete policy.disabledMcpServers
+  return on
 }
 
 const policyOf = (access: Access, key: string) => ((access.chats ??= {})[key] ??= {}).policy ??= {}

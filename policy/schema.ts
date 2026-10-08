@@ -21,6 +21,8 @@ export const PolicySchema = z.object({
   disabledSkills: z.array(z.string()),
   /** 008 FR19: plugin id → on/off here, over the installed state; passed as `enabledPlugins`. */
   plugins: z.record(z.string(), z.boolean()),
+  /** 008 FR19: MCP servers turned off here, by tool prefix (`claude_ai_Notion`); passed as `--disallowedTools mcp__<prefix>`. */
+  disabledMcpServers: z.array(z.string()),
   approvers: z.array(z.string()),
   /** FR12: let non-owners start turns on the owner's subscription. Terminal skill only. */
   allowOthersOnSubscription: z.boolean(),

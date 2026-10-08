@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import { defaultAccess } from '../access.ts'
 import { removeAlwaysAllow } from '../policy/resolve.ts'
+import { AGENT_CALLBACK } from '../telegram/agentUi.ts'
+import { EXTENSIONS_CALLBACK } from '../telegram/extensionsUi.ts'
 import { alwaysRuleAt, applyPolicyEdit, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView } from '../telegram/policyUi.ts'
 
 const buttons = (v: { keyboard: { inline_keyboard: { text: string; callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat()
@@ -26,6 +28,7 @@ test('main page describes each setting, with buttons that explain their values',
   expect(b.map(x => x.text)).toContain('Scheduler allowed: Yes')
   expect(b.slice(-4).map(x => x.callback_data)).toEqual(['pol:p', 'ext:m', 'agn:m', 'pol:z'])
   for (const x of b.slice(0, -3)) expect(POLICY_CALLBACK.test(x.callback_data!)).toBe(true)
+  expect(EXTENSIONS_CALLBACK.test('ext:m') && AGENT_CALLBACK.test('agn:m')).toBe(true)
   const f = fieldView('model', { model: 'sonnet' })
   expect(f.text).toContain('• Sonnet: Balanced speed and capability.')
   expect(buttons(f).map(x => x.text)).toEqual(['Default', '• Sonnet', 'Opus', 'Haiku', '« Back'])
