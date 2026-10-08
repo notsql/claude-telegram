@@ -1,9 +1,10 @@
 /**
- * `/settings` inline editor for the chat's policy (003 US4, T309; 008 FR15). Owner only. The main page
- * lists each setting as a button (`pol:f:<field>`) that opens its values
- * (`pol:s:<field>:<value>`); 🔐 Permissions (`pol:p`) lists the permission mode
- * and every tool rule (`pol:r:<i>`), and an Always rule can be removed
- * (`pol:x:<i>`). Offers a fixed set of values per field; `bypassPermissions`,
+ * `/settings` inline editor for the chat's policy (003 US4, T309; 008 FR15).
+ * Owner only. The main page lists each setting as a button (`pol:f:<field>`)
+ * that explains its values (`pol:s:<field>:<value>`), plus Reset (`pol:z`,
+ * confirmed by `pol:y`). 🔐 Permissions (`pol:p`) has the permission mode and
+ * one button per kind of rule (`pol:c:<kind>:<page>`); a rule (`pol:r:<kind>:<i>`)
+ * shows its details, and an Always rule can be removed (`pol:x:<i>`). Offers a fixed set of values per field; `bypassPermissions`,
  * `cwd` and trust settings are never offered here (FR9, FR13) and edits outside
  * the set are rejected.
  */
@@ -25,21 +26,64 @@ export const EDITABLE = {
 
 export type EditableField = keyof typeof EDITABLE
 
-export const POLICY_CALLBACK = /^pol:(m|p|f|s|r|x)(?::(\w+))?(?::(\w+))?$/
+export const POLICY_CALLBACK = /^pol:(m|p|f|s|c|r|x|z|y)(?::(\w+))?(?::(\w+))?$/
+const PAGE = 8
 
-const ABOUT: Record<EditableField, string> = {
-  permissionMode: 'How tool use is approved. Default asks you, Accept edits allows file edits without asking, Plan only plans.',
-  model: 'The model for turns in this chat.',
-  memoryScope: 'Whether the agent reads and writes shared memory here.',
-  historyScope: 'Which past conversations search can see.',
-  autoLearn: 'Whether the agent learns skills: off, propose them for your approval, or save them automatically.',
-  schedulerAllowed: 'Whether scheduled jobs can be created here.',
+/** What each setting does, and what each value means, shown before you pick. */
+const ABOUT: { [F in EditableField]: { what: string; values: Record<(typeof EDITABLE)[F][number], string> } } = {
+  permissionMode: {
+    what: 'How tool use is approved.',
+    values: {
+      default: 'Asks you before using a tool that no rule allows.',
+      acceptEdits: 'Edits files without asking; other tools still ask.',
+      plan: 'Only reads and plans; makes no changes.',
+    },
+  },
+  model: {
+    what: 'The model for turns in this chat.',
+    values: {
+      default: "Claude Code's default model.",
+      sonnet: 'Balanced speed and capability.',
+      opus: 'Most capable; uses your limits fastest.',
+      haiku: 'Fastest and lightest.',
+    },
+  },
+  memoryScope: {
+    what: 'Whether the agent uses shared memory here.',
+    values: {
+      global: 'Reads and saves the memory shared by all chats.',
+      none: 'No memory in this chat.',
+    },
+  },
+  historyScope: {
+    what: 'Which past conversations search can see.',
+    values: {
+      all: 'Every chat and topic.',
+      chat: 'Only this chat.',
+      none: 'Search is off.',
+    },
+  },
+  autoLearn: {
+    what: 'Whether the agent learns new skills from what it does.',
+    values: {
+      off: 'Never learns skills.',
+      propose: 'Suggests a skill and waits for your ✅ Save.',
+      auto: 'Saves skills itself and tells you.',
+    },
+  },
+  schedulerAllowed: {
+    what: 'Whether scheduled jobs can be created here.',
+    values: {
+      true: 'The agent can schedule jobs and reminders here.',
+      false: 'No scheduled jobs here.',
+    },
+  },
 }
 
 const RULES = [
-  ['allowedTools', '✅', 'Allowed without asking'],
-  ['disallowedTools', '⛔', 'Blocked'],
-  ['alwaysAllow', '♾', 'Always allowed (from ♾ Always)'],
+  { field: 'allowedTools', icon: '✅', heading: 'Allowed without asking', about: 'These run without a permission prompt. Set from the terminal.' },
+  { field: 'disallowedTools', icon: '⛔', heading: 'Blocked', about: 'These are never available here. Set from the terminal.' },
+  { field: 'alwaysAllow', icon: '♾', heading: 'Always allowed', about: 'Saved when someone tapped ♾ Always on a permission prompt. Tap one to remove it.' },
 ] as const
 
 export type PolicyView = { text: string; keyboard: InlineKeyboardMarkup }
@@ -56,73 +100,109 @@ export function ruleLabel(rule: string): string {
   return m ? `${toolLabel(m[1]!)}: ${m[2]}` : toolLabel(rule)
 }
 
-const value = (p: Policy, f: EditableField) => label(String(p[f] ?? 'default'))
+const current = (p: Policy, f: EditableField) => String(p[f] ?? 'default')
+const value = (p: Policy, f: EditableField) => label(current(p, f))
 const button = (text: string, data: string): InlineKeyboardButton => ({ text: text.slice(0, 64), callback_data: data })
+const SETTINGS = (Object.keys(EDITABLE) as EditableField[]).filter(f => f !== 'permissionMode')
 
-/** Every tool rule, numbered for `pol:r:<i>`. */
-function rules(p: Policy) {
-  return RULES.flatMap(([field, icon, heading]) => (p[field] ?? []).map(rule => ({ field, icon, heading, rule })))
-}
-
-/** The main page: one button per setting, then Permissions. */
+/** The main page: each setting with what it does, as buttons, then Permissions and Reset. */
 export function policyView(key: string, p: Policy): PolicyView {
-  const lines = [`⚙️ Settings for ${key}`, '', 'Tap a setting to change it.']
+  const lines = [`⚙️ Settings for ${key}`, '']
+  for (const f of SETTINGS) lines.push(`${label(f)}: ${value(p, f)}`, `${ABOUT[f].what}`, '')
+  lines.push(`🔐 Permissions: ${value(p, 'permissionMode')} mode. Which tools run without asking.`)
   if (p.agent) lines.push(`Agent: ${p.agent}`)
   if (p.cwd) lines.push(`Working directory: ${p.cwd}`)
-  const rows = (Object.keys(EDITABLE) as EditableField[])
-    .filter(f => f !== 'permissionMode')
-    .map(f => [button(`${label(f)}: ${value(p, f)}`, `pol:f:${f}`)])
-  rows.push([button(`🔐 Permissions (${value(p, 'permissionMode')}, ${rules(p).length} rules)`, 'pol:p')])
-  return { text: lines.join('\n'), keyboard: { inline_keyboard: rows } }
+  lines.push('', 'Tap a setting to change it.')
+  return {
+    text: lines.join('\n'),
+    keyboard: { inline_keyboard: [
+      ...SETTINGS.map(f => [button(`${label(f)}: ${value(p, f)}`, `pol:f:${f}`)]),
+      [button('🔐 Permissions', 'pol:p')],
+      [button('↺ Reset to defaults', 'pol:z')],
+    ] },
+  }
 }
 
-/** One setting: what it does, and its values with the current one marked. */
+/** One setting: what it does and what each value means, with the current one marked. */
 export function fieldView(f: EditableField, p: Policy): PolicyView {
-  const current = String(p[f] ?? 'default')
+  const values = ABOUT[f].values as Record<string, string>
   return {
-    text: `${label(f)}: ${value(p, f)}\n\n${ABOUT[f]}`,
+    text: [`${label(f)}: ${value(p, f)}`, ABOUT[f].what, '', ...EDITABLE[f].map(v => `${v === current(p, f) ? '• ' : ''}${label(v)}: ${values[v]}`)].join('\n'),
     keyboard: { inline_keyboard: [
-      EDITABLE[f].map(v => button(`${v === current ? '• ' : ''}${label(v)}`, `pol:s:${f}:${v}`)),
+      EDITABLE[f].map(v => button(`${v === current(p, f) ? '• ' : ''}${label(v)}`, `pol:s:${f}:${v}`)),
       [button('« Back', f === 'permissionMode' ? 'pol:p' : 'pol:m')],
     ] },
   }
 }
 
-/** Permissions: the mode, then every rule by kind; tap a rule for details. */
+/** Permissions: the mode, then one button per kind of rule with its count. */
 export function permissionsView(p: Policy): PolicyView {
-  const all = rules(p)
-  const lines = ['🔐 Permissions', '', `Permission mode: ${value(p, 'permissionMode')}`]
-  for (const [field, icon, heading] of RULES) {
-    const list = p[field] ?? []
-    if (list.length) lines.push('', `${icon} ${heading}:`, ...list.map(r => `• ${ruleLabel(r)}`))
-  }
-  if (!all.length) lines.push('', 'No tool rules: every tool asks first.')
-  lines.push('', 'Allowed and blocked tools are set from the terminal; Always rules can be removed here.')
+  const mode = current(p, 'permissionMode') as (typeof EDITABLE)['permissionMode'][number]
   return {
-    text: lines.join('\n').slice(0, 4000),
+    text: [
+      '🔐 Permissions', '',
+      `Permission mode: ${value(p, 'permissionMode')}`, ABOUT.permissionMode.values[mode] ?? '', '',
+      ...RULES.flatMap(r => [`${r.icon} ${r.heading} (${(p[r.field] ?? []).length})`]),
+      '', 'Tap a group to see its rules.',
+    ].join('\n'),
     keyboard: { inline_keyboard: [
       [button(`Permission mode: ${value(p, 'permissionMode')}`, 'pol:f:permissionMode')],
-      ...all.slice(0, 90).map((r, i) => [button(`${r.icon} ${ruleLabel(r.rule)}`, `pol:r:${i}`)]),
+      ...RULES.map((r, c) => [button(`${r.icon} ${r.heading} (${(p[r.field] ?? []).length})`, `pol:c:${c}:0`)]),
       [button('« Back', 'pol:m')],
     ] },
   }
 }
 
-/** One rule; Always rules get Remove. */
-export function ruleView(p: Policy, i: number): PolicyView {
-  const r = rules(p)[i]
-  const back = [button('« Back', 'pol:p')]
-  if (!r) return { text: 'That rule is gone.', keyboard: { inline_keyboard: [back] } }
+/** One kind of rule, paged; tap a rule for details. */
+export function rulesView(p: Policy, c: number, page = 0): PolicyView {
+  const r = RULES[c]
+  if (!r) return permissionsView(p)
+  const list = p[r.field] ?? []
+  const pages = Math.max(1, Math.ceil(list.length / PAGE))
+  page = Math.min(Math.max(page, 0), pages - 1)
+  const rows = list.slice(page * PAGE, (page + 1) * PAGE).map((rule, j) => [button(ruleLabel(rule), `pol:r:${c}:${page * PAGE + j}`)])
+  if (pages > 1) {
+    rows.push([
+      ...(page > 0 ? [button('« Prev', `pol:c:${c}:${page - 1}`)] : []),
+      ...(page < pages - 1 ? [button('Next »', `pol:c:${c}:${page + 1}`)] : []),
+    ])
+  }
+  rows.push([button('« Back', 'pol:p')])
   return {
-    text: `${r.icon} ${r.heading}\n${ruleLabel(r.rule)}\n\nRule: ${r.rule}`,
+    text: [`${r.icon} ${r.heading} (${list.length})${pages > 1 ? `, page ${page + 1}/${pages}` : ''}`, r.about, ...(list.length ? [] : ['', 'None.'])].join('\n'),
+    keyboard: { inline_keyboard: rows },
+  }
+}
+
+/** One rule; Always rules get Remove. */
+export function ruleView(p: Policy, c: number, i: number): PolicyView {
+  const r = RULES[c]
+  const rule = r && p[r.field]?.[i]
+  const back = [button('« Back', `pol:c:${c}:${Math.floor(i / PAGE)}`)]
+  if (!r || !rule) return { text: 'That rule is gone.', keyboard: { inline_keyboard: [back] } }
+  return {
+    text: `${r.icon} ${r.heading}\n${ruleLabel(rule)}\n\nRule: ${rule}\n${r.about}`,
     keyboard: { inline_keyboard: r.field === 'alwaysAllow' ? [[button('🗑 Remove', `pol:x:${i}`)], back] : [back] },
   }
 }
 
-/** The Always rule at `i` in `p`'s rule list, if it is one. */
+/** Reset asks first, naming what changes and what stays. */
+export function resetView(): PolicyView {
+  return {
+    text: `↺ Reset ${(Object.keys(EDITABLE) as EditableField[]).map(label).join(', ')} to this chat's defaults?\n\nPermission rules and settings made in the terminal stay as they are.`,
+    keyboard: { inline_keyboard: [[button('↺ Reset', 'pol:y'), button('« Back', 'pol:m')]] },
+  }
+}
+
+/** The Always rule at `i`, if there is one. */
 export function alwaysRuleAt(p: Policy, i: number): string | undefined {
-  const r = rules(p)[i]
-  return r?.field === 'alwaysAllow' ? r.rule : undefined
+  return p.alwaysAllow?.[i]
+}
+
+/** Clears every Telegram-editable field from the key's own policy, so defaults apply. Mutates `access`. */
+export function resetPolicy(access: Access, key: string): void {
+  const policy = access.chats?.[key]?.policy as Record<string, unknown> | undefined
+  if (policy) for (const f of Object.keys(EDITABLE)) delete policy[f]
 }
 
 /**

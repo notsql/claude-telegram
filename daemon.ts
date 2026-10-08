@@ -22,7 +22,7 @@ import { createApprovals, parseTextReply } from './policy/approvals.ts'
 import { addAlwaysAllow, canStartTurn, chatTypeOf, policyKey, removeAlwaysAllow, resolvePolicy } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
-import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, ruleLabel, ruleView, type EditableField } from './telegram/policyUi.ts'
+import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from './telegram/policyUi.ts'
 import { expandPath, isTrustedCwd, policyArgs } from './policy/args.ts'
 import { homedir } from 'os'
 import { type AttachmentMeta, INBOX_DIR, safeName, downloadPhoto } from './telegram/attachments.ts'
@@ -36,7 +36,7 @@ import { createSessionStore } from './sessions/store.ts'
 import { createSessionLifecycle } from './sessions/lifecycle.ts'
 import { resumeView, SESSIONS_CALLBACK, sessionsView } from './sessions/commands.ts'
 import { createSessionTools, sessionStatus } from './agent/sessionTools.ts'
-import { planUsage } from './agent/planUsage.ts'
+import { formatUsage, planUsage } from './agent/planUsage.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
 import { renderInbound, renderSkillInvocation } from './agent/inbound.ts'
@@ -865,7 +865,7 @@ commands.push({ name: 'usage', description: 'Plan usage limits and when they res
   if (!isOwner(ctx)) return
   void ctx.replyWithChatAction('typing').catch(() => {})
   try {
-    await ctx.reply((await planUsage()).slice(0, 4000))
+    await ctx.reply(formatUsage(await planUsage()).slice(0, 4000))
   } catch (err) {
     await ctx.reply(`Couldn't read usage: ${err instanceof Error ? err.message : err}`)
   }
@@ -931,7 +931,7 @@ bot.callbackQuery(POLICY_CALLBACK, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
   const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
-  const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'r' | 'x', string?, string?]
+  const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y', string?, string?]
   const show = (r: { text: string; keyboard: InlineKeyboardMarkup }) =>
     ctx.editMessageText(r.text, { reply_markup: r.keyboard }).catch(() => {})
   const user = String(ctx.from.id)
@@ -956,14 +956,25 @@ bot.callbackQuery(POLICY_CALLBACK, async ctx => {
       saveAccess(access)
       audit({ event: 'policy', key, user, field: 'alwaysAllow', value: `-${rule}` })
       void ctx.answerCallbackQuery({ text: `🗑 Removed ${ruleLabel(rule)}` }).catch(() => {})
-      return void await show(permissionsView(policyAt(key)))
+      return void await show(rulesView(policyAt(key), 2, Math.floor(Number(a) / 8)))
+    }
+    case 'y': {
+      const access = loadAccess()
+      resetPolicy(access, key)
+      saveAccess(access)
+      audit({ event: 'policy', key, user, field: '*', value: 'default' })
+      menu.refresh()
+      void ctx.answerCallbackQuery({ text: '↺ Settings reset' }).catch(() => {})
+      return void await show(policyView(key, policyAt(key)))
     }
   }
   await ctx.answerCallbackQuery().catch(() => {})
   const p = policyAt(key)
   if (action === 'm') return void await show(policyView(key, p))
   if (action === 'p') return void await show(permissionsView(p))
-  if (action === 'r') return void await show(ruleView(p, Number(a)))
+  if (action === 'c') return void await show(rulesView(p, Number(a), Number(b ?? 0)))
+  if (action === 'r') return void await show(ruleView(p, Number(a), Number(b)))
+  if (action === 'z') return void await show(resetView())
   if (a && a in EDITABLE) await show(fieldView(a as EditableField, p))
 })
 

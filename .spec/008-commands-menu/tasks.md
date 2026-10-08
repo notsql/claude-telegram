@@ -26,3 +26,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/sessionCommands.test.ts` passes.
 - [x] **T815** `/usage` from `claude -p /usage`; `/settings` replaces `/policy` with per-setting pages and a 🔐 Permissions page (FR1, FR15).
   *Verify:* `test/policyUi.test.ts` passes and `planUsage()` returns the usage report.
+- [x] **T816** `/usage` bars; `/settings` describes each setting and value, adds ↺ Reset, and pages permissions by kind (FR1, FR15).
+  *Verify:* `test/policyUi.test.ts` and `test/planUsage.test.ts` pass.

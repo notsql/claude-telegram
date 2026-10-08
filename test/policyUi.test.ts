@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { defaultAccess } from '../access.ts'
 import { removeAlwaysAllow } from '../policy/resolve.ts'
-import { alwaysRuleAt, applyPolicyEdit, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, ruleLabel, ruleView } from '../telegram/policyUi.ts'
+import { alwaysRuleAt, applyPolicyEdit, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView } from '../telegram/policyUi.ts'
 
 const buttons = (v: { keyboard: { inline_keyboard: { text: string; callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat()
 
@@ -19,28 +19,40 @@ test('labels turn camel and Pascal case into words', () => {
   expect(ruleLabel('WebFetch')).toBe('Web Fetch')
 })
 
-test('main page lists settings as buttons that open their values', () => {
+test('main page describes each setting, with buttons that explain their values', () => {
   const v = policyView('5', { model: 'sonnet', schedulerAllowed: true, alwaysAllow: ['Read'] })
+  expect(v.text).toContain('Model: Sonnet\nThe model for turns in this chat.')
   const b = buttons(v)
-  expect(b.map(x => x.text)).toContain('Model: Sonnet')
   expect(b.map(x => x.text)).toContain('Scheduler allowed: Yes')
-  expect(b.at(-1)).toEqual({ text: '🔐 Permissions (Default, 1 rules)', callback_data: 'pol:p' })
+  expect(b.slice(-2).map(x => x.callback_data)).toEqual(['pol:p', 'pol:z'])
   for (const x of b) expect(POLICY_CALLBACK.test(x.callback_data!)).toBe(true)
-  const f = buttons(fieldView('model', { model: 'sonnet' }))
-  expect(f.map(x => x.text)).toEqual(['Default', '• Sonnet', 'Opus', 'Haiku', '« Back'])
-  expect(f[1]!.callback_data).toBe('pol:s:model:sonnet')
+  const f = fieldView('model', { model: 'sonnet' })
+  expect(f.text).toContain('• Sonnet: Balanced speed and capability.')
+  expect(buttons(f).map(x => x.text)).toEqual(['Default', '• Sonnet', 'Opus', 'Haiku', '« Back'])
+  expect(buttons(f)[1]!.callback_data).toBe('pol:s:model:sonnet')
   expect(buttons(fieldView('permissionMode', {})).at(-1)!.callback_data).toBe('pol:p')
 })
 
-test('permissions page lists every rule; only Always rules can be removed', () => {
-  const p = { allowedTools: ['Read'], disallowedTools: ['WebFetch'], alwaysAllow: ['Bash(npm test *)'] }
+test('permissions traverse: kinds, then paged rules, then one rule; only Always rules can be removed', () => {
+  const p = { allowedTools: Array.from({ length: 10 }, (_, i) => `T${i}`), disallowedTools: ['WebFetch'], alwaysAllow: ['Bash(npm test *)'] }
   const v = permissionsView(p)
-  expect(v.text).toContain('⛔ Blocked:\n• Web Fetch')
-  expect(buttons(v).map(x => x.callback_data)).toEqual(['pol:f:permissionMode', 'pol:r:0', 'pol:r:1', 'pol:r:2', 'pol:m'])
-  expect(buttons(ruleView(p, 0)).map(x => x.text)).toEqual(['« Back'])
-  expect(buttons(ruleView(p, 2)).map(x => x.callback_data)).toEqual(['pol:x:2', 'pol:p'])
-  expect(alwaysRuleAt(p, 0)).toBeUndefined()
-  expect(alwaysRuleAt(p, 2)).toBe('Bash(npm test *)')
+  expect(v.text).not.toContain('WebFetch')
+  expect(buttons(v).map(x => x.callback_data)).toEqual(['pol:f:permissionMode', 'pol:c:0:0', 'pol:c:1:0', 'pol:c:2:0', 'pol:m'])
+  expect(buttons(rulesView(p, 0)).map(x => x.callback_data).slice(-3)).toEqual(['pol:r:0:7', 'pol:c:0:1', 'pol:p'])
+  expect(buttons(rulesView(p, 0, 1)).map(x => x.callback_data)).toEqual(['pol:r:0:8', 'pol:r:0:9', 'pol:c:0:0', 'pol:p'])
+  expect(buttons(rulesView(p, 1)).map(x => x.text)).toEqual(['Web Fetch', '« Back'])
+  expect(buttons(ruleView(p, 0, 9)).map(x => x.callback_data)).toEqual(['pol:c:0:1'])
+  expect(buttons(ruleView(p, 2, 0)).map(x => x.callback_data)).toEqual(['pol:x:0', 'pol:c:2:0'])
+  for (const x of [...buttons(v), ...buttons(rulesView(p, 0)), ...buttons(ruleView(p, 2, 0))]) expect(POLICY_CALLBACK.test(x.callback_data!)).toBe(true)
+  expect(alwaysRuleAt(p, 0)).toBe('Bash(npm test *)')
+})
+
+test('reset clears only the editable settings', () => {
+  const a = defaultAccess()
+  a.chats = { '5': { policy: { model: 'opus', autoLearn: 'off', alwaysAllow: ['Read'], cwd: '/x' } } }
+  resetPolicy(a, '5')
+  expect(a.chats['5']!.policy).toEqual({ alwaysAllow: ['Read'], cwd: '/x' })
+  expect(buttons(resetView()).map(x => x.callback_data)).toEqual(['pol:y', 'pol:m'])
 })
 
 test('applyPolicyEdit stores allowed values on the exact key', () => {

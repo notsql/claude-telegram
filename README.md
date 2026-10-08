@@ -140,8 +140,8 @@ You don't need commands: ask in plain words and the agent does the same thing wi
 | `/skills [command] [args]` | "which skills do you have?" · `skill_list`, `skill_read`. Buttons list every skill, paged; tap one for ▶️ Run, 📄 Show and, for the chat's own skills, 📦 Archive / 🗑 Remove. `/skills <command> <args>` runs one with arguments. |
 | `/agent [name\|off]` | Run this chat as one of your agents. |
 | `/cron` | "remind me tomorrow at 3pm…", "what have I scheduled?" · `schedule_*`; buttons pause, resume, delete or run now |
-| `/settings` | Owner only. Each setting (model, memory scope, history scope, auto learn, scheduler allowed) is a button that opens its values; 🔐 Permissions shows the permission mode and every tool rule, and ♾ Always rules can be removed. The agent may suggest changes but never applies them. |
-| `/usage` | Plan usage: the current session and weekly limits and when they reset, from Claude Code's own `/usage`. |
+| `/settings` | Owner only. Lists each setting (model, memory scope, history scope, auto learn, scheduler allowed) with what it does; tap one to see what each value means and pick it. 🔐 Permissions has the permission mode and one button per kind of rule (allowed, blocked, ♾ Always), each paged; ♾ Always rules can be removed. ↺ Reset to defaults (with a confirm) clears those settings, keeping permission rules and terminal-only settings. The agent may suggest changes but never applies them. |
+| `/usage` | Plan usage from Claude Code's own `/usage`: a bar for the current session and weekly limits with their reset times, and what's using them. |
 | `/start`, `/help` | Pairing instructions and this overview. |
 
 Skills are not listed in the `/` menu; use `/skills`. Typing a skill's Telegram-safe name still works: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory). In groups, `/agent`, `/cron`, `/settings`, forgetting a memory and archiving or removing a skill need one of the chat's `approvers`.
