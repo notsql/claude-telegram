@@ -77,7 +77,7 @@ export function memoryView(store: MemoryStore, policy: Policy, page = 0): Comman
       ...(page < pages - 1 ? [{ text: 'Next »', callback_data: `mp:${page + 1}` }] : []),
     ])
   }
-  rows.push([{ text: '➕ Add', callback_data: 'ma:' }, { text: '👤 About you', callback_data: 'mu:' }])
+  rows.push([{ text: '+ Add', callback_data: 'ma:' }, { text: '👤 About you', callback_data: 'mu:' }])
   const text = all.length
     ? `🧠 Shared memory (${all.length})${pages > 1 ? `, page ${page + 1}/${pages}` : ''}. Tap one to see or forget it.`
     : '🧠 Shared memory is empty. Tap Add, or just tell me what to remember.'

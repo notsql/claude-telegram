@@ -5,8 +5,8 @@
  * matched to an existing skill by name, else by a description whose token
  * overlap is over SIMILAR, and then becomes a patch (patch over create).
  * A skill not written by this bot is never changed directly: the owner gets a
- * diff with ✅ Apply / ✖ Skip. Otherwise the chat's `autoLearn` decides:
- * `auto` writes and notifies, `propose` asks with ✅ Save / ✏️ Edit / ✖ Skip,
+ * diff with ✅ Apply / ✕ Skip. Otherwise the chat's `autoLearn` decides:
+ * `auto` writes and notifies, `propose` asks with ✅ Save / ✏️ Edit / ✕ Skip,
  * `off` does nothing. New names that clash with a built-in or installed
  * skill are dropped.
  */

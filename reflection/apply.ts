@@ -4,7 +4,7 @@
  * token overlap (Jaccard) is over 0.6, turns a create into an update of that
  * entry, so a preference said three times stays one file (AC5). Then, by the
  * chat's `autoLearn`: `auto` writes and sends a notice with Undo; `propose`
- * asks with ✅ Save / ✖ Skip buttons (`mem:save|skip:<id>`); `off` does
+ * asks with ✅ Save / ✕ Skip buttons (`mem:save|skip:<id>`); `off` does
  * nothing. At most MAX_WRITES_PER_TURN changes per pass. Refused writes
  * (secrets, size) are dropped and logged.
  */

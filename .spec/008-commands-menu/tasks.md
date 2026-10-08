@@ -42,3 +42,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/agentUi.test.ts`, `test/agentsAvailable.test.ts` and `test/extensionsUi.test.ts` pass.
 - [x] **T823** Fix the 🤖 Agent button (its callback didn't match); list synced plugins and MCP servers (incl. claude.ai connectors) from turn `init` events, with per-chat MCP switches (FR19).
   *Verify:* `test/extensionsUi.test.ts`, `test/agentUi.test.ts` and `test/policyUi.test.ts` pass.
+- [x] **T824** Drop `/status` (`/sessions` shows it) and `/search` (plain words); lighter ✕ cross and plain + so it shows in dark mode; plugin names read as words (FR1, FR2, FR16, FR19).
+  *Verify:* `test/extensionsUi.test.ts`, `test/help.test.ts`, `test/close.test.ts` and `test/memoryCommands.test.ts` pass.
