@@ -127,7 +127,7 @@ The owner can also edit common fields with `/settings` in the chat, and remove â
 
 ## Commands
 
-Bot commands (see the README's command table) only answer senders in `allowFrom`. Commands that change state (`/agent`, `/cron`, `/settings`, forgetting an entry from `/memory`, and removing or archiving a skill from `/skills`) also need the chat's `approvers` in groups; others get a refusal. Commands addressed to another bot (`/sessions@otherbot`) are ignored, and an unknown `/foo` goes to the agent as a normal message.
+Bot commands (see the README's command table) only answer senders in `allowFrom`. Commands that change state (`/cron`, `/settings`, forgetting an entry from `/memory`, and removing or archiving a skill from `/skills`) also need the chat's `approvers` in groups; others get a refusal. Commands addressed to another bot (`/sessions@otherbot`) are ignored, and an unknown `/foo` goes to the agent as a normal message.
 
 ## Config file
 

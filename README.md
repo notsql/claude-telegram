@@ -137,14 +137,13 @@ You don't need commands: ask in plain words and the agent does the same thing wi
 | `/status` | Pairing state, plus the session's status. Ask "use opus for this" to change the model (`session_set_model`) until the next new session. |
 | `/memory` | "remember I use pnpm", "forget that" · `memory_write`, `memory_delete`, `memory_search`. Buttons list each entry (tap it, then 🗑 Forget, with Undo), ➕ Add (reply to the prompt to save), 👤 About you, and paging. |
 | `/search <words>` | "what did we decide about postgres?" · `history_search` |
-| `/skills [command] [args]` | "which skills do you have?" · `skill_list`, `skill_read`. Buttons list every skill, paged; tap one for ▶️ Run, 📄 Show and, for the chat's own skills, 📦 Archive / 🗑 Remove. `/skills <command> <args>` runs one with arguments. |
-| `/agent [name\|off]` | Run this chat as one of your agents. |
-| `/cron` | "remind me tomorrow at 3pm…", "what have I scheduled?" · `schedule_*`; buttons pause, resume, delete or run now |
-| `/settings` | Owner only. Lists each setting (model, memory scope, history scope, auto learn, scheduler allowed) with what it does; tap one to see what each value means and pick it. 🔐 Permissions has the permission mode and one button per kind of rule (allowed, blocked, ♾ Always), each paged; ♾ Always rules can be removed. ↺ Reset to defaults (with a confirm) clears those settings, keeping permission rules and terminal-only settings. The agent may suggest changes but never applies them. |
-| `/usage` | Plan usage from Claude Code's own `/usage`: a bar for the current session and weekly limits with their reset times, and what's using them. |
+| `/skills [command] [args]` | "which skills do you have?" · `skill_list`, `skill_read`. Buttons list every skill that is on here, paged; tap one for ▶️ Run, 📄 Show and, for the chat's own skills, 📦 Archive / 🗑 Remove. `/skills <command> <args>` runs one with arguments. |
+| `/cron` | "remind me tomorrow at 3pm…", "what have I scheduled?" · `schedule_*`; buttons pause, resume, delete or run now, and ➕ New job picks how often, the day and the hour, then asks what to do |
+| `/settings` | Owner only. Lists each setting (model, memory scope, history scope, auto learn, scheduler allowed) with what it does; tap one to see what each value means and pick it. 🔐 Permissions has the permission mode and one button per kind of rule (allowed, blocked, ♾ Always), each paged; ♾ Always rules can be removed. 🧩 Skills & plugins switches each one on or off for this chat only. 🤖 Agent picks what this chat or topic runs as (the default assistant, or one of your agents, e.g. `tg-researcher` for a research topic). ↺ Reset to defaults (with a confirm) clears all of that, keeping only terminal-only settings such as `cwd`. The agent may suggest changes but never applies them. |
+| `/usage` | Plan usage from Claude Code's own `/usage`: a bar for the current session and weekly limits with their reset times; ℹ️ Learn more shows what's using them. |
 | `/start`, `/help` | Pairing instructions and this overview. |
 
-Skills are not listed in the `/` menu; use `/skills`. Typing a skill's Telegram-safe name still works: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory). In groups, `/agent`, `/cron`, `/settings`, forgetting a memory and archiving or removing a skill need one of the chat's `approvers`.
+Skills are not listed in the `/` menu; use `/skills`. Typing a skill's Telegram-safe name still works: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory). Every menu has ✖ Close. In groups, `/cron`, `/settings`, forgetting a memory and archiving or removing a skill need one of the chat's `approvers`.
 
 ### Groups and forum topics
 

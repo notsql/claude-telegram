@@ -24,8 +24,8 @@ test('main page describes each setting, with buttons that explain their values',
   expect(v.text).toContain('Model: Sonnet\nThe model for turns in this chat.')
   const b = buttons(v)
   expect(b.map(x => x.text)).toContain('Scheduler allowed: Yes')
-  expect(b.slice(-3).map(x => x.callback_data)).toEqual(['pol:p', 'ext:m', 'pol:z'])
-  for (const x of b) expect(POLICY_CALLBACK.test(x.callback_data!) || x.callback_data === 'ext:m').toBe(true)
+  expect(b.slice(-4).map(x => x.callback_data)).toEqual(['pol:p', 'ext:m', 'agn:m', 'pol:z'])
+  for (const x of b.slice(0, -3)) expect(POLICY_CALLBACK.test(x.callback_data!)).toBe(true)
   const f = fieldView('model', { model: 'sonnet' })
   expect(f.text).toContain('• Sonnet: Balanced speed and capability.')
   expect(buttons(f).map(x => x.text)).toEqual(['Default', '• Sonnet', 'Opus', 'Haiku', '« Back'])
@@ -49,7 +49,7 @@ test('permissions traverse: kinds, then paged rules, then one rule; only Always 
 
 test('reset clears the editable settings and every permission rule', () => {
   const a = defaultAccess()
-  a.chats = { '5': { policy: { model: 'opus', autoLearn: 'off', permissionMode: 'plan', allowedTools: ['Bash'], disallowedTools: ['WebFetch'], alwaysAllow: ['Read'], disabledSkills: ['x'], plugins: { 'a@b': false }, cwd: '/x' } } }
+  a.chats = { '5': { policy: { model: 'opus', autoLearn: 'off', permissionMode: 'plan', allowedTools: ['Bash'], disallowedTools: ['WebFetch'], alwaysAllow: ['Read'], disabledSkills: ['x'], plugins: { 'a@b': false }, agent: 'tg-researcher', cwd: '/x' } } }
   resetPolicy(a, '5')
   expect(a.chats['5']!.policy).toEqual({ cwd: '/x' })
   expect(buttons(resetView()).map(x => x.callback_data)).toEqual(['pol:y', 'pol:m'])

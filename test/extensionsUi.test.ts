@@ -6,7 +6,7 @@ import { defaultAccess } from '../access.ts'
 import { mergeSettings } from '../agent/runner.ts'
 import { policySettings } from '../policy/args.ts'
 import { installedPlugins } from '../skills/plugins.ts'
-import { EXTENSIONS_CALLBACK, extensionsView, pluginSwitchesView, skillSwitchesView, toggleSkill, togglePlugin } from '../telegram/extensionsUi.ts'
+import { EXTENSIONS_CALLBACK, extensionsView, pluginSwitchesView, skillOn, skillSwitchesView, toggleSkill, togglePlugin } from '../telegram/extensionsUi.ts'
 
 const data = (v: { keyboard: { inline_keyboard: { callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat().map(b => b.callback_data!)
 const skills = [{ name: 'deploy', command: 'deploy' }, { name: 'tg-notes', command: 'tg_notes' }, { name: 'figma:render', command: 'figma_render' }]
@@ -54,4 +54,13 @@ test('mergeSettings keeps the hook file, merges plugin switches, and the channel
   expect(JSON.parse(mergeSettings(f, { skillOverrides: { x: 'off' }, enabledPlugins: { 'telegram@m': true, 'lsp@m': false } }))).toEqual({
     enabledPlugins: { 'telegram@m': false, 'lsp@m': false }, hooks: { Stop: [] }, skillOverrides: { x: 'off' },
   })
+})
+
+test('skillOn: own skills by disabledSkills, plugin skills by their plugin', () => {
+  const p = { disabledSkills: ['deploy'], plugins: { [lsp.id]: false } }
+  expect(skillOn(p, 'deploy', [lsp, figma])).toBe(false)
+  expect(skillOn(p, 'notes', [lsp, figma])).toBe(true)
+  expect(skillOn(p, 'typescript-lsp:check', [lsp, figma])).toBe(false)
+  expect(skillOn(p, 'figma:render', [lsp, figma])).toBe(false)
+  expect(skillOn(p, 'synced:thing', [lsp, figma])).toBe(true)
 })
