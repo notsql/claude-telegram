@@ -37,7 +37,7 @@ import { createSessionStore } from './sessions/store.ts'
 import { createSessionLifecycle } from './sessions/lifecycle.ts'
 import { resumeView, SESSIONS_CALLBACK, sessionsView } from './sessions/commands.ts'
 import { createSessionTools, sessionStatus } from './agent/sessionTools.ts'
-import { formatUsage, planUsage } from './agent/planUsage.ts'
+import { formatUsage, planUsage, USAGE_CALLBACK, usageKeyboard } from './agent/planUsage.ts'
 import { createTurnQueue } from './sessions/queue.ts'
 import { createGroupBuffer } from './sessions/groupBuffer.ts'
 import { renderInbound, renderSkillInvocation } from './agent/inbound.ts'
@@ -866,11 +866,34 @@ commands.push({ name: 'usage', description: 'Plan usage limits and when they res
   if (!isOwner(ctx)) return
   void ctx.replyWithChatAction('typing').catch(() => {})
   try {
-    await ctx.reply(formatUsage(await planUsage()).slice(0, 4000), { reply_markup: withClose() })
+    const report = await planUsage()
+    const sent = await ctx.reply(formatUsage(report).slice(0, 4000), { reply_markup: withClose(usageKeyboard(false)) })
+    usageReports.set(`${sent.chat.id}:${sent.message_id}`, report)
   } catch (err) {
     await ctx.reply(`Couldn't read usage: ${err instanceof Error ? err.message : err}`)
   }
 } })
+
+/** The report behind each `/usage` message, so Learn more doesn't run `claude` again. Lost on restart. */
+const usageReports = new Map<string, string>()
+
+// 008 FR17: ℹ️ Learn more shows what's using the limits; « Back returns to the bars.
+bot.callbackQuery(USAGE_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg || !isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const id = `${msg.chat.id}:${msg.message_id}`
+  let report = usageReports.get(id)
+  if (!report) {
+    void ctx.answerCallbackQuery({ text: 'Reading usage…' }).catch(() => {})
+    try {
+      usageReports.set(id, report = await planUsage())
+    } catch (err) {
+      return failed(ctx, `Couldn't read usage: ${err instanceof Error ? err.message : err}`)
+    }
+  } else await ctx.answerCallbackQuery().catch(() => {})
+  const detail = ctx.match![1] === 'more'
+  await ctx.editMessageText(formatUsage(report, detail).slice(0, 4000), { reply_markup: withClose(usageKeyboard(detail)) }).catch(() => {})
+})
 
 // 009 FR3, FR4: owner-only. Set on the session key, so a forum topic can run as its own agent (US3).
 commands.push({ name: 'agent', description: 'Run this chat as an agent: /agent [name|off]', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {

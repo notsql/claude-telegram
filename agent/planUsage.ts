@@ -31,19 +31,24 @@ export function bar(pct: number, width = 10): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled)
 }
 
+export const USAGE_CALLBACK = /^usg:(more|less)$/
+
 /**
- * The `/usage` report with a bar per limit and per contributor. Lines it
- * doesn't recognise pass through, so a changed report still reads.
+ * The `/usage` report with a bar per limit. `detail` adds what's using it,
+ * with a bar per contributor (008 FR17). Lines it doesn't recognise pass
+ * through, so a changed report still reads.
  */
-export function formatUsage(report: string): string {
+export function formatUsage(report: string, detail = false): string {
   const out = ['📊 Plan usage']
   for (const raw of report.split('\n')) {
     const line = raw.trim()
     const limit = /^(.+?): (\d+)% used(?: · (resets .+))?$/.exec(line)
     const part = /^(\d+)% of your usage (?:came from |was )?(.+)$/.exec(line)
     if (limit) out.push('', `${limit[1]}: ${limit[2]}%`, bar(Number(limit[2])), ...(limit[3] ? [limit[3][0]!.toUpperCase() + limit[3].slice(1)] : []))
-    else if (part) out.push(`${bar(Number(part[1]))} ${part[1]}% ${part[2]}`)
-    else if (/^What's contributing/.test(line)) out.push('', "What's using it")
+    else if (/^What's contributing/.test(line)) {
+      if (!detail) break
+      out.push('', "What's using it")
+    } else if (part) out.push(`${bar(Number(part[1]))} ${part[1]}% ${part[2]}`)
     else if (/^Approximate, based on/.test(line)) out.push('(approximate, from sessions on this machine)')
     else if (/^Last /.test(line)) out.push('', line)
     else if (/^You are currently using/.test(line) || !line) continue
@@ -51,3 +56,8 @@ export function formatUsage(report: string): string {
   }
   return out.join('\n')
 }
+
+/** ℹ️ Learn more opens the detail; « Back returns to the bars. */
+export const usageKeyboard = (detail: boolean) => ({
+  inline_keyboard: [[detail ? { text: '« Back', callback_data: 'usg:less' } : { text: 'ℹ️ Learn more', callback_data: 'usg:more' }]],
+})

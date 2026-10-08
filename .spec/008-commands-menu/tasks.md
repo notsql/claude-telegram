@@ -32,3 +32,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/policyUi.test.ts` passes.
 - [x] **T818** ✖ Close on every inline menu page (FR16).
   *Verify:* `test/close.test.ts` passes.
+- [x] **T819** `/usage` shows only the limits; contributors move behind ℹ️ Learn more (FR17).
+  *Verify:* `test/planUsage.test.ts` passes.
