@@ -781,12 +781,24 @@ bot.callbackQuery(SKILLS_CALLBACK, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!msg || !isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
   const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
-  const [, action, arg] = ctx.match as unknown as [string, SkillAction | 'p', string]
+  const [, action, arg] = ctx.match as unknown as [string, SkillAction | 'p' | 'n', string]
   const edit = (r: { text: string; keyboard?: InlineKeyboardMarkup }) =>
     ctx.editMessageText(r.text, r.keyboard ? { reply_markup: withClose(r.keyboard) } : {}).catch(() => {})
   if (action === 'p') {
     await ctx.answerCallbackQuery().catch(() => {})
     return void await edit(skillsView(skillsHere(key), Number(arg)))
+  }
+  // 008 FR22: + New skill. Creating one changes state, so groups need an approver (FR10).
+  if (action === 'n') {
+    if (!canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+    if ((policyOf(key).autoLearn ?? 'off') === 'off') return ctx.answerCallbackQuery({ text: 'Skill learning is off here. Turn on Auto learn in /settings.', show_alert: true }).catch(() => {})
+    await ctx.answerCallbackQuery().catch(() => {})
+    const sent = await bot.api.sendMessage(msg.chat.id, '🧩 What should the new skill do? Describe it in plain words and reply to this message; I\'ll draft it for you.', {
+      ...threadOpts(parseKey(key)),
+      reply_markup: { force_reply: true, selective: true, input_field_placeholder: 'e.g. Summarise a PR and list its risks' },
+    }).catch(() => undefined)
+    if (sent) skillAdds.set(`${msg.chat.id}:${sent.message_id}`, key)
+    return
   }
   const skill = skillsHere(key).find(s => s.command === arg)
   if (!skill) return ctx.answerCallbackQuery({ text: 'That skill is gone.' }).catch(() => {})
@@ -820,6 +832,20 @@ bot.callbackQuery(SKILLS_CALLBACK, async ctx => {
     }
   }
 })
+
+/** New skill prompts awaiting a reply, by `<chat>:<message id>`. */
+const skillAdds = new Map<string, string>()
+
+/** A reply to a New skill prompt: the description goes to the agent as a turn, which drafts it with `skill_create` (so `autoLearn` and the name checks apply). */
+async function skillAddReply(ctx: Context): Promise<boolean> {
+  const to = ctx.message?.reply_to_message
+  const id = to && `${ctx.chat!.id}:${to.message_id}`
+  const key = id && skillAdds.get(id)
+  if (!key || !canChange(ctx, key, ctx.chat!.type !== 'private')) return false
+  skillAdds.delete(id)
+  await handleInbound(ctx, `Create a new skill with skill_create. Pick a short name and write the steps. What it should do: ${ctx.message!.text ?? ''}`, undefined)
+  return true
+}
 
 // 008 FR14: /sessions is the one entry point; New, Resume and Compact are buttons.
 commands.push({ name: 'sessions', description: 'New, resume or compact this session', menu: ['private', 'group'], handler: async ctx => {
@@ -1030,11 +1056,10 @@ bot.callbackQuery(EXTENSIONS_CALLBACK, async ctx => {
   await show(pluginSwitchesView(p, plugins))
 })
 
-// 008 FR21: 🛒 Browse plugins. Owner only, DMs only: installing runs the plugin's code here.
+// 008 FR21: 🛒 Browse plugins. Owner only, in DMs and groups: installing runs the plugin's code here.
 bot.callbackQuery(STORE_CALLBACK, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
-  if (msg.chat.type !== 'private') return ctx.answerCallbackQuery({ text: 'Browse plugins from a DM with me.' }).catch(() => {})
   const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
   const [, action, a, b] = ctx.match as unknown as [string, 'c' | 'l' | 'd' | 'i' | 'I' | 'r' | 'R' | 'u', string?, string?]
   const show = (r: { text: string; keyboard: InlineKeyboardMarkup }) =>
@@ -1367,6 +1392,7 @@ bot.on('message:text', async ctx => {
   const text = ctx.message.text
   if (await memoryAddReply(ctx)) return
   if (await cronAddReply(ctx)) return
+  if (await skillAddReply(ctx)) return
   const r = route(text, ctx.me.username, builtins, loadTable(COMMANDS_FILE))
   if (r.kind === 'ignore') return
   if (r.kind === 'skill') {

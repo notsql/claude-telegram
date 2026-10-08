@@ -8,12 +8,13 @@ test('FR12: /skills lists every skill as buttons, most used first, paged', () =>
   expect(r.keyboard!.inline_keyboard).toEqual([[
     { text: 'deploy-blog', callback_data: 'sk:o:deploy_blog' },
     { text: 'tidy', callback_data: 'sk:o:tidy' },
-  ]])
+  ], [{ text: '+ New skill', callback_data: 'sk:n:0' }]])
   const many = Array.from({ length: 30 }, (_, i) => skill(`s${String(i).padStart(2, '0')}`))
   const p1 = skillsView(many, 1)
   expect(p1.text).toContain('page 2/3')
-  expect(p1.keyboard!.inline_keyboard.at(-1)).toEqual([{ text: '« Prev', callback_data: 'sk:p:0' }, { text: 'Next »', callback_data: 'sk:p:2' }])
-  expect(skillsView([]).keyboard).toBeUndefined()
+  expect(p1.keyboard!.inline_keyboard.at(-2)).toEqual([{ text: '« Prev', callback_data: 'sk:p:0' }, { text: 'Next »', callback_data: 'sk:p:2' }])
+  expect(skillsView([]).keyboard!.inline_keyboard).toEqual([[{ text: '+ New skill', callback_data: 'sk:n:0' }]])
+  expect(SKILLS_CALLBACK.test('sk:n:0')).toBe(true)
 })
 
 test('FR12: a skill opens with Run and Show; Archive and Remove only for own skills', () => {

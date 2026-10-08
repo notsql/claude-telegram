@@ -48,3 +48,7 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/pluginStore.test.ts` passes.
 - [ ] **T826** Install, update and uninstall from the plugin page via `claude plugin … --json`; a new install is off everywhere but this chat (FR21).
   *Verify:* `test/pluginStore.test.ts` passes, and a real install from Telegram is loaded by the next turn in that chat only.
+- [x] **T827** `/skills` + New skill: plain-words description by reply, drafted by the agent through `skill_create` (FR22).
+  *Verify:* `test/skillCommands.test.ts` passes.
+- [x] **T828** 🛒 Browse plugins works in groups and topics too, still owner only (FR21).
+  *Verify:* `test/pluginStore.test.ts` passes.
