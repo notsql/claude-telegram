@@ -47,11 +47,11 @@ test('permissions traverse: kinds, then paged rules, then one rule; only Always 
   expect(alwaysRuleAt(p, 0)).toBe('Bash(npm test *)')
 })
 
-test('reset clears only the editable settings', () => {
+test('reset clears the editable settings and every permission rule', () => {
   const a = defaultAccess()
-  a.chats = { '5': { policy: { model: 'opus', autoLearn: 'off', alwaysAllow: ['Read'], cwd: '/x' } } }
+  a.chats = { '5': { policy: { model: 'opus', autoLearn: 'off', permissionMode: 'plan', allowedTools: ['Bash'], disallowedTools: ['WebFetch'], alwaysAllow: ['Read'], cwd: '/x' } } }
   resetPolicy(a, '5')
-  expect(a.chats['5']!.policy).toEqual({ alwaysAllow: ['Read'], cwd: '/x' })
+  expect(a.chats['5']!.policy).toEqual({ cwd: '/x' })
   expect(buttons(resetView()).map(x => x.callback_data)).toEqual(['pol:y', 'pol:m'])
 })
 
