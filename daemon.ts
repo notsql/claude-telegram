@@ -89,7 +89,7 @@ import { failureNotice, runJob } from './scheduler/run.ts'
 import { createScheduleTools } from './scheduler/tools.ts'
 import type { Job } from './scheduler/store.ts'
 import { chatJobs, deleteJob, setJobEnabled } from './scheduler/manage.ts'
-import { CRON_CALLBACK, cronView, type CronAction } from './commands/cron.ts'
+import { CRON_CALLBACK, CRON_NEW_CALLBACK, cronView, newJobView, whenFor, type CronAction } from './commands/cron.ts'
 import { startSystemJobs, type SystemJobId } from './scheduler/system.ts'
 import type { Policy } from './policy/schema.ts'
 import type { StreamEvent } from './agent/stream.ts'
@@ -1030,6 +1030,45 @@ bot.callbackQuery(CRON_CALLBACK, async ctx => {
   await ctx.editMessageText(text, { reply_markup: withClose(keyboard) }).catch(() => {})
 })
 
+// 008 FR18: ➕ New job steps through how often, day and hour, then asks for what to do.
+bot.callbackQuery(CRON_NEW_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!msg) return ctx.answerCallbackQuery().catch(() => {})
+  const key = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  if (!canChange(ctx, key, msg.chat.type !== 'private')) return ctx.answerCallbackQuery({ text: 'Not authorised.' }).catch(() => {})
+  await ctx.answerCallbackQuery().catch(() => {})
+  const [, action, spec] = ctx.match as unknown as [string, 'list' | 'w', string]
+  const show = (r: { text: string; keyboard?: InlineKeyboardMarkup }) =>
+    ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
+  if (action === 'list') return void await show(cronView(chatJobs(STATE_DIR, key)))
+  const step = newJobView(spec)
+  if (step !== 'ready') return void await show(step)
+  const { when, label } = whenFor(spec)
+  await ctx.editMessageText(`➕ New job, ${label}.`).catch(() => {})
+  const sent = await bot.api.sendMessage(msg.chat.id, `⏰ ${label[0]!.toUpperCase()}${label.slice(1)}. What should I do then? Reply to this message.`, {
+    ...threadOpts(parseKey(key)),
+    reply_markup: { force_reply: true, selective: true, input_field_placeholder: 'e.g. Send me a summary of the news' },
+  }).catch(() => undefined)
+  if (sent) cronAdds.set(`${msg.chat.id}:${sent.message_id}`, { key, when })
+})
+
+/** New job prompts awaiting a reply, by `<chat>:<message id>`. */
+const cronAdds = new Map<string, { key: string; when: string }>()
+
+/** A reply to a New job prompt; true when `ctx` was one and has been handled. */
+async function cronAddReply(ctx: Context): Promise<boolean> {
+  const to = ctx.message?.reply_to_message
+  const id = to && `${ctx.chat!.id}:${to.message_id}`
+  const pending = id && cronAdds.get(id)
+  if (!pending || !canChange(ctx, pending.key, ctx.chat!.type !== 'private')) return false
+  cronAdds.delete(id)
+  const r = scheduleTools.call('schedule_create', { when: pending.when, prompt: ctx.message!.text ?? '' }, pending.key, policyOf(pending.key))!
+  const text = r.content.map(c => c.text).join('\n')
+  if (r.isError) await ctx.reply(`⚠️ Not scheduled: ${text}`)
+  else await ctx.reply(`✅ ${text}`, { reply_markup: withClose(cronView(chatJobs(STATE_DIR, pending.key)).keyboard) })
+  return true
+}
+
 // 008 FR16: ✖ Close on any menu; owner only, like the menus.
 bot.callbackQuery(CLOSE_CALLBACK, async ctx => {
   if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
@@ -1236,6 +1275,7 @@ const menu = createMenu(
 bot.on('message:text', async ctx => {
   const text = ctx.message.text
   if (await memoryAddReply(ctx)) return
+  if (await cronAddReply(ctx)) return
   const r = route(text, ctx.me.username, builtins, loadTable(COMMANDS_FILE))
   if (r.kind === 'ignore') return
   if (r.kind === 'skill') return handleInbound(ctx, text, undefined, undefined, r.text)
