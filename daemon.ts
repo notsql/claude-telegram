@@ -26,6 +26,8 @@ import { CLOSE_CALLBACK, withClose } from './telegram/close.ts'
 import { AGENT_CALLBACK, agentView } from './telegram/agentUi.ts'
 import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, prettyName, skillOn, skillSwitchesView, toggleMcpServer, togglePlugin, toggleSkill } from './telegram/extensionsUi.ts'
 import { installedPlugins, type Plugin } from './skills/plugins.ts'
+import { catalog, pluginAction, pluginDetails } from './skills/catalog.ts'
+import { STORE_CALLBACK, categoriesView, confirmView, listView, pluginView, resultView } from './telegram/storeUi.ts'
 import { createLoadedCache, mcpPrefix, probeInit, type Loaded } from './agent/loaded.ts'
 import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from './telegram/policyUi.ts'
 import { expandPath, isTrustedCwd, policyArgs, policySettings } from './policy/args.ts'
@@ -1026,6 +1028,50 @@ bot.callbackQuery(EXTENSIONS_CALLBACK, async ctx => {
   if (action === 's') return void await show(skillSwitchesView(p, allSkills(), Number(a ?? 0)))
   if (action === 'c') return void await show(mcpSwitchesView(p, servers))
   await show(pluginSwitchesView(p, plugins))
+})
+
+// 008 FR21: 🛒 Browse plugins. Owner only, DMs only: installing runs the plugin's code here.
+bot.callbackQuery(STORE_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  if (msg.chat.type !== 'private') return ctx.answerCallbackQuery({ text: 'Browse plugins from a DM with me.' }).catch(() => {})
+  const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
+  const [, action, a, b] = ctx.match as unknown as [string, 'c' | 'l' | 'd' | 'i' | 'I' | 'r' | 'R' | 'u', string?, string?]
+  const show = (r: { text: string; keyboard: InlineKeyboardMarkup }) =>
+    ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard), link_preview_options: { is_disabled: true } }).catch(() => {})
+  const entries = catalog(claudeDir())
+  const installed = new Set(installedPlugins(claudeDir(), cwdOf(policyAt(key))).map(x => x.id))
+  if (action === 'c') return void await Promise.all([ctx.answerCallbackQuery().catch(() => {}), show(categoriesView(entries))])
+  if (action === 'l') return void await Promise.all([ctx.answerCallbackQuery().catch(() => {}), show(listView(entries, a!, Number(b ?? 0), installed))])
+  const entry = entries.find(e => e.id === a)
+  if (!entry) return ctx.answerCallbackQuery({ text: 'That plugin is gone.' }).catch(() => {})
+  void ctx.answerCallbackQuery().catch(() => {})
+  if (action === 'd') return void await show(pluginView(entry, installed.has(entry.id)))
+  if (action === 'i' || action === 'r') return void await show(confirmView(entry, action))
+  const verb = ({ I: 'install', u: 'update', R: 'uninstall' } as const)[action]
+  await show({ text: `⏳ Running ${verb} for ${entry.name}…`, keyboard: { inline_keyboard: [] } })
+  const r = await pluginAction(verb, entry.id)
+  audit({ event: 'plugin', key, user: String(ctx.from.id), action: verb, plugin: entry.id, ok: r.ok })
+  if (!r.ok) return void await show(resultView(entry, `⚠️ Couldn't ${verb} ${entry.name}.\n\n${r.message}`))
+  const access = loadAccess()
+  if (verb === 'install') {
+    // Off in user settings, so the terminal and other chats are unaffected; on here.
+    await pluginAction('disable', entry.id)
+    if (access.chats?.[key]?.policy?.plugins?.[entry.id] !== true) togglePlugin(access, key, { id: entry.id, name: entry.name, on: false })
+  }
+  if (verb === 'uninstall') {
+    for (const chat of Object.values(access.chats ?? {})) {
+      const plugins = chat.policy?.plugins
+      if (!plugins || !(entry.id in plugins)) continue
+      delete plugins[entry.id]
+      if (!Object.keys(plugins).length) delete chat.policy!.plugins
+    }
+  }
+  saveAccess(access)
+  const text = verb === 'install' ? `✅ Installed ${entry.name}, on in this chat only. It loads from your next message.\n\n${await pluginDetails(entry.id)}`
+    : verb === 'update' ? `✅ ${r.message || `Updated ${entry.name}.`} It loads from your next message.`
+    : `🗑 Uninstalled ${entry.name}.`
+  await show(resultView(entry, text))
 })
 
 // 008 T807, 007 US5: this chat's jobs with pause/resume, delete and run-now buttons.

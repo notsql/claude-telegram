@@ -2,7 +2,7 @@
  * `/settings` → 🧩 Skills & plugins (008 FR19): turn skills and plugins on or
  * off for this chat only. `ext:m` is the page, `ext:s:<page>` the skills
  * (tap `ext:t:<command>:<page>` to switch one), `ext:p` the plugins (tap
- * `ext:u:<id>`), `ext:c` the MCP servers (tap `ext:v:<prefix>`). Plugin
+ * `ext:u:<id>`), `ext:c` the MCP servers (🛒 Browse plugins is `storeUi.ts`) (tap `ext:v:<prefix>`). Plugin
  * skills follow their plugin, so they aren't listed.
  */
 
@@ -75,9 +75,10 @@ export function pluginSwitchesView(p: Policy, plugins: Plugin[]): PolicyView {
   return {
     text: plugins.length
       ? '🔌 Plugins here. ✅ on, 🚫 off. Tap one to switch it for this chat; its skills, agents and tools go with it.'
-      : 'No plugins installed. Install them from the terminal with /plugin.',
+      : 'No plugins installed yet. Tap 🛒 Browse plugins.',
     keyboard: { inline_keyboard: [
       ...plugins.filter(x => x.id.length <= 58).map(x => [button(`${pluginOn(p, x) ? '✅' : '🚫'} ${prettyName(x.name)}`, `ext:u:${x.id}`)]),
+      [button('🛒 Browse plugins', 'sto:c')],
       [button('« Back', 'ext:m')],
     ] },
   }
