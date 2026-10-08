@@ -20,7 +20,7 @@ test('views list own skills and plugins with their state; callbacks round-trip',
   expect(extensionsView(p, skills, [lsp, figma], []).text).toContain('Plugins: 2 of 2 on')
   const s = skillSwitchesView(p, skills)
   expect(s.keyboard.inline_keyboard[0]!.map(b => b.text)).toEqual(['🚫 deploy', '✅ tg-notes'])
-  const all = [...data(s), ...data(pluginSwitchesView(p, [lsp, figma])), ...data(extensionsView(p, skills, [], [])), ...data(mcpSwitchesView(p, [{ name: 'claude.ai Notion' }]))].filter(d => d !== 'pol:m')
+  const all = [...data(s), ...data(pluginSwitchesView(p, [lsp, figma])), ...data(extensionsView(p, skills, [], [])), ...data(mcpSwitchesView(p, [{ name: 'claude.ai Notion' }]))].filter(d => d !== 'pol:m' && d !== 'sto:c')
   expect(all).toContain('ext:u:figma@claude-plugins-official')
   for (const d of all) expect(EXTENSIONS_CALLBACK.test(d)).toBe(true)
 })

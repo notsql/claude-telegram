@@ -44,3 +44,7 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/extensionsUi.test.ts`, `test/agentUi.test.ts` and `test/policyUi.test.ts` pass.
 - [x] **T824** Drop `/status` (`/sessions` shows it) and `/search` (plain words); lighter ✕ cross and plain + so it shows in dark mode; plugin names read as words (FR1, FR2, FR16, FR19).
   *Verify:* `test/extensionsUi.test.ts`, `test/help.test.ts`, `test/close.test.ts` and `test/memoryCommands.test.ts` pass.
+- [x] **T825** 🛒 Browse plugins: marketplace catalogs by category, paged plugin lists and a plugin page (FR21).
+  *Verify:* `test/pluginStore.test.ts` passes.
+- [ ] **T826** Install, update and uninstall from the plugin page via `claude plugin … --json`; a new install is off everywhere but this chat (FR21).
+  *Verify:* `test/pluginStore.test.ts` passes, and a real install from Telegram is loaded by the next turn in that chat only.
