@@ -2,7 +2,8 @@
  * `/skills` (008 FR12): one entry point for every skill, as buttons, instead
  * of one `/` menu command per skill. The list pages through all discovered
  * skills (`sk:p:<page>`); tapping one opens it (`sk:o:<command>`) with Run,
- * Show and, for the chat's own skills, Archive and Remove. Callback data
+ * Show and, for the chat's own skills, Archive and Remove. + New skill
+ * (`sk:n:0`) asks for a plain-words description and has the agent draft it. Callback data
  * carries the Telegram command name, which fits the 64-byte limit.
  */
 
@@ -12,12 +13,13 @@ export type SkillEntry = { name: string; command: string; description: string; u
 export type SkillAction = 'o' | 'r' | 's' | 'a' | 'd'
 export type SkillsReply = { text: string; keyboard?: InlineKeyboardMarkup }
 
-export const SKILLS_CALLBACK = /^sk:(p|o|r|s|a|d):([a-z0-9_]{1,32})$/
+export const SKILLS_CALLBACK = /^sk:(p|o|r|s|a|d|n):([a-z0-9_]{1,32})$/
 const PAGE = 12
+const NEW_SKILL = { text: '+ New skill', callback_data: 'sk:n:0' }
 
 /** Most used first, then by name. */
 export function skillsView(skills: SkillEntry[], page = 0): SkillsReply {
-  if (!skills.length) return { text: 'No skills yet. Ask me to learn one, or add one under ~/.claude/skills.' }
+  if (!skills.length) return { text: 'No skills yet. Tap + New skill, or ask me to learn one.', keyboard: { inline_keyboard: [[NEW_SKILL]] } }
   const sorted = [...skills].sort((a, b) => b.uses - a.uses || a.name.localeCompare(b.name))
   const pages = Math.ceil(sorted.length / PAGE)
   page = Math.min(Math.max(page, 0), pages - 1)
@@ -32,6 +34,7 @@ export function skillsView(skills: SkillEntry[], page = 0): SkillsReply {
       ...(page < pages - 1 ? [{ text: 'Next »', callback_data: `sk:p:${page + 1}` }] : []),
     ])
   }
+  rows.push([NEW_SKILL])
   const text = `🧩 Skills (${sorted.length})${pages > 1 ? `, page ${page + 1}/${pages}` : ''}. Tap one to run or manage it.`
   return { text, keyboard: { inline_keyboard: rows } }
 }
