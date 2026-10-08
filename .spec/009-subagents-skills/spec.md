@@ -34,7 +34,7 @@ Docs checked 2026-10-03 against CLI 2.1.288: [sub-agents](https://code.claude.co
 
 ### Per-chat main agent
 - **FR3**: The chat policy (003) gains `agent?: string`. When it is set, turns run with `claude -p --agent <name>`, so that topic's whole session runs as that agent (system prompt, tools, model). The policy's tool limits still apply on top of the agent's own limits.
-- **FR4**: `/agent` (008) lists the available agents and sets or clears the chat's agent (owner only). The agent can suggest switching but never switches by itself.
+- **FR4**: `/settings` → 🤖 Agent (008 FR20, formerly `/agent`) lists the available agents and sets or clears the chat's agent (owner only). The agent can suggest switching but never switches by itself.
 
 ### Subagent use inside turns
 - **FR5**: The main session may delegate to any installed subagent. This is native Claude Code behaviour. The daemon:

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { availableAgents, setPolicyAgent } from '../agents/available'
+import { availableAgents, chatAgents, setPolicyAgent } from '../agents/available'
 import { resolvePolicy } from '../policy/resolve'
 import { policyArgs } from '../policy/args'
 import { defaultAccess } from '../access'
@@ -37,4 +37,13 @@ test('AC3: a topic set to infra-ops runs turns with --agent infra-ops; unknown n
   expect(resolvePolicy(access, '-100123', 'group').agent).toBeUndefined()
   setPolicyAgent(access, topic, undefined, [])
   expect(resolvePolicy(access, topic, 'group').agent).toBeUndefined()
+})
+
+test('chatAgents leaves out structured-output-only agents and carries descriptions', () => {
+  const { claude, cwd } = dirs()
+  writeFileSync(join(claude, 'agents', 'tg-reflector.md'), '---\nname: tg-reflector\ndescription: Reflects.\ntools: StructuredOutput\n---\n')
+  writeFileSync(join(claude, 'agents', 'tg-researcher.md'), '---\nname: tg-researcher\ndescription: Web research.\ntools: Read\n---\n')
+  expect(chatAgents(claude, cwd)).toEqual([
+    { name: 'infra-ops', description: '' }, { name: 'nofm', description: '' }, { name: 'tg-researcher', description: 'Web research.' },
+  ])
 })

@@ -74,6 +74,14 @@ export function pluginSwitchesView(p: Policy, plugins: Plugin[]): PolicyView {
   }
 }
 
+/** Whether a skill is on here: the chat's own skills by `disabledSkills`, plugin skills (`plugin:skill`) by their plugin. */
+export function skillOn(p: Policy, name: string, plugins: Plugin[]): boolean {
+  const i = name.indexOf(':')
+  if (i < 0) return !p.disabledSkills?.includes(name)
+  const plugin = plugins.find(x => x.name === name.slice(0, i))
+  return !plugin || pluginOn(p, plugin)
+}
+
 const policyOf = (access: Access, key: string) => ((access.chats ??= {})[key] ??= {}).policy ??= {}
 
 /** Switches a skill off, or back on, for the key. Mutates `access`; returns whether it is now on. */

@@ -23,7 +23,8 @@ import { addAlwaysAllow, canStartTurn, chatTypeOf, policyKey, removeAlwaysAllow,
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
 import { CLOSE_CALLBACK, withClose } from './telegram/close.ts'
-import { EXTENSIONS_CALLBACK, extensionsView, pluginSwitchesView, skillSwitchesView, togglePlugin, toggleSkill } from './telegram/extensionsUi.ts'
+import { AGENT_CALLBACK, agentView } from './telegram/agentUi.ts'
+import { EXTENSIONS_CALLBACK, extensionsView, pluginSwitchesView, skillOn, skillSwitchesView, togglePlugin, toggleSkill } from './telegram/extensionsUi.ts'
 import { installedPlugins } from './skills/plugins.ts'
 import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from './telegram/policyUi.ts'
 import { expandPath, isTrustedCwd, policyArgs, policySettings } from './policy/args.ts'
@@ -71,7 +72,7 @@ import { createSkillTools } from './skills/tools.ts'
 import { parseSkillsArgs, SKILLS_CALLBACK, skillsView, skillView, type SkillAction, type SkillEntry } from './skills/commands.ts'
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
 import { createAgentUsage } from './agents/usage.ts'
-import { availableAgents, setPolicyAgent } from './agents/available.ts'
+import { availableAgents, chatAgents, setPolicyAgent } from './agents/available.ts'
 import { AUTHOR, createAgentTools } from './agents/tools.ts'
 import { createAgentApplier, learnedAgents } from './agents/apply.ts'
 import { staleSkills, STALE_DAYS } from './skills/prune.ts'
@@ -770,11 +771,11 @@ commands.push({ name: 'skills', description: 'Browse, run and manage skills', me
   if (!isOwner(ctx)) return
   const parsed = parseSkillsArgs(args)
   if (parsed === 'list') {
-    const r = skillsView(allSkills())
+    const r = skillsView(skillsHere(sessionKey(ctx.msg!)))
     return void await ctx.reply(r.text, r.keyboard ? { reply_markup: withClose(r.keyboard) } : {})
   }
-  const skill = allSkills().find(s => s.command === parsed.command || s.name === parsed.command)
-  if (!skill) return void await ctx.reply(`No skill named ${parsed.command}. Send /skills to see them all.`)
+  const skill = skillsHere(sessionKey(ctx.msg!)).find(s => s.command === parsed.command || s.name === parsed.command)
+  if (!skill) return void await ctx.reply(`No skill named ${parsed.command} is on here. Send /skills to see them all.`)
   await handleInbound(ctx, ctx.message!.text!, undefined, undefined, `/${skill.name}${parsed.args ? ` ${parsed.args}` : ''}`)
 } })
 
@@ -788,9 +789,9 @@ bot.callbackQuery(SKILLS_CALLBACK, async ctx => {
     ctx.editMessageText(r.text, r.keyboard ? { reply_markup: withClose(r.keyboard) } : {}).catch(() => {})
   if (action === 'p') {
     await ctx.answerCallbackQuery().catch(() => {})
-    return void await edit(skillsView(allSkills(), Number(arg)))
+    return void await edit(skillsView(skillsHere(key), Number(arg)))
   }
-  const skill = allSkills().find(s => s.command === arg)
+  const skill = skillsHere(key).find(s => s.command === arg)
   if (!skill) return ctx.answerCallbackQuery({ text: 'That skill is gone.' }).catch(() => {})
   const store = skillStoreFor(key)
   const own = !!store.read(skill.name)
@@ -818,7 +819,7 @@ bot.callbackQuery(SKILLS_CALLBACK, async ctx => {
       } catch (err) {
         return failed(ctx, err instanceof Error ? err.message : String(err))
       }
-      return void await edit(skillsView(allSkills()))
+      return void await edit(skillsView(skillsHere(key)))
     }
   }
 })
@@ -899,29 +900,6 @@ bot.callbackQuery(USAGE_CALLBACK, async ctx => {
   await ctx.editMessageText(formatUsage(report, detail).slice(0, 4000), { reply_markup: withClose(usageKeyboard(detail)) }).catch(() => {})
 })
 
-// 009 FR3, FR4: owner-only. Set on the session key, so a forum topic can run as its own agent (US3).
-commands.push({ name: 'agent', description: 'Run this chat as an agent: /agent [name|off]', menu: ['private', 'group'], requiresApprover: true, handler: async (ctx, args) => {
-  if (!isOwner(ctx)) return
-  const key = sessionKey(ctx.msg!)
-  const policy = policyOf(key)
-  const available = availableAgents(claudeDir(), policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd)
-  const name = args.trim()
-  if (!name) {
-    await ctx.reply([`Agent: ${policy.agent ?? 'none'}`, '', ...available.map(a => `${a === policy.agent ? '• ' : ''}${a}`), '', 'Send /agent <name>, or /agent off.'].join('\n'))
-    return
-  }
-  const access = loadAccess()
-  try {
-    setPolicyAgent(access, key, name === 'off' ? undefined : name, available)
-  } catch (err) {
-    await ctx.reply((err as Error).message)
-    return
-  }
-  saveAccess(access)
-  audit({ event: 'policy', key, user: String(ctx.from!.id), field: 'agent', value: name === 'off' ? 'default' : name })
-  await ctx.reply(name === 'off' ? 'Agent cleared.' : `Turns here now run as ${name}.`)
-} })
-
 // The rest are DM-only, as in the channel server: no pairing-code leaks to groups.
 
 commands.push({ name: 'start', description: 'Welcome and setup guide', menu: ['private'], handler: async ctx => {
@@ -950,15 +928,16 @@ const policyAt = (key: string) => resolvePolicy(loadAccess(), key, chatTypeOf(ke
 
 commands.push({ name: 'settings', description: "This chat's settings and permissions", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
   if (!isOwner(ctx)) return
-  const key = policyKey(sessionKey(ctx.msg!))
-  const r = policyView(key, policyAt(key))
+  const here = sessionKey(ctx.msg!)
+  const r = policyView(policyKey(here), policyAt(here))
   await ctx.reply(r.text, { reply_markup: withClose(r.keyboard) })
 } })
 
 bot.callbackQuery(POLICY_CALLBACK, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
-  const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
+  const here = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const key = policyKey(here)
   const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y', string?, string?]
   const show = (r: { text: string; keyboard: InlineKeyboardMarkup }) =>
     ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
@@ -975,7 +954,7 @@ bot.callbackQuery(POLICY_CALLBACK, async ctx => {
         return ctx.answerCallbackQuery({ text: (err as Error).message }).catch(() => {})
       }
       void ctx.answerCallbackQuery({ text: `${label(a!)}: ${label(b!)}` }).catch(() => {})
-      return void await show(a === 'permissionMode' ? permissionsView(policyAt(key)) : policyView(key, policyAt(key)))
+      return void await show(a === 'permissionMode' ? permissionsView(policyAt(here)) : policyView(key, policyAt(here)))
     }
     case 'x': {
       const access = loadAccess()
@@ -984,26 +963,50 @@ bot.callbackQuery(POLICY_CALLBACK, async ctx => {
       saveAccess(access)
       audit({ event: 'policy', key, user, field: 'alwaysAllow', value: `-${rule}` })
       void ctx.answerCallbackQuery({ text: `🗑 Removed ${ruleLabel(rule)}` }).catch(() => {})
-      return void await show(rulesView(policyAt(key), 2, Math.floor(Number(a) / 8)))
+      return void await show(rulesView(policyAt(here), 2, Math.floor(Number(a) / 8)))
     }
     case 'y': {
       const access = loadAccess()
       resetPolicy(access, key)
+      if (here !== key) resetPolicy(access, here)
       saveAccess(access)
       audit({ event: 'policy', key, user, field: '*', value: 'default' })
       menu.refresh()
       void ctx.answerCallbackQuery({ text: '↺ Settings reset' }).catch(() => {})
-      return void await show(policyView(key, policyAt(key)))
+      return void await show(policyView(key, policyAt(here)))
     }
   }
   await ctx.answerCallbackQuery().catch(() => {})
-  const p = policyAt(key)
+  const p = policyAt(here)
   if (action === 'm') return void await show(policyView(key, p))
   if (action === 'p') return void await show(permissionsView(p))
   if (action === 'c') return void await show(rulesView(p, Number(a), Number(b ?? 0)))
   if (action === 'r') return void await show(ruleView(p, Number(a), Number(b)))
   if (action === 'z') return void await show(resetView())
   if (a && a in EDITABLE) await show(fieldView(a as EditableField, p))
+})
+
+// 008 FR20, 009 FR3: 🤖 Agent replaces /agent. Set on the session key, so a forum topic can run as its own agent (US3).
+bot.callbackQuery(AGENT_CALLBACK, async ctx => {
+  const msg = ctx.callbackQuery.message
+  if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
+  const here = sessionKey(msg as Parameters<typeof sessionKey>[0])
+  const [, action, name] = ctx.match as unknown as [string, 'm' | 'u', string]
+  const p = policyAt(here)
+  const cwd = p.cwd ? expandPath(p.cwd, homedir()) : config.cwd
+  if (action === 'u') {
+    const access = loadAccess()
+    try {
+      setPolicyAgent(access, here, name || undefined, availableAgents(claudeDir(), cwd))
+    } catch (err) {
+      return ctx.answerCallbackQuery({ text: (err as Error).message }).catch(() => {})
+    }
+    saveAccess(access)
+    audit({ event: 'policy', key: here, user: String(ctx.from.id), field: 'agent', value: name || 'default' })
+    void ctx.answerCallbackQuery({ text: `🤖 ${name || 'Default assistant'}` }).catch(() => {})
+  } else await ctx.answerCallbackQuery().catch(() => {})
+  const r = agentView(policyAt(here).agent, chatAgents(claudeDir(), cwd))
+  await ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
 })
 
 // 008 FR19: 🧩 Skills & plugins, switched per chat and passed to turns as settings.
@@ -1278,6 +1281,12 @@ function allSkills(): SkillEntry[] {
   const usage = skillUsage.all()
   return found.map(s => ({ name: s.name, command: table[s.name]!, description: s.description, uses: usage[s.name]?.count ?? 0 }))
 }
+/** 008 FR19: the skills on in this chat or topic; switched-off ones are hidden and refused. */
+function skillsHere(key: string): SkillEntry[] {
+  const p = policyOf(key)
+  const plugins = installedPlugins(claudeDir(), p.cwd ? expandPath(p.cwd, homedir()) : config.cwd)
+  return allSkills().filter(s => skillOn(p, s.name, plugins))
+}
 function readSkillFile(name: string): string | undefined {
   const path = discovered().find(s => s.name === name)?.path
   try { return path ? readFileSync(path, 'utf8') : undefined } catch { return undefined }
@@ -1313,7 +1322,11 @@ bot.on('message:text', async ctx => {
   if (await cronAddReply(ctx)) return
   const r = route(text, ctx.me.username, builtins, loadTable(COMMANDS_FILE))
   if (r.kind === 'ignore') return
-  if (r.kind === 'skill') return handleInbound(ctx, text, undefined, undefined, r.text)
+  if (r.kind === 'skill') {
+    const name = r.text.slice(1).split(/\s/)[0]!
+    if (!skillsHere(sessionKey(ctx.msg!)).some(s => s.name === name)) return void await ctx.reply(`${name} is off in this chat. Turn it on in /settings → 🧩 Skills & plugins.`)
+    return handleInbound(ctx, text, undefined, undefined, r.text)
+  }
   if (r.kind === 'text') return handleInbound(ctx, text, undefined)
   const key = sessionKey(ctx.msg)
   if (!authorised(r.command, ctx.chat.type !== 'private', isApprover(key, ctx.from.id), isOwner(ctx))) {

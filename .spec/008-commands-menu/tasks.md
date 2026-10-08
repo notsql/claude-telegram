@@ -38,3 +38,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/cronCommand.test.ts` passes.
 - [x] **T821** `/settings` 🧩 Skills & plugins: per-chat switches passed as `skillOverrides` and `enabledPlugins` (FR19).
   *Verify:* `test/extensionsUi.test.ts` and `test/policyUi.test.ts` pass.
+- [x] **T822** 🤖 Agent page in `/settings` replaces `/agent`; switched-off skills are hidden from `/skills` and refused when typed (FR19, FR20).
+  *Verify:* `test/agentUi.test.ts`, `test/agentsAvailable.test.ts` and `test/extensionsUi.test.ts` pass.
