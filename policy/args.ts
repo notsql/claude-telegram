@@ -35,3 +35,16 @@ export function policyArgs(p: Policy): string[] {
     ...(p.agent ? ['--agent', p.agent] : []),
   ]
 }
+
+/**
+ * 008 FR19: the chat's skill and plugin switches as settings, merged into the
+ * turn's `--settings` (a second `--settings` flag replaces the first, T821).
+ */
+export function policySettings(p: Policy): Record<string, unknown> | undefined {
+  const off = p.disabledSkills ?? []
+  if (!off.length && !Object.keys(p.plugins ?? {}).length) return
+  return {
+    ...(off.length && { skillOverrides: Object.fromEntries(off.map(n => [n, 'off'])) }),
+    ...(p.plugins && Object.keys(p.plugins).length && { enabledPlugins: p.plugins }),
+  }
+}

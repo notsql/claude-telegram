@@ -17,6 +17,10 @@ export const PolicySchema = z.object({
   /** 006 FR1: where learned skills go; `project` uses `<cwd>/.claude/skills/` when `cwd` is set. */
   skillScope: z.enum(['user', 'project']),
   schedulerAllowed: z.boolean(),
+  /** 008 FR19: skills turned off here, by name; passed as `skillOverrides`. */
+  disabledSkills: z.array(z.string()),
+  /** 008 FR19: plugin id → on/off here, over the installed state; passed as `enabledPlugins`. */
+  plugins: z.record(z.string(), z.boolean()),
   approvers: z.array(z.string()),
   /** FR12: let non-owners start turns on the owner's subscription. Terminal skill only. */
   allowOthersOnSubscription: z.boolean(),
