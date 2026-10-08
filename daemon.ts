@@ -24,8 +24,9 @@ import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
 import { CLOSE_CALLBACK, withClose } from './telegram/close.ts'
 import { AGENT_CALLBACK, agentView } from './telegram/agentUi.ts'
-import { EXTENSIONS_CALLBACK, extensionsView, pluginSwitchesView, skillOn, skillSwitchesView, togglePlugin, toggleSkill } from './telegram/extensionsUi.ts'
-import { installedPlugins } from './skills/plugins.ts'
+import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, skillOn, skillSwitchesView, toggleMcpServer, togglePlugin, toggleSkill } from './telegram/extensionsUi.ts'
+import { installedPlugins, type Plugin } from './skills/plugins.ts'
+import { createLoadedCache, mcpPrefix, probeInit, type Loaded } from './agent/loaded.ts'
 import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from './telegram/policyUi.ts'
 import { expandPath, isTrustedCwd, policyArgs, policySettings } from './policy/args.ts'
 import { homedir } from 'os'
@@ -514,12 +515,13 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
   const turn = new AbortController()
   runningTurns.set(key, turn)
   const progress = startProgress(bot.api, target)
+  const cwd = policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd
   const outcome = await runInSession(key, prompt, firstMessage, {
     settingsFile: SETTINGS_FILE,
     mcpPort: mcpServer.port,
     mcpToken,
     hookToken,
-    cwd: policy.cwd ? expandPath(policy.cwd, homedir()) : config.cwd,
+    cwd,
     maxTurns: policy.maxTurns ?? config.maxTurns,
     policyArgs: policyArgs({ ...policy, model: lifecycle.model(key) ?? policy.model, alwaysAllow: [...policy.alwaysAllow ?? [], ...lifecycle.allowed(key)] }),
     settings: policySettings(policy),
@@ -529,6 +531,7 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
     progress.finish()
     if (runningTurns.get(key) === turn) runningTurns.delete(key)
   })
+  if (outcome.init) loaded.record(cwd, outcome.init)
   const reported = outcome.init?.skills?.filter(n => !loadedSkills.has(n)) ?? []
   if (reported.length) {
     for (const n of reported) loadedSkills.add(n)
@@ -1014,29 +1017,35 @@ bot.callbackQuery(EXTENSIONS_CALLBACK, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!isOwner(ctx) || !msg) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
   const key = policyKey(sessionKey(msg as Parameters<typeof sessionKey>[0]))
-  const [, action, a, b] = ctx.match as unknown as [string, 'm' | 's' | 't' | 'p' | 'u', string?, string?]
+  const [, action, a, b] = ctx.match as unknown as [string, 'm' | 's' | 't' | 'p' | 'u' | 'c' | 'v', string?, string?]
   const show = (r: { text: string; keyboard: InlineKeyboardMarkup }) =>
     ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
   const p = policyAt(key)
-  // The channel plugin is always off in daemon turns (hooks/settings.ts), so it isn't offered.
-  const plugins = installedPlugins(claudeDir(), p.cwd ? expandPath(p.cwd, homedir()) : config.cwd).filter(x => x.id !== CHANNEL_PLUGIN)
-  const user = String(ctx.from.id)
-  if (action === 't' || action === 'u') {
+  const cwd = cwdOf(p)
+  // The first open in a cwd with no turn yet probes it (a few seconds).
+  const toggles = action === 't' || action === 'u' || action === 'v'
+  if (!toggles) void ctx.answerCallbackQuery().catch(() => {})
+  const seen = await loaded.get(cwd)
+  const plugins = pluginsFor(cwd, seen)
+  const servers = seen.mcpServers.filter(x => x.name !== 'tg')
+  if (toggles) {
     const skill = action === 't' ? allSkills().find(x => x.command === a) : undefined
     const plugin = action === 'u' ? plugins.find(x => x.id === a) : undefined
-    const name = skill?.name ?? plugin?.name
+    const server = action === 'v' ? servers.find(x => mcpPrefix(x.name) === a) : undefined
+    const name = skill?.name ?? plugin?.name ?? server?.name
     if (!name) return ctx.answerCallbackQuery({ text: 'That one is gone.' }).catch(() => {})
     const access = loadAccess()
-    const on = skill ? toggleSkill(access, key, skill.name) : togglePlugin(access, key, plugin!)
+    const on = skill ? toggleSkill(access, key, skill.name) : plugin ? togglePlugin(access, key, plugin) : toggleMcpServer(access, key, a!)
     saveAccess(access)
-    audit({ event: 'policy', key, user, field: skill ? 'disabledSkills' : 'plugins', value: `${on ? '+' : '-'}${skill?.name ?? plugin!.id}` })
+    const field = skill ? 'disabledSkills' : plugin ? 'plugins' : 'disabledMcpServers'
+    audit({ event: 'policy', key, user: String(ctx.from.id), field, value: `${on ? '+' : '-'}${skill?.name ?? plugin?.id ?? a}` })
     void ctx.answerCallbackQuery({ text: `${on ? '✅' : '🚫'} ${name} ${on ? 'on' : 'off'} here` }).catch(() => {})
     const now = policyAt(key)
-    return void await show(skill ? skillSwitchesView(now, allSkills(), Number(b ?? 0)) : pluginSwitchesView(now, plugins))
+    return void await show(skill ? skillSwitchesView(now, allSkills(), Number(b ?? 0)) : plugin ? pluginSwitchesView(now, plugins) : mcpSwitchesView(now, servers))
   }
-  await ctx.answerCallbackQuery().catch(() => {})
-  if (action === 'm') return void await show(extensionsView(p, allSkills(), plugins))
+  if (action === 'm') return void await show(extensionsView(p, allSkills(), plugins, servers))
   if (action === 's') return void await show(skillSwitchesView(p, allSkills(), Number(a ?? 0)))
+  if (action === 'c') return void await show(mcpSwitchesView(p, servers))
   await show(pluginSwitchesView(p, plugins))
 })
 
@@ -1281,10 +1290,23 @@ function allSkills(): SkillEntry[] {
   const usage = skillUsage.all()
   return found.map(s => ({ name: s.name, command: table[s.name]!, description: s.description, uses: usage[s.name]?.count ?? 0 }))
 }
+// 008 FR19: plugins and MCP servers that turns in a cwd load, from their init events.
+const loaded = createLoadedCache(cwd => probeInit(cwd, SETTINGS_FILE))
+const cwdOf = (p: Policy) => p.cwd ? expandPath(p.cwd, homedir()) : config.cwd
+
+/** Installed plugins plus any a turn loaded that aren't installed (synced ones); never the channel plugin or Claude Code's built-ins. */
+function pluginsFor(cwd: string, seen: Loaded): Plugin[] {
+  const installed = installedPlugins(claudeDir(), cwd)
+  const extra = seen.plugins
+    .filter(id => !id.endsWith('@builtin') && !installed.some(x => x.id === id))
+    .map(id => ({ id, name: id.split('@')[0]!, on: true }))
+  return [...installed, ...extra].filter(x => x.id !== CHANNEL_PLUGIN).sort((a, b) => a.name.localeCompare(b.name))
+}
+
 /** 008 FR19: the skills on in this chat or topic; switched-off ones are hidden and refused. */
 function skillsHere(key: string): SkillEntry[] {
   const p = policyOf(key)
-  const plugins = installedPlugins(claudeDir(), p.cwd ? expandPath(p.cwd, homedir()) : config.cwd)
+  const plugins = pluginsFor(cwdOf(p), loaded.peek(cwdOf(p)))
   return allSkills().filter(s => skillOn(p, s.name, plugins))
 }
 function readSkillFile(name: string): string | undefined {
@@ -1324,7 +1346,7 @@ bot.on('message:text', async ctx => {
   if (r.kind === 'ignore') return
   if (r.kind === 'skill') {
     const name = r.text.slice(1).split(/\s/)[0]!
-    if (!skillsHere(sessionKey(ctx.msg!)).some(s => s.name === name)) return void await ctx.reply(`${name} is off in this chat. Turn it on in /settings → 🧩 Skills & plugins.`)
+    if (!skillsHere(sessionKey(ctx.msg!)).some(s => s.name === name)) return void await ctx.reply(`${name} is off in this chat. Turn it on in /settings → 🧩 Skills, plugins & MCP.`)
     return handleInbound(ctx, text, undefined, undefined, r.text)
   }
   if (r.kind === 'text') return handleInbound(ctx, text, undefined)

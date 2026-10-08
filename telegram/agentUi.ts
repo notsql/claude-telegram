@@ -7,7 +7,7 @@
 import type { InlineKeyboardButton } from 'grammy/types'
 import type { PolicyView } from './policyUi.ts'
 
-export const AGENT_CALLBACK = /^agn:(m|u):([\w.-]{0,58})$/
+export const AGENT_CALLBACK = /^agn:(m|u)(?::([\w.-]{0,58}))?$/
 
 type Agent = { name: string; description: string }
 

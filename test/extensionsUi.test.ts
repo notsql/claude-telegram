@@ -4,9 +4,10 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { defaultAccess } from '../access.ts'
 import { mergeSettings } from '../agent/runner.ts'
-import { policySettings } from '../policy/args.ts'
+import { policyArgs, policySettings } from '../policy/args.ts'
+import { createLoadedCache, mcpPrefix } from '../agent/loaded.ts'
 import { installedPlugins } from '../skills/plugins.ts'
-import { EXTENSIONS_CALLBACK, extensionsView, pluginSwitchesView, skillOn, skillSwitchesView, toggleSkill, togglePlugin } from '../telegram/extensionsUi.ts'
+import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, skillOn, skillSwitchesView, toggleMcpServer, toggleSkill, togglePlugin } from '../telegram/extensionsUi.ts'
 
 const data = (v: { keyboard: { inline_keyboard: { callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat().map(b => b.callback_data!)
 const skills = [{ name: 'deploy', command: 'deploy' }, { name: 'tg-notes', command: 'tg_notes' }, { name: 'figma:render', command: 'figma_render' }]
@@ -15,11 +16,11 @@ const figma = { id: 'figma@claude-plugins-official', name: 'figma', on: false }
 
 test('views list own skills and plugins with their state; callbacks round-trip', () => {
   const p = { disabledSkills: ['deploy'], plugins: { [figma.id]: true } }
-  expect(extensionsView(p, skills, [lsp, figma]).text).toContain('Skills: 1 of 2 on')
-  expect(extensionsView(p, skills, [lsp, figma]).text).toContain('Plugins: 2 of 2 on')
+  expect(extensionsView(p, skills, [lsp, figma], []).text).toContain('Skills: 1 of 2 on')
+  expect(extensionsView(p, skills, [lsp, figma], []).text).toContain('Plugins: 2 of 2 on')
   const s = skillSwitchesView(p, skills)
   expect(s.keyboard.inline_keyboard[0]!.map(b => b.text)).toEqual(['🚫 deploy', '✅ tg-notes'])
-  const all = [...data(s), ...data(pluginSwitchesView(p, [lsp, figma])), ...data(extensionsView(p, skills, []))].filter(d => d !== 'pol:m')
+  const all = [...data(s), ...data(pluginSwitchesView(p, [lsp, figma])), ...data(extensionsView(p, skills, [], [])), ...data(mcpSwitchesView(p, [{ name: 'claude.ai Notion' }]))].filter(d => d !== 'pol:m')
   expect(all).toContain('ext:u:figma@claude-plugins-official')
   for (const d of all) expect(EXTENSIONS_CALLBACK.test(d)).toBe(true)
 })
@@ -63,4 +64,29 @@ test('skillOn: own skills by disabledSkills, plugin skills by their plugin', () 
   expect(skillOn(p, 'typescript-lsp:check', [lsp, figma])).toBe(false)
   expect(skillOn(p, 'figma:render', [lsp, figma])).toBe(false)
   expect(skillOn(p, 'synced:thing', [lsp, figma])).toBe(true)
+})
+
+test('MCP servers switch by tool prefix and become server-level deny rules', () => {
+  const a = defaultAccess()
+  const notion = { name: 'claude.ai Notion', source: 'claudeai' }
+  expect(toggleMcpServer(a, '5', 'claude_ai_Notion')).toBe(false)
+  const p = a.chats!['5']!.policy!
+  expect(mcpSwitchesView(p, [notion]).text).toContain('🚫 claude.ai Notion (claude.ai connector)')
+  expect(extensionsView(p, [], [], [notion, { name: 'safari-mcp' }]).text).toContain('MCP servers: 1 of 2 on')
+  const args = policyArgs(p)
+  expect(args.slice(args.indexOf('--disallowedTools'))).toEqual(['--disallowedTools', 'mcp__claude_ai_Notion'])
+  expect(toggleMcpServer(a, '5', 'claude_ai_Notion')).toBe(true)
+  expect(a.chats!['5']!.policy).toEqual({})
+})
+
+test('the loaded cache probes a cwd once, then adds what each turn reports', async () => {
+  let probes = 0
+  const init = (plugins: string[], mcp: string[]) => ({ plugins: plugins.map(source => ({ source })), mcp_servers: mcp.map(name => ({ name, status: 'ok' })) }) as never
+  const cache = createLoadedCache(async () => (probes++, init(['a@m'], ['x'])))
+  expect(cache.peek('/w')).toEqual({ plugins: [], mcpServers: [] })
+  expect(await cache.get('/w')).toEqual({ plugins: ['a@m'], mcpServers: [{ name: 'x' }] })
+  cache.record('/w', init(['b@m'], ['y']))
+  expect(await cache.get('/w')).toEqual({ plugins: ['a@m', 'b@m'], mcpServers: [{ name: 'x' }, { name: 'y' }] })
+  expect(probes).toBe(1)
+  expect(mcpPrefix('claude.ai Google Drive')).toBe('claude_ai_Google_Drive')
 })

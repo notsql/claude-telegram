@@ -40,3 +40,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/extensionsUi.test.ts` and `test/policyUi.test.ts` pass.
 - [x] **T822** 🤖 Agent page in `/settings` replaces `/agent`; switched-off skills are hidden from `/skills` and refused when typed (FR19, FR20).
   *Verify:* `test/agentUi.test.ts`, `test/agentsAvailable.test.ts` and `test/extensionsUi.test.ts` pass.
+- [x] **T823** Fix the 🤖 Agent button (its callback didn't match); list synced plugins and MCP servers (incl. claude.ai connectors) from turn `init` events, with per-chat MCP switches (FR19).
+  *Verify:* `test/extensionsUi.test.ts`, `test/agentUi.test.ts` and `test/policyUi.test.ts` pass.
