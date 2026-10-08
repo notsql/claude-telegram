@@ -42,7 +42,7 @@ test('FR13: /memory lists entries as buttons with Add and About you; memoryScope
   expect(v.text).toBe('🧠 Shared memory (1). Tap one to see or forget it.')
   expect(v.keyboard!.inline_keyboard).toEqual([
     [{ text: 'I use pnpm', callback_data: 'mo:i-use-pnpm' }],
-    [{ text: '➕ Add', callback_data: 'ma:' }, { text: '👤 About you', callback_data: 'mu:' }],
+    [{ text: '+ Add', callback_data: 'ma:' }, { text: '👤 About you', callback_data: 'mu:' }],
   ])
   for (const b of v.keyboard!.inline_keyboard.flat()) expect(MEMORY_CALLBACK.test((b as any).callback_data)).toBe(true)
   expect(entryView(s, 'i-use-pnpm', on).keyboard!.inline_keyboard[0]![0]).toEqual({ text: '🗑 Forget', callback_data: 'md:i-use-pnpm' })

@@ -24,7 +24,7 @@ import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
 import { CLOSE_CALLBACK, withClose } from './telegram/close.ts'
 import { AGENT_CALLBACK, agentView } from './telegram/agentUi.ts'
-import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, skillOn, skillSwitchesView, toggleMcpServer, togglePlugin, toggleSkill } from './telegram/extensionsUi.ts'
+import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, prettyName, skillOn, skillSwitchesView, toggleMcpServer, togglePlugin, toggleSkill } from './telegram/extensionsUi.ts'
 import { installedPlugins, type Plugin } from './skills/plugins.ts'
 import { createLoadedCache, mcpPrefix, probeInit, type Loaded } from './agent/loaded.ts'
 import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from './telegram/policyUi.ts'
@@ -55,7 +55,6 @@ import { openHistoryDb } from './history/db.ts'
 import { startIndexer } from './history/indexer.ts'
 import { createHistoryTools } from './history/tools.ts'
 import { recall, withContext } from './history/recall.ts'
-import { searchCommand } from './history/commands.ts'
 import { createMemoryStore } from './memory/store.ts'
 import { createMemoryTools } from './memory/tools.ts'
 import { aboutYou, entryView, forget, MEMORY_CALLBACK, memoryView, remember, type CommandResult } from './memory/commands.ts'
@@ -85,7 +84,7 @@ import { search } from './history/search.ts'
 import { registry, type Command } from './commands/registry.ts'
 import { authorised, route } from './commands/dispatch.ts'
 import { assign, discoverSkills, loadTable, saveTable } from './commands/skillMap.ts'
-import { START_TEXT, helpText, pairingStatus } from './commands/help.ts'
+import { START_TEXT, helpText } from './commands/help.ts'
 import { buildMenus, createMenu } from './commands/menu.ts'
 import { scopeFor } from './history/tools.ts'
 import { createEngine } from './scheduler/engine.ts'
@@ -244,8 +243,8 @@ const skillApplier = createSkillApplier({
   ask: (key, text, id, kind) => {
     const target = parseKey(key)
     const buttons = kind === 'diff'
-      ? [{ text: '✅ Apply', callback_data: `skl:save:${id}` }, { text: '✖ Skip', callback_data: `skl:skip:${id}` }]
-      : [{ text: '✅ Save', callback_data: `skl:save:${id}` }, { text: '✏️ Edit', callback_data: `skl:edit:${id}` }, { text: '✖ Skip', callback_data: `skl:skip:${id}` }]
+      ? [{ text: '✅ Apply', callback_data: `skl:save:${id}` }, { text: '✕ Skip', callback_data: `skl:skip:${id}` }]
+      : [{ text: '✅ Save', callback_data: `skl:save:${id}` }, { text: '✏️ Edit', callback_data: `skl:edit:${id}` }, { text: '✕ Skip', callback_data: `skl:skip:${id}` }]
     void bot.api.sendMessage(target.chatId, text.length > 4000 ? `${text.slice(0, 4000)}\n…` : text, {
       ...threadOpts(target),
       reply_markup: { inline_keyboard: [buttons] },
@@ -269,7 +268,7 @@ const agentApplier = createAgentApplier({
   ask: (key, text, id) => {
     const t = parseKey(key)
     void bot.api.sendMessage(t.chatId, text.slice(0, 4000), { ...threadOpts(t), reply_markup: { inline_keyboard: [[
-      { text: '✅ Save', callback_data: `agt:save:${id}` }, { text: '✖ Skip', callback_data: `agt:skip:${id}` },
+      { text: '✅ Save', callback_data: `agt:save:${id}` }, { text: '✕ Skip', callback_data: `agt:skip:${id}` },
     ]] } }).catch(() => {})
   },
   log,
@@ -340,7 +339,7 @@ const applier = createApplier({
       ...threadOpts(target),
       reply_markup: { inline_keyboard: [[
         { text: '✅ Save', callback_data: `mem:save:${id}` },
-        { text: '✖ Skip', callback_data: `mem:skip:${id}` },
+        { text: '✕ Skip', callback_data: `mem:skip:${id}` },
       ]] },
     }).catch(() => {})
   },
@@ -708,13 +707,6 @@ commands.push({ name: 'stop', description: 'Interrupt the running turn here', me
   turn.abort()
 } })
 
-// 005 US4: owner-only like /stop, scoped by the chat's historyScope. 008 moves it into its handlers.
-commands.push({ name: 'search', description: 'Search past conversations: /search <words>', menu: ['private', 'group'], handler: async (ctx, args) => {
-  if (!isOwner(ctx)) return
-  const key = sessionKey(ctx.msg!)
-  await ctx.reply(searchCommand({ db: historyDb, sessions }, args, key, policyOf(key)), { link_preview_options: { is_disabled: true } })
-} })
-
 // 008 T805: memory curation over 004's command functions; writes get the Undo notice.
 const memoryReply = async (ctx: Context, r: CommandResult) =>
   ctx.reply(r.text, r.change ? { reply_markup: notices.undoKeyboard(r.change) } : r.keyboard ? { reply_markup: withClose(r.keyboard) } : {})
@@ -913,19 +905,6 @@ commands.push({ name: 'help', description: 'What this bot can do', menu: ['priva
   if (dmCommandGate(ctx)) await ctx.reply(helpText(commands))
 } })
 
-commands.push({ name: 'status', description: 'Session, model and cost', menu: ['private', 'group'], handler: async ctx => {
-  const key = sessionKey(ctx.msg!)
-  // 008 FR1: in groups, owners get this chat's session status.
-  if (ctx.chat!.type !== 'private') {
-    if (isOwner(ctx)) await ctx.reply(sessionStatus(sessionDeps, key, policyOf(key)))
-    return
-  }
-  const gated = dmCommandGate(ctx)
-  if (!gated) return
-  const name = ctx.from!.username ? `@${ctx.from!.username}` : gated.senderId
-  await ctx.reply(pairingStatus(gated.access, gated.senderId, name, () => sessionStatus(sessionDeps, key, policyOf(key))))
-} })
-
 // 003 T309, 008 FR15: owner-only settings for this chat; settings open their values, Permissions lists every rule.
 const policyAt = (key: string) => resolvePolicy(loadAccess(), key, chatTypeOf(key))
 
@@ -1032,7 +1011,7 @@ bot.callbackQuery(EXTENSIONS_CALLBACK, async ctx => {
     const skill = action === 't' ? allSkills().find(x => x.command === a) : undefined
     const plugin = action === 'u' ? plugins.find(x => x.id === a) : undefined
     const server = action === 'v' ? servers.find(x => mcpPrefix(x.name) === a) : undefined
-    const name = skill?.name ?? plugin?.name ?? server?.name
+    const name = skill?.name ?? (plugin && prettyName(plugin.name)) ?? server?.name
     if (!name) return ctx.answerCallbackQuery({ text: 'That one is gone.' }).catch(() => {})
     const access = loadAccess()
     const on = skill ? toggleSkill(access, key, skill.name) : plugin ? togglePlugin(access, key, plugin) : toggleMcpServer(access, key, a!)
@@ -1077,7 +1056,7 @@ bot.callbackQuery(CRON_CALLBACK, async ctx => {
   await ctx.editMessageText(text, { reply_markup: withClose(keyboard) }).catch(() => {})
 })
 
-// 008 FR18: ➕ New job steps through how often, day and hour, then asks for what to do.
+// 008 FR18: + New job steps through how often, day and hour, then asks for what to do.
 bot.callbackQuery(CRON_NEW_CALLBACK, async ctx => {
   const msg = ctx.callbackQuery.message
   if (!msg) return ctx.answerCallbackQuery().catch(() => {})
@@ -1091,7 +1070,7 @@ bot.callbackQuery(CRON_NEW_CALLBACK, async ctx => {
   const step = newJobView(spec)
   if (step !== 'ready') return void await show(step)
   const { when, label } = whenFor(spec)
-  await ctx.editMessageText(`➕ New job, ${label}.`).catch(() => {})
+  await ctx.editMessageText(`+ New job, ${label}.`).catch(() => {})
   const sent = await bot.api.sendMessage(msg.chat.id, `⏰ ${label[0]!.toUpperCase()}${label.slice(1)}. What should I do then? Reply to this message.`, {
     ...threadOpts(parseKey(key)),
     reply_markup: { force_reply: true, selective: true, input_field_placeholder: 'e.g. Send me a summary of the news' },
@@ -1116,7 +1095,7 @@ async function cronAddReply(ctx: Context): Promise<boolean> {
   return true
 }
 
-// 008 FR16: ✖ Close on any menu; owner only, like the menus.
+// 008 FR16: ✕ Close on any menu; owner only, like the menus.
 bot.callbackQuery(CLOSE_CALLBACK, async ctx => {
   if (!isOwner(ctx)) return ctx.answerCallbackQuery({ text: 'Owner only.' }).catch(() => {})
   await ctx.answerCallbackQuery().catch(() => {})

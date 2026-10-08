@@ -1,7 +1,7 @@
 /**
  * `/cron` inline manager (008 US4, 007 US5): this chat's jobs, one button row
  * each with ⏸ / ▶ / 🗑 / ▶️ Run now. A thin view over 007's functions.
- * ➕ New job (008 FR18) picks how often (`crn:w:<spec>`), then the day and
+ * + New job (008 FR18) picks how often (`crn:w:<spec>`), then the day and
  * hour, then asks for what to do by reply. The spec builds up as
  * `<freq>[.<day>][@<hour>]`, e.g. `weekly.1@09`.
  */
@@ -15,11 +15,11 @@ export type CronAction = 'pause' | 'resume' | 'del' | 'run'
 export const CRON_CALLBACK = /^crn:(pause|resume|del|run):(j_[0-9a-f]+)$/
 export const CRON_NEW_CALLBACK = /^crn:(list|w):((?:once|daily|wkdy|weekly|hourly)?(?:\.[0-6])?(?:@\d{2})?)$/
 
-const NEW_JOB = { text: '➕ New job', callback_data: 'crn:w:' }
+const NEW_JOB = { text: '+ New job', callback_data: 'crn:w:' }
 const BACK = { text: '« Back', callback_data: 'crn:list:' }
 
 export function cronView(jobs: Job[], now = new Date()) {
-  if (!jobs.length) return { text: 'No scheduled jobs in this chat. Tap ➕ New job, or ask me in plain words.', keyboard: { inline_keyboard: [[NEW_JOB]] } }
+  if (!jobs.length) return { text: 'No scheduled jobs in this chat. Tap + New job, or ask me in plain words.', keyboard: { inline_keyboard: [[NEW_JOB]] } }
   const text = jobs.map(j => `${j.enabled ? '' : '⏸ '}${j.id} "${jobTitle(j)}"${j.lastStatus ? ` (last: ${j.lastStatus})` : ''}\n${describeJob(j, now)}`).join('\n\n')
   const keyboard = { inline_keyboard: [...jobs.map(j => [
     j.enabled
@@ -43,25 +43,25 @@ function parseSpec(spec: string): Spec {
 
 const rows = <T,>(xs: T[], n: number) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, (i + 1) * n))
 
-/** The next step of ➕ New job for `spec`, or `ready` once it is a full schedule. */
+/** The next step of + New job for `spec`, or `ready` once it is a full schedule. */
 export function newJobView(spec: string): { text: string; keyboard: { inline_keyboard: InlineKeyboardButton[][] } } | 'ready' {
   const s = parseSpec(spec)
   if (!s.freq) {
     return {
-      text: '➕ New job. How often should it run?',
+      text: '+ New job. How often should it run?',
       keyboard: { inline_keyboard: [...rows(FREQS.map(([f, t]) => ({ text: t, callback_data: `crn:w:${f}` })), 2), [BACK]] },
     }
   }
   if (s.freq === 'hourly' || s.hour !== undefined) return 'ready'
   if (s.freq === 'weekly' && s.day === undefined) {
     return {
-      text: '➕ New job, every week. Which day?',
+      text: '+ New job, every week. Which day?',
       keyboard: { inline_keyboard: [...rows([1, 2, 3, 4, 5, 6, 0].map(d => ({ text: DAYS[d]!, callback_data: `crn:w:weekly.${d}` })), 4), [{ text: '« Back', callback_data: 'crn:w:' }]] },
     }
   }
   const hours = Array.from({ length: 18 }, (_, i) => i + 6)
   return {
-    text: `➕ New job, ${label(s)}. At what time?`,
+    text: `+ New job, ${label(s)}. At what time?`,
     keyboard: { inline_keyboard: [...rows(hours.map(h => ({ text: `${String(h).padStart(2, '0')}:00`, callback_data: `crn:w:${spec}@${String(h).padStart(2, '0')}` })), 6), [{ text: '« Back', callback_data: 'crn:w:' }]] },
   }
 }

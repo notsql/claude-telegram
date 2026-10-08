@@ -1,10 +1,9 @@
 /**
- * `/start`, `/help` and `/status` text (008 FR3), DM-only as in the legacy
+ * `/start` and `/help` text (008 FR3), DM-only as in the legacy
  * channel server. `/help` leads with plain language: commands are only the
  * fallback (constitution I).
  */
 
-import type { Access } from '../access.ts'
 import type { MenuBuiltin } from './menu.ts'
 
 export const START_TEXT =
@@ -25,13 +24,4 @@ export function helpText(builtins: MenuBuiltin[]): string {
     '',
     'All your skills are under /skills: tap one to run it, or send /skills deploy_blog staging to pass arguments.',
   ].join('\n')
-}
-
-/** The DM sender's pairing state; `session` is added once paired. */
-export function pairingStatus(access: Pick<Access, 'allowFrom' | 'pending'>, senderId: string, name: string, session: () => string): string {
-  if (access.allowFrom.includes(senderId)) return `Paired as ${name}.\n\n${session()}`
-  for (const [code, p] of Object.entries(access.pending)) {
-    if (p.senderId === senderId) return `Pending pairing: run in Claude Code:\n\n/telegram:access pair ${code}`
-  }
-  return 'Not paired. Send me a message to get a pairing code.'
 }

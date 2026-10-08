@@ -4,7 +4,7 @@
  * at least MIN_RECURRENCE similar tasks, counted from 005 history by the
  * caller. Drafts pass `agentRefusal`; a patch only targets an agent this bot
  * wrote. Then the chat's `autoLearn` decides: `auto` in a DM writes and
- * notifies, `propose` (or any group) asks the owner with ✅ Save / ✖ Skip,
+ * notifies, `propose` (or any group) asks the owner with ✅ Save / ✕ Skip,
  * `off` does nothing. At most one agent per pass.
  */
 

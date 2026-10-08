@@ -23,6 +23,9 @@ const ownSkills = (skills: Skill[]) => skills.filter(s => !s.name.includes(':'))
 const pluginOn = (p: Policy, x: Plugin) => p.plugins?.[x.id] ?? x.on
 const skillsOff = (p: Policy, skills: Skill[]) => ownSkills(skills).filter(s => p.disabledSkills?.includes(s.name)).length
 
+/** `cowork-plugin-management` → `Cowork plugin management`. */
+export const prettyName = (id: string) => id.replace(/[-_]+/g, ' ').replace(/^./, c => c.toUpperCase())
+
 const serverOn = (p: Policy, s: McpServer) => !p.disabledMcpServers?.includes(mcpPrefix(s.name))
 
 export function extensionsView(p: Policy, skills: Skill[], plugins: Plugin[], servers: McpServer[]): PolicyView {
@@ -74,7 +77,7 @@ export function pluginSwitchesView(p: Policy, plugins: Plugin[]): PolicyView {
       ? '🔌 Plugins here. ✅ on, 🚫 off. Tap one to switch it for this chat; its skills, agents and tools go with it.'
       : 'No plugins installed. Install them from the terminal with /plugin.',
     keyboard: { inline_keyboard: [
-      ...plugins.filter(x => x.id.length <= 58).map(x => [button(`${pluginOn(p, x) ? '✅' : '🚫'} ${x.name}`, `ext:u:${x.id}`)]),
+      ...plugins.filter(x => x.id.length <= 58).map(x => [button(`${pluginOn(p, x) ? '✅' : '🚫'} ${prettyName(x.name)}`, `ext:u:${x.id}`)]),
       [button('« Back', 'ext:m')],
     ] },
   }

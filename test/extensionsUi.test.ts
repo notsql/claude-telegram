@@ -7,7 +7,7 @@ import { mergeSettings } from '../agent/runner.ts'
 import { policyArgs, policySettings } from '../policy/args.ts'
 import { createLoadedCache, mcpPrefix } from '../agent/loaded.ts'
 import { installedPlugins } from '../skills/plugins.ts'
-import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, skillOn, skillSwitchesView, toggleMcpServer, toggleSkill, togglePlugin } from '../telegram/extensionsUi.ts'
+import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, prettyName, skillOn, skillSwitchesView, toggleMcpServer, toggleSkill, togglePlugin } from '../telegram/extensionsUi.ts'
 
 const data = (v: { keyboard: { inline_keyboard: { callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat().map(b => b.callback_data!)
 const skills = [{ name: 'deploy', command: 'deploy' }, { name: 'tg-notes', command: 'tg_notes' }, { name: 'figma:render', command: 'figma_render' }]
@@ -89,4 +89,9 @@ test('the loaded cache probes a cwd once, then adds what each turn reports', asy
   expect(await cache.get('/w')).toEqual({ plugins: ['a@m', 'b@m'], mcpServers: [{ name: 'x' }, { name: 'y' }] })
   expect(probes).toBe(1)
   expect(mcpPrefix('claude.ai Google Drive')).toBe('claude_ai_Google_Drive')
+})
+
+test('plugin names read as words', () => {
+  expect(prettyName('cowork-plugin-management')).toBe('Cowork plugin management')
+  expect(pluginSwitchesView({}, [{ id: 'my_tool@x', name: 'my_tool', on: true }]).keyboard.inline_keyboard[0]![0]!.text).toBe('✅ My tool')
 })
