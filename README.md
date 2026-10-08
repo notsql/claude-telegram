@@ -124,7 +124,7 @@ To debug in the foreground, stop the service first.
 | `TELEGRAM_MAX_CONCURRENT_SESSIONS` | `3` | Chats or topics whose turns run at the same time; others wait with a 🫡 reaction |
 | `TELEGRAM_INTERRUPT_ON_NEW_MESSAGE` | unset | `1` interrupts the running turn when a new message arrives |
 
-**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. Each chat and forum topic is its own conversation, and up to `TELEGRAM_MAX_CONCURRENT_SESSIONS` of them work at once. Messages sent while the bot is busy in that chat are answered together in the next turn; a 🫡 reaction marks a message that is waiting. `/stop` interrupts the turn running in the chat or topic where you send it, and `/new` starts a fresh conversation there (see [Commands](#commands)). When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
+**In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. Each chat and forum topic is its own conversation, and up to `TELEGRAM_MAX_CONCURRENT_SESSIONS` of them work at once. Messages sent while the bot is busy in that chat are answered together in the next turn; a 🫡 reaction marks a message that is waiting. `/stop` interrupts the turn running in the chat or topic where you send it, and `/sessions` → 🆕 New starts a fresh conversation there (see [Commands](#commands)). When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
 
 ### Commands
 
@@ -132,11 +132,9 @@ You don't need commands: ask in plain words and the agent does the same thing wi
 
 | Command | Plain words / agent tool |
 | --- | --- |
-| `/new`, `/resume [n]`, `/sessions` | "let's start fresh", "go back to yesterday's chat" · `session_new`, `session_resume` |
+| `/sessions` | "let's start fresh", "go back to yesterday's chat", "what's this costing me?" · `session_new`, `session_resume`, `session_status`. Shows the session's status with 🆕 New, ⏪ Resume (earlier sessions as buttons, paged) and 🗜 Compact (Claude Code compacts on its own; this forces it). |
 | `/stop` | a "stop" message when `TELEGRAM_INTERRUPT_ON_NEW_MESSAGE=1` |
-| `/model [name]` | "use opus for this" · `session_set_model`. Lasts until the next new session. |
-| `/compact` | Claude Code compacts on its own; this forces it. |
-| `/cost`, `/status` | "what's this costing me?" · `session_status` |
+| `/status` | Pairing state, plus the session's status. Ask "use opus for this" to change the model (`session_set_model`) until the next new session. |
 | `/memory` | "remember I use pnpm", "forget that" · `memory_write`, `memory_delete`, `memory_search`. Buttons list each entry (tap it, then 🗑 Forget, with Undo), ➕ Add (reply to the prompt to save), 👤 About you, and paging. |
 | `/search <words>` | "what did we decide about postgres?" · `history_search` |
 | `/skills [command] [args]` | "which skills do you have?" · `skill_list`, `skill_read`. Buttons list every skill, paged; tap one for ▶️ Run, 📄 Show and, for the chat's own skills, 📦 Archive / 🗑 Remove. `/skills <command> <args>` runs one with arguments. |
@@ -145,7 +143,7 @@ You don't need commands: ask in plain words and the agent does the same thing wi
 | `/policy` | Owner only. The agent may suggest changes but never applies them. |
 | `/start`, `/help` | Pairing instructions and this overview. |
 
-Skills are not listed in the `/` menu; use `/skills`. Typing a skill's Telegram-safe name still works: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory). In groups, `/model`, `/agent`, `/cron`, `/policy`, forgetting a memory and archiving or removing a skill need one of the chat's `approvers`.
+Skills are not listed in the `/` menu; use `/skills`. Typing a skill's Telegram-safe name still works: `/deploy_blog staging` runs the `deploy-blog` skill with `staging` as its argument. Names stay stable once assigned (`commands.json` in the state directory). In groups, `/agent`, `/cron`, `/policy`, forgetting a memory and archiving or removing a skill need one of the chat's `approvers`.
 
 ### Groups and forum topics
 

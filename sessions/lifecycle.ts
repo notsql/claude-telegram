@@ -1,6 +1,6 @@
 import type { PastSession, SessionStore } from './store.ts'
 
-/** Models `/model` and `session_set_model` may pick (008 FR1), as in the `/policy` editor. */
+/** Models `session_set_model` may pick (008 FR1), as in the `/policy` editor. */
 export const MODELS = ['sonnet', 'opus', 'haiku']
 
 export type TurnStats = { turns: number; costUsd: number }
@@ -84,7 +84,7 @@ export function formatSessions(past: PastSession[]): string {
     .join('\n')
 }
 
-/** `/cost`: since the daemon started, Claude Code's notional API price (the subscription pays). */
+/** Cost line of `/status`: since the daemon started, Claude Code's notional API price (the subscription pays). */
 export function formatCost(s: TurnStats | undefined): string {
   if (!s) return 'No turns in this session since the daemon started.'
   return `This session: ${s.turns} turn${s.turns === 1 ? '' : 's'}, $${s.costUsd.toFixed(2)} at API prices (covered by the subscription).`
