@@ -10,9 +10,11 @@
 import { z } from 'zod'
 
 export async function runOneShot<T extends z.ZodType>(
-  agent: 'tg-reflector' | 'tg-summarizer' | 'tg-triager',
+  agent: 'tg-reflector' | 'tg-summarizer' | 'tg-triager' | 'tg-poller',
   input: string,
   schema: T,
+  /** 013 agent-poll: the connector's tools (e.g. `mcp__claude_ai_Google_Calendar`); keeps user MCP config. */
+  allowedTools?: string[],
 ): Promise<z.infer<T>> {
   // T003: inherited Claude Code env makes the child reuse the parent's session.
   const { CLAUDECODE, CLAUDE_CODE_SESSION_ID, ...env } = process.env
@@ -23,7 +25,9 @@ export async function runOneShot<T extends z.ZodType>(
     // The CLI's validator rejects zod's default draft-2020-12 `$schema`.
     '--json-schema', JSON.stringify(z.toJSONSchema(schema, { target: 'draft-7' })),
     '--settings', '{"disableAllHooks":true}',
-    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    ...(allowedTools
+      ? ['--allowedTools', allowedTools.join(','), '--disallowedTools', 'Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task']
+      : ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}']),
     '--no-session-persistence',
   ], { stdin: 'ignore', stdout: 'pipe', stderr: 'inherit', env })
 

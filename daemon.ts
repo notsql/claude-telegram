@@ -26,7 +26,7 @@ import { INBOX_DIR } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
-import { inboxPath, insertItem, openInboxDb } from './watch/store.ts'
+import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
 import { loadSources, recordItem, type Source } from './watch/registry.ts'
 import { adapterFor, createSupervisor } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
@@ -344,13 +344,19 @@ const skillContext = new Map<string, string>()
 // 013 FR1, FR12: source watchers, only with TELEGRAM_WATCH=1. Items land in inbox.db.
 const watch = config.watch ? (() => {
   const db = openInboxDb(inboxPath(STATE_DIR))
+  const insert = (source: Source, item: Item) => {
+    if (insertItem(db, item) !== null) recordItem(STATE_DIR, source.id, Date.now())
+  }
   const store = (source: Source, payload: unknown) => {
     const item = adapterFor(source)?.map(source.id, payload)
-    if (item && insertItem(db, item) !== null) recordItem(STATE_DIR, source.id, Date.now())
+    if (item) insert(source, item)
   }
   let sources: Source[] = []
   try { sources = loadSources(STATE_DIR) } catch (err) { log(`watch: sources.json unreadable: ${err}`) }
-  const supervisor = createSupervisor({ stateDir: STATE_DIR, sources, onPayload: store, log, pidDir: join(STATE_DIR, 'watch') })
+  const supervisor = createSupervisor({
+    stateDir: STATE_DIR, sources, onPayload: store, onItem: insert, log, pidDir: join(STATE_DIR, 'watch'),
+    runPoller: (input, schema, tools) => runOneShot('tg-poller', input, schema, tools),
+  })
   const route = createIngestRoute({
     secretOf: supervisor.secretOf,
     header: id => adapterFor(supervisor.source(id)!)?.signatureHeader ?? 'x-signature',

@@ -10,16 +10,24 @@
  * and `{secret}` in the command are filled in. The adapter is chosen by the
  * command's basename. Watchers are read-only: no adapter has a send path, and
  * sends belong to `send.ts` behind an owner tap (FR4).
+ *
+ * `poll` sources (`{command, intervalSec}`) run their command every interval
+ * and parse stdout with a poll adapter, chosen by basename, that also advances
+ * the source's cursor. `agent-poll` sources (`{connector, intervalSec?}`, default
+ * 30 min) ask a one-shot `tg-poller` for items since the cursor using only that
+ * connector's tools. A failed poll counts an error and waits for the next interval.
  */
 
 import { randomBytes } from 'crypto'
 import { mkdirSync, rmSync } from 'fs'
 import { basename, join } from 'path'
 import type { Item } from './store.ts'
-import { recordError, type Source } from './registry.ts'
+import { z } from 'zod'
+import { recordError, setCursor, type Source } from './registry.ts'
 import { lineReader } from './ingest.ts'
 import { tgcliItem } from './adapters/tgcli.ts'
 import { wacliItem } from './adapters/wacli.ts'
+import { githubCommand, githubItems } from './adapters/github.ts'
 import { killStale, writePidFile } from '../util/proc.ts'
 
 type Adapter = { map: (source: string, payload: unknown) => Item | null; signatureHeader?: string }
@@ -27,6 +35,54 @@ type Adapter = { map: (source: string, payload: unknown) => Item | null; signatu
 export const ADAPTERS: Record<string, Adapter> = {
   tgcli: { map: tgcliItem },
   wacli: { map: wacliItem, signatureHeader: 'x-wacli-signature' },
+}
+
+type PollAdapter = {
+  command: (command: string[], cursor: string | null) => string[]
+  parse: (source: string, stdout: string, cursor: string | null) => { items: Item[]; cursor: string | null }
+}
+
+export const POLL_ADAPTERS: Record<string, PollAdapter> = {
+  gh: { command: githubCommand, parse: githubItems },
+}
+
+export const AgentPollSchema = z.object({
+  items: z.array(z.object({
+    id: z.string(),
+    ts: z.string(),
+    title: z.string(),
+    from: z.string().optional(),
+    url: z.string().optional(),
+    toMe: z.boolean().optional(),
+  })),
+  cursor: z.string(),
+})
+
+export type RunPoller = (input: string, schema: typeof AgentPollSchema, allowedTools: string[]) => Promise<z.infer<typeof AgentPollSchema>>
+
+/** claude.ai connector "Google Calendar" → its MCP tool prefix `mcp__claude_ai_Google_Calendar`. */
+export const connectorTools = (connector: string) => `mcp__claude_ai_${connector.trim().replace(/\s+/g, '_')}`
+
+export function agentPollInput(connector: string, cursor: string | null, now: number): string {
+  const since = cursor ?? new Date(new Date(now).setHours(0, 0, 0, 0)).toISOString()
+  return `Using the ${connector} connector, list items new or changed since ${since} (now is ${new Date(now).toISOString()}). For a calendar, list today's and tomorrow's events instead.`
+}
+
+export function agentPollItems(source: string, connector: string, out: z.infer<typeof AgentPollSchema>, now: number): Item[] {
+  return out.items.map(i => {
+    const ts = Date.parse(i.ts)
+    return {
+      source,
+      extId: i.id,
+      ts: Number.isNaN(ts) ? now : ts,
+      from: { id: i.from ?? connector, name: i.from ?? connector },
+      chat: { id: connector, name: connector, isGroup: false },
+      text: i.title,
+      url: i.url,
+      toMe: i.toMe ?? false,
+      fromMe: false,
+    }
+  })
 }
 
 export type Child = { pid: number; stdout: ReadableStream<Uint8Array> | null; exited: Promise<number>; kill: () => void }
@@ -41,13 +97,17 @@ const bunSpawn: Spawner = (cmd, env, stdout) => {
 export const backoffMs = (attempt: number) => Math.min(1000 * 2 ** attempt, 300_000)
 const HEALTHY_MS = 60_000
 
-type SourceConfig = { command: string[]; env?: Record<string, string> }
+type SourceConfig = { command: string[]; env?: Record<string, string>; intervalSec?: number; connector?: string }
 
 export type SupervisorOpts = {
   stateDir: string
   sources: Source[]
   /** Called with each payload: a parsed NDJSON line or webhook body. */
   onPayload: (source: Source, payload: unknown) => void
+  /** Called with each item a `poll` or `agent-poll` source returns. */
+  onItem?: (source: Source, item: Item) => void
+  /** One-shot `tg-poller` call for `agent-poll` sources; those are skipped without it. */
+  runPoller?: RunPoller
   log: (line: string) => void
   spawn?: Spawner
   sleep?: (ms: number) => Promise<void>
@@ -66,6 +126,7 @@ export function createSupervisor(opts: SupervisorOpts) {
   const sleep = opts.sleep ?? (ms => new Promise<void>(r => setTimeout(r, ms)))
   const now = opts.now ?? Date.now
   const watched = opts.sources.filter(s => s.enabled && (s.kind === 'stream' || s.kind === 'webhook'))
+  const polled = opts.sources.filter(s => s.enabled && (s.kind === 'poll' || s.kind === 'agent-poll'))
   const secrets = new Map(watched.filter(s => s.kind === 'webhook').map(s => [s.id, randomBytes(32).toString('hex')]))
   const children = new Map<string, Child>()
   let stopped = false
@@ -104,6 +165,46 @@ export function createSupervisor(opts: SupervisorOpts) {
     }
   }
 
+  /** One poll; returns the source's new cursor. Throws on failure. */
+  async function pollOnce(source: Source, cursor: string | null): Promise<string | null> {
+    const cfg = source.config as SourceConfig
+    let found: { items: Item[]; cursor: string | null }
+    if (source.kind === 'poll') {
+      const adapter = POLL_ADAPTERS[basename(String(cfg.command[0]))]!
+      const child = spawn(adapter.command(cfg.command, cursor), cfg.env ?? {}, true)
+      const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited])
+      if (code !== 0) throw new Error(`exited code=${code}`)
+      found = adapter.parse(source.id, out, cursor)
+    } else {
+      const connector = cfg.connector!
+      const t = now()
+      const out = await opts.runPoller!(agentPollInput(connector, cursor, t), AgentPollSchema, [connectorTools(connector)])
+      found = { items: agentPollItems(source.id, connector, out, t), cursor: out.cursor }
+    }
+    for (const item of found.items) opts.onItem?.(source, item)
+    return found.cursor
+  }
+
+  async function poll(source: Source): Promise<void> {
+    const cfg = source.config as SourceConfig
+    const intervalMs = (cfg.intervalSec ?? (source.kind === 'agent-poll' ? 1800 : 300)) * 1000
+    let cursor = source.cursor
+    while (!stopped) {
+      try {
+        const next = await pollOnce(source, cursor)
+        if (next !== cursor) {
+          cursor = next
+          setCursor(opts.stateDir, source.id, cursor)
+        }
+      } catch (err) {
+        opts.log(`watch ${source.id}: poll failed: ${err}`)
+        try { recordError(opts.stateDir, source.id) } catch {}
+      }
+      if (stopped) break
+      await sleep(intervalMs)
+    }
+  }
+
   async function readLines(source: Source, stdout: ReadableStream<Uint8Array>) {
     const reader = lineReader(line => {
       let payload: unknown
@@ -137,6 +238,17 @@ export function createSupervisor(opts: SupervisorOpts) {
           continue
         }
         runs.push(run(s, port))
+      }
+      for (const s of polled) {
+        const cfg = s.config as SourceConfig
+        const ok = s.kind === 'poll'
+          ? Array.isArray(cfg.command) && !!POLL_ADAPTERS[basename(String(cfg.command[0]))]
+          : typeof cfg.connector === 'string' && !!opts.runPoller
+        if (!ok) {
+          opts.log(`watch ${s.id}: no ${s.kind === 'poll' ? 'poll adapter for its command' : 'connector or poller'}; skipped`)
+          continue
+        }
+        runs.push(poll(s))
       }
       return Promise.all(runs).then(() => {})
     },
