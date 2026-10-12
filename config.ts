@@ -34,6 +34,8 @@ export type Config = {
   /** Sessions whose turns may run at the same time; at least 1. */
   maxConcurrentSessions: number
   cwd: string
+  /** Source watchers (013 FR12); on only when `TELEGRAM_WATCH=1`. */
+  watch: boolean
 }
 
 function positiveInt(env: Record<string, string | undefined>, name: string, fallback: number): number {
@@ -52,6 +54,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     dailyTurnBudget: positiveInt(env, 'TELEGRAM_DAILY_TURN_BUDGET', 0),
     maxConcurrentSessions,
     cwd: env.TELEGRAM_WORKSPACE || join(STATE_DIR, 'workspace'),
+    watch: env.TELEGRAM_WATCH === '1',
   }
 }
 
