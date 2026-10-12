@@ -20,6 +20,7 @@ import type { AgentTools } from '../agents/tools.ts'
 import type { SessionTools } from '../agent/sessionTools.ts'
 import type { ScheduleTools } from '../scheduler/tools.ts'
 import type { CapabilityTools } from '../capabilities/tools.ts'
+import type { WatchTools } from '../watch/tools.ts'
 
 export type McpServerOpts = {
   /** Bearer token clients must send; random per daemon start. */
@@ -33,6 +34,8 @@ export type McpServerOpts = {
   session?: SessionTools
   scheduler?: ScheduleTools
   capabilities?: CapabilityTools
+  /** 013 FR9: inbox, source and draft tools, owner DM only. */
+  watch?: WatchTools
   /** 0 picks a free port. */
   port?: number
 }
@@ -58,11 +61,11 @@ export function startMcpServer(opts: McpServerOpts): { port: number; stop: () =>
       const mcp = new Server({ name: 'tg', version: '1.0.0' }, { capabilities: { tools: {} } })
       const policy = resolvePolicy(loadAccess(), key, chatTypeOf(key))
       registerTelegramTools(mcp, opts.api, opts.botToken, key, policy, {
-        list: () => [...opts.memory.list(policy), ...opts.history?.list(policy) ?? [], ...opts.skills?.list(policy) ?? [], ...opts.agents?.list(policy) ?? [], ...opts.session?.list() ?? [], ...opts.scheduler?.list(policy) ?? [], ...opts.capabilities?.list(policy) ?? []],
+        list: () => [...opts.memory.list(policy), ...opts.history?.list(policy) ?? [], ...opts.skills?.list(policy) ?? [], ...opts.agents?.list(policy) ?? [], ...opts.session?.list() ?? [], ...opts.scheduler?.list(policy) ?? [], ...opts.capabilities?.list(policy) ?? [], ...opts.watch?.list(key) ?? []],
         // Each handler is awaited in turn: an async one returns a Promise even for names it doesn't own,
         // which a `??` chain would take as handled (007: schedule_* never reached the scheduler).
         call: async (name, args) => {
-          for (const tools of [opts.memory, opts.skills, opts.agents, opts.session, opts.history, opts.scheduler, opts.capabilities]) {
+          for (const tools of [opts.memory, opts.skills, opts.agents, opts.session, opts.history, opts.scheduler, opts.capabilities, opts.watch]) {
             const r = await tools?.call(name, args, key, policy)
             if (r) return r
           }

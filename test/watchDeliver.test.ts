@@ -106,6 +106,10 @@ test('snooze re-pings after the timer; done closes loops; mute calls back', asyn
   expect(s.d.tap('mute', m)).toBe('🔕 Muted Boss')
   expect(s.muted).toEqual(['whatsapp:boss'])
   expect(s.d.tap('draft', m)).toContain('not available')
+  const drafted: any[] = []
+  const d2 = createDeliver({ db: s.db, api: { sendMessage: async () => {} }, owner: '42', vips: [], mute: () => {}, draft: r => drafted.push(r) })
+  expect(d2.tap('draft', m)).toBe('✍️ Drafting a reply…')
+  expect(drafted).toEqual([{ id: m, source: 'whatsapp', from_id: 'boss', from_name: 'Boss', text: 'hello 2' }])
   expect(s.d.tap('done', 999)).toBe('Item no longer stored.')
 })
 

@@ -23,6 +23,8 @@ export type DeliverOpts = {
   vips: string[]
   /** Called on Mute sender; durable mutes are memory (014). */
   mute: (source: string, fromId: string) => void
+  /** Called on Draft reply: starts a turn that drafts with `draft_reply` (tools.ts). */
+  draft?: (item: { id: number; source: string; from_name: string | null; text: string }) => void
   /** Local "HH:MM" bounds; default 23:00–07:30. */
   quiet?: { start: string; end: string }
   pingsPerHour?: number
@@ -136,7 +138,7 @@ export function createDeliver(o: DeliverOpts) {
 
   /** A button tap; returns the label to show. */
   function tap(action: Action, id: number): string {
-    const r = o.db.query('SELECT source, from_id, from_name FROM items WHERE id = ?').get(id) as Pick<Row, 'source' | 'from_id' | 'from_name'> | null
+    const r = o.db.query('SELECT id, source, from_id, from_name, text FROM items WHERE id = ?').get(id) as Pick<Row, 'id' | 'source' | 'from_id' | 'from_name' | 'text'> | null
     if (!r) return 'Item no longer stored.'
     switch (action) {
       case 'done':
@@ -154,7 +156,9 @@ export function createDeliver(o: DeliverOpts) {
         setStatus.run('done', null, id)
         return `🔕 Muted ${r.from_name ?? r.from_id ?? 'sender'}`
       case 'draft':
-        return 'Drafting replies is not available yet.'
+        if (!o.draft) return 'Drafting replies is not available yet.'
+        o.draft(r)
+        return '✍️ Drafting a reply…'
     }
   }
 
