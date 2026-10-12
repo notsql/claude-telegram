@@ -22,6 +22,9 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 | [007](./007-scheduler/spec.md) | Scheduled jobs (cron) | P5 | 001–003 |
 | [009](./009-subagents-skills/spec.md) | Custom subagents & full skill usage | P2 (shipped agents), P4 (learned agents) | 001, 003, 004/006 |
 | [011](./011-single-binary/spec.md) | Single `tgc` binary with service subcommands | P2 | 001, 004, 005, 009 |
+| [012](./012-capability-acquisition/spec.md) | Capability acquisition: auto-solve ladder (installed → CLI → MCP → web) | P6 | 003, 006, 009 |
+| [013](./013-source-watchers/spec.md) | Source watchers: live inbox across WhatsApp, Telegram account, email, GitHub, … with pings and digests | P6 | 001, 003, 004, 007, 012 |
+| [014](./014-pattern-learning/spec.md) | Pattern learning: habits, VIPs, mutes, routines → memory and proposals | P7 | 004–007, 013 |
 | [010](./010-agent-teams/spec.md) | Agent teams | **Deferred**: teams need an interactive session, which `-p` can't provide | 009 |
 
 Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](https://code.claude.com/docs/en/headless), [hooks](https://code.claude.com/docs/en/hooks), [sub-agents](https://code.claude.com/docs/en/sub-agents), [skills](https://code.claude.com/docs/en/skills), [agent-teams](https://code.claude.com/docs/en/agent-teams).
@@ -41,7 +44,9 @@ Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](http
 | Parallel multi-agent teams | Claude Code agent teams: deferred until they work in `-p` (010) |
 | Context assembly | `SessionStart` and `UserPromptSubmit` hooks inject memory, the user model and recalled history (004/005) |
 | Scheduled automations | A daemon-owned `croner` scheduler, with results delivered to the originating chat or topic (007) |
-| Multi-platform messaging | Telegram DMs, groups and forum topics (002). Other platforms are a non-goal for now. |
+| Multi-platform messaging | Telegram DMs, groups and forum topics (002) are the surface. Other platforms are **watched** as sources (013), and sends to them always need the owner's tap. |
+| Proactive inbox / habits | Source watchers with triage, pings and digests (013); pattern mining into memory (014) |
+| Missing tools | Capability ladder with owner-approved installs of CLIs and MCP servers, then a web fallback (012) |
 | Tool approval | Claude Code's native permission rules first. The `PermissionRequest` http hook then shows inline Allow / Deny / Always buttons (`applyRule`), and `PreToolUse` enforces hard scope limits (003) |
 | Slash commands | Telegram bot menu (`setMyCommands`, scoped). These are a **fallback**; autonomy is the primary path (008) |
 

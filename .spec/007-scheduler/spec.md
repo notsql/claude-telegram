@@ -24,7 +24,7 @@ A personal agent should act on its own schedule: morning briefings, reminders, r
 - **FR11**: Usage guard: each job runs with `--max-turns`, and jobs count toward the daily turn budget (001). When the subscription usage limit is hit, due jobs are deferred until the reset and not counted as failures.
 
 ## Non-goals
-- Event triggers such as webhooks or file watchers (a possible future feature).
+- Event triggers such as webhooks or file watchers. Message sources are covered by 013.
 - Distributed or multi-machine scheduling.
 
 ## Acceptance criteria
