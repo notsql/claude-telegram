@@ -93,6 +93,8 @@ import { createCapabilityRequests } from './capabilities/request.ts'
 import { createCapabilityTools } from './capabilities/tools.ts'
 import { runArgv } from './capabilities/install.ts'
 import { createResumer } from './capabilities/resume.ts'
+import { createCapabilityNotices } from './capabilities/notices.ts'
+import { linkSkill, loadLedger, unlearned, useSkillName } from './capabilities/ledger.ts'
 import { registerSessions } from './telegram/handlers/sessions.ts'
 import { registerUsage } from './telegram/handlers/usage.ts'
 import { registerSettings } from './telegram/handlers/settings.ts'
@@ -218,7 +220,8 @@ const skillStoreFor = (key: string) => {
   if (!st) skillStores.set(root, st = createSkillStore(root))
   return st
 }
-const skillNotices = createSkillNotices(bot.api)
+// 012 FR9: a learned use-<name> skill links to its capability.
+const skillNotices = createSkillNotices(bot.api, name => { linkSkill(STATE_DIR, name) })
 const skillApplier = createSkillApplier({
   store: skillStoreFor,
   taken: st => takenNames(st.root, [config.cwd]),
@@ -291,7 +294,8 @@ const reflection = createReflectionWorker({
     const p = policyOf(key)
     if (!p.autoLearn || p.autoLearn === 'off') return null
     const learned = skillStoreFor(key).list().filter(s => s.metadata.source === 'tg')
-    return skillsContext(learned, toolCalls(delta), similarRequests(key, delta, payload.session_id), learnedAgents(join(claudeDir(), 'agents')))
+    return skillsContext(learned, toolCalls(delta), similarRequests(key, delta, payload.session_id), learnedAgents(join(claudeDir(), 'agents')),
+      unlearned(loadLedger(STATE_DIR)).map(c => `${useSkillName(c)}: ${c.kind} ${c.name}`))
   },
   apply: async (key, proposals, delta, payload) => {
     applier.apply(key, proposals)
@@ -319,7 +323,17 @@ const capabilityRequests = createCapabilityRequests({
   sender: key => participants.active(key)[0],
   install: argv => runArgv(argv),
   generation: key => sessions.generation(key),
-  onInstalled: (origin, req) => resumer.installed(origin, req.candidate.name, req.resume, req.candidate.auth),
+  onInstalled: (origin, req, entry) => {
+    void capabilityNotices.notify(loadAccess().allowFrom[0]!, entry)
+    return resumer.installed(origin, req.candidate.name, req.resume, req.candidate.auth)
+  },
+})
+// 012 FR10: install notices with Undo; the skill is archived from the owner DM's store, where FR9 learned it.
+const capabilityNotices = createCapabilityNotices({
+  api: bot.api,
+  stateDir: STATE_DIR,
+  uninstall: argv => runArgv(argv),
+  archiveSkill: name => { skillStoreFor(loadAccess().allowFrom[0]!).archive(name) },
 })
 // 012 FR7/FR8: login handoff, then a follow-up turn queued in the origin session (same runInSession path as `mode: session` jobs).
 const resumer = createResumer({
@@ -578,7 +592,7 @@ const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: (
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
-registerCapabilities(bot, capabilityRequests, resumer)
+const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
@@ -600,6 +614,7 @@ const commands: Command[] = [
   } },
   settingsCommand,
   cronUi.command,
+  capsUi.command,
 ]
 const builtins = registry(commands)
 // 008 FR6: the / menu holds the built-ins only; skills live under /skills (FR12).

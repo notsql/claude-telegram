@@ -20,6 +20,8 @@ const CapabilitySchema = z.object({
   source: z.string(),
   /** Install argv as run, without a shell. */
   install: z.array(z.string()),
+  /** The paired uninstall argv (templates.ts), run by Undo; null when there is none. */
+  uninstall: z.array(z.string()).nullable().optional(),
   approvedAt: z.number().nullable(),
   approvedBy: z.string().nullable(),
   installedAt: z.number().nullable(),
@@ -58,4 +60,22 @@ export function findCapability(ledger: Capability[], kind: CapabilityKind, name:
 
 export function isSkipped(c: Capability | undefined, now = Date.now()): boolean {
   return c?.status === 'skipped' && c.skippedUntil !== null && c.skippedUntil > now
+}
+
+/** FR9: the skill a capability's first successful use is learned under. */
+export function useSkillName(c: Pick<Capability, 'name'>): string {
+  return `use-${c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`.slice(0, 48).replace(/-+$/, '')
+}
+
+/** Installed capabilities with no skill yet, for the reflection pass (FR9). */
+export const unlearned = (ledger: Capability[]) => ledger.filter(c => c.status === 'installed' && !c.skill)
+
+/** Links a newly learned `use-<name>` skill to its ledger entry (FR9), so rung 1 finds it. True if one was linked. */
+export function linkSkill(stateDir: string, skill: string): boolean {
+  const ledger = loadLedger(stateDir)
+  const c = unlearned(ledger).find(c => useSkillName(c) === skill)
+  if (!c) return false
+  c.skill = skill
+  saveLedger(stateDir, ledger)
+  return true
 }

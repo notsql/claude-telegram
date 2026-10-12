@@ -51,8 +51,8 @@ export type RequestDeps = {
   install: (argv: string[]) => Promise<InstallResult>
   /** The key's session generation, captured so a reset session gets no resume turn. */
   generation: (key: string) => number
-  /** After a successful install: auth handoff and resume turn (resume.ts). */
-  onInstalled: (origin: Origin, req: CapabilityRequest) => unknown
+  /** After a successful install: the notice with Undo (notices.ts), auth handoff and resume turn (resume.ts). */
+  onInstalled: (origin: Origin, req: CapabilityRequest, entry: Capability) => unknown
   timeoutMs?: number
   now?: () => number
 }
@@ -63,19 +63,20 @@ export function createCapabilityRequests(deps: RequestDeps) {
   const pending = new Map<string, Pending>()
   const now = () => deps.now?.() ?? Date.now()
 
-  function record(req: CapabilityRequest, commands: Commands, patch: Partial<Capability>): void {
+  function record(req: CapabilityRequest, commands: Commands, patch: Partial<Capability>): Capability {
     const kind = ledgerKind(req.candidate)
     const ledger = loadLedger(deps.stateDir)
     const prev = findCapability(ledger, kind, req.candidate.name)
     const entry: Capability = {
       id: capabilityId(kind, req.candidate.name), kind, name: req.candidate.name,
-      tier: req.candidate.tier, source: req.candidate.source, install: commands.install,
+      tier: req.candidate.tier, source: req.candidate.source, install: commands.install, uninstall: commands.uninstall,
       approvedAt: null, approvedBy: null, installedAt: null, status: 'skipped', skippedUntil: null,
       usedCount: 0, lastUsed: null,
       ...prev && { usedCount: prev.usedCount, lastUsed: prev.lastUsed, ...prev.skill && { skill: prev.skill } },
       ...patch,
     }
     saveLedger(deps.stateDir, [...ledger.filter(c => c.id !== entry.id), entry])
+    return entry
   }
 
   function card(p: Pick<Pending, 'req' | 'commands'>): string {
@@ -165,11 +166,11 @@ export function createCapabilityRequests(deps: RequestDeps) {
       pending.delete(id)
       const at = now()
       const r = await deps.install(p.commands.install)
-      record(p.req, p.commands, {
+      const entry = record(p.req, p.commands, {
         status: r.ok ? 'installed' : 'failed', approvedAt: at, approvedBy: by,
         installedAt: r.ok ? now() : null, skippedUntil: null,
       })
-      if (r.ok) void Promise.resolve(deps.onInstalled(p.origin, p.req)).catch(() => {})
+      if (r.ok) void Promise.resolve(deps.onInstalled(p.origin, p.req, entry)).catch(() => {})
       return r.ok
         ? { ok: true, text: '✅ Installed' }
         : { ok: false, text: `❌ Install failed${r.timedOut ? ' (timed out)' : ''}${r.output ? `:\n${r.output.slice(-1000)}` : ''}` }

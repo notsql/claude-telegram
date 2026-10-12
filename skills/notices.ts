@@ -19,7 +19,8 @@ export function skillNoticeText(c: Pick<SkillChange, 'verb' | 'name' | 'version'
   return c.verb === 'Learned' ? `📘 Learned skill ${c.name}` : `📘 Updated skill ${c.name} (v${c.version})`
 }
 
-export function createSkillNotices(api: Pick<Api, 'sendMessage'>) {
+/** `onLearned` runs for each new skill (012 FR9 links `use-<name>` skills to the capability ledger). */
+export function createSkillNotices(api: Pick<Api, 'sendMessage'>, onLearned?: (name: string) => void) {
   const changes = new Map<string, { key: string; change: SkillChange; undone?: boolean }>()
 
   function keyboard(key: string, change: SkillChange) {
@@ -38,6 +39,7 @@ export function createSkillNotices(api: Pick<Api, 'sendMessage'>) {
     keyOf: (id: string) => changes.get(id)?.key,
 
     notify(key: string, change: SkillChange): Promise<unknown> {
+      if (change.verb === 'Learned') onLearned?.(change.name)
       const target = parseKey(key)
       return api.sendMessage(target.chatId, skillNoticeText(change), { ...threadOpts(target), reply_markup: keyboard(key, change) }).catch(() => {})
     },
