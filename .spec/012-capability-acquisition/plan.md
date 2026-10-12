@@ -42,7 +42,7 @@ daemon: card in owner DM [Install][Details][Skip]
 `claude mcp add` and `claude plugin install` are documented CLI surfaces, so they are within constitution VIII. Running turns pick up the new server on their next spawn because the runner doesn't pass `--strict-mcp-config`.
 
 ## Scout
-The `tg-capability-scout` agent uses `model: sonnet` and `maxTurns: 15`. Its tools are WebSearch, WebFetch, and `Bash` restricted by `allowed-tools` to `brew search|info`, `npm view`, `pip index versions`, `gh api repos/*` and `curl -s https://registry.modelcontextprotocol.io/*`. It returns cards as JSON in its final message, and the main agent passes one card on to `capability_request`.
+The `tg-capability-scout` agent uses `model: sonnet` and `maxTurns: 15`. Its tools are WebSearch and WebFetch only; it reads the Homebrew, npm, PyPI, GitHub and MCP registry JSON APIs. It has no `Bash`, because `Bash(cmd:*)` patterns in an agent's `tools:` line do not restrict it (checked live on 2026-10-12). It returns cards as JSON in its final message, and the main agent passes one card on to `capability_request`.
 
 ## Reuse
 - The approval card pattern and buttons come from 003 `policy/approvals.ts`, and the notice with **Undo** comes from 004/006.
