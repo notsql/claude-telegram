@@ -11,8 +11,8 @@ import { Bot, GrammyError } from 'grammy'
 import type { InlineKeyboardButton, ReactionTypeEmoji } from 'grammy/types'
 import { autoRetry } from '@grammyjs/auto-retry'
 import { apiThrottler } from '@grammyjs/transformer-throttler'
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs'
-import { execFileSync } from 'child_process'
+import { readFileSync, mkdirSync, rmSync } from 'fs'
+import { killStale, writePidFile } from './util/proc.ts'
 import { randomBytes } from 'crypto'
 import { join } from 'path'
 import { STATE_DIR, initAccess, setBotUsername, loadAccess, dmCommandGate, checkApprovals, saveAccess } from './access.ts'
@@ -26,6 +26,10 @@ import { INBOX_DIR } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
+import { inboxPath, insertItem, openInboxDb } from './watch/store.ts'
+import { loadSources, recordItem, type Source } from './watch/registry.ts'
+import { adapterFor, createSupervisor } from './watch/supervisor.ts'
+import { createIngestRoute } from './watch/ingest.ts'
 import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from './agent/runner.ts'
 import type { StreamEvent } from './agent/stream.ts'
 import { parseKey } from './sessions/key.ts'
@@ -151,18 +155,11 @@ try {
 // 011 FR4: the PID file holds `<pid> <start time>`, so an older poller is recognised
 // however it was launched (bun daemon.ts, bun cli.ts start, compiled binary) and a
 // reused PID never matches. An old plain-PID file has no start time: left alone.
-// LC_ALL=C: launchd and a shell otherwise format the date differently.
-const startTime = (pid: number) =>
-  execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, LC_ALL: 'C' } }).trim()
-try {
-  const [pid, ...started] = readFileSync(PID_FILE, 'utf8').trim().split(' ')
-  const stale = parseInt(pid!, 10)
-  if (stale > 1 && stale !== process.pid && started.length && startTime(stale) === started.join(' ')) {
-    log(`replacing stale poller pid=${stale}`)
-    process.kill(stale, 'SIGTERM')
-  }
-} catch {}
-writeFileSync(PID_FILE, `${process.pid} ${startTime(process.pid)}`)
+{
+  const stale = killStale(PID_FILE)
+  if (stale) log(`replacing stale poller pid=${stale}`)
+}
+writePidFile(PID_FILE, process.pid)
 
 // Without these the process dies silently on any unhandled rejection.
 process.on('unhandledRejection', err => log(`unhandled rejection: ${err}`))
@@ -344,7 +341,25 @@ const approvals = createApprovals({
 })
 // 008 FR5: a skill command's <channel> wrapper, handed to its turn as hook context.
 const skillContext = new Map<string, string>()
-const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
+// 013 FR1, FR12: source watchers, only with TELEGRAM_WATCH=1. Items land in inbox.db.
+const watch = config.watch ? (() => {
+  const db = openInboxDb(inboxPath(STATE_DIR))
+  const store = (source: Source, payload: unknown) => {
+    const item = adapterFor(source)?.map(source.id, payload)
+    if (item && insertItem(db, item) !== null) recordItem(STATE_DIR, source.id, Date.now())
+  }
+  let sources: Source[] = []
+  try { sources = loadSources(STATE_DIR) } catch (err) { log(`watch: sources.json unreadable: ${err}`) }
+  const supervisor = createSupervisor({ stateDir: STATE_DIR, sources, onPayload: store, log, pidDir: join(STATE_DIR, 'watch') })
+  const route = createIngestRoute({
+    secretOf: supervisor.secretOf,
+    header: id => adapterFor(supervisor.source(id)!)?.signatureHeader ?? 'x-signature',
+    store: (id, payload) => store(supervisor.source(id)!, payload),
+    log,
+  })
+  return { supervisor, route }
+})() : undefined
+const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.route, handlers: {
   'permission-request': approvals.handle,
   'session-start': (payload, key) => injector.sessionStart(payload, policyOf(key), participants.active(key)),
   'user-prompt-submit': (payload, key) => {
@@ -381,6 +396,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
+void watch?.supervisor.start(hookServer.port)
 
 // 008 FR4, FR19: the skills, plugins and MCP servers each chat can use.
 const discovery = createDiscovery({
@@ -661,6 +677,7 @@ function shutdown(): void {
   scheduler.stop()
   systemJobs.stop()
   stopIndexer()
+  watch?.supervisor.stop()
   void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
     hookServer.stop()

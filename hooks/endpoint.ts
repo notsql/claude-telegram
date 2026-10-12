@@ -17,6 +17,8 @@ export type HookServerOpts = {
   /** 0 picks a free port. */
   port?: number
   log?: (line: string) => void
+  /** 013: `POST /ingest/<id>` for webhook sources; authenticated by the route itself (HMAC). */
+  ingest?: (id: string, req: Request) => Promise<Response>
 }
 
 export function startHookServer(opts: HookServerOpts): { port: number; stop: () => void } {
@@ -27,6 +29,8 @@ export function startHookServer(opts: HookServerOpts): { port: number; stop: () 
     async fetch(req, server) {
       // A PermissionRequest is held until the user answers (003 FR4), far past Bun's 10s idle default.
       server.timeout(req, 0)
+      const source = new URL(req.url).pathname.match(/^\/ingest\/([a-z0-9][a-z0-9_-]*)$/)?.[1]
+      if (source && opts.ingest) return opts.ingest(source, req)
       const event = new URL(req.url).pathname.match(/^\/hook\/([a-z-]+)$/)?.[1]
       if (!event || req.method !== 'POST') return new Response('not found', { status: 404 })
       if (req.headers.get('authorization') !== `Bearer ${opts.authToken}`) {
