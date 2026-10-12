@@ -8,12 +8,22 @@
 
 import pkg from './package.json' with { type: 'json' }
 
+/** A handler may return an exit code (e.g. `status`). */
 type Command = { usage: string; run: (args: string[]) => Promise<unknown> }
+
+const svc = () => import('./service/install.ts')
 
 export const commands: Record<string, Command> = {
   start: { usage: 'start              run the daemon', run: () => import('./daemon.ts') },
   reindex: { usage: 'reindex            rebuild the history index', run: async () => (await import('./history/reindex.ts')).main() },
   memory: { usage: 'memory <args…>     memory bridge (status, hook, import, …)', run: async args => (await import('./memory/bridge.ts')).main(args) },
+  // FR1: service management
+  install: { usage: 'install            install and start the login service', run: async () => (await svc()).install() },
+  uninstall: { usage: 'uninstall          stop and remove the service', run: async () => (await svc()).uninstall() },
+  stop: { usage: 'stop               stop the service', run: async () => (await svc()).stop() },
+  restart: { usage: 'restart            restart the service', run: async () => (await svc()).restart() },
+  status: { usage: 'status             is the service running (exit 0 if so)', run: async () => (await svc()).status() },
+  logs: { usage: 'logs [-f]          tail the daemon logs, -f to follow', run: async args => (await svc()).logs(args) },
 }
 
 export const usage = () =>
@@ -35,8 +45,8 @@ export async function run(argv: string[], table = commands): Promise<number> {
     process.stderr.write(`unknown command: ${cmd}\n${usage()}`)
     return 2
   }
-  await c.run(rest)
-  return 0
+  const code = await c.run(rest)
+  return typeof code === 'number' ? code : 0
 }
 
 if (import.meta.main) {
