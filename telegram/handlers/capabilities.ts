@@ -2,9 +2,19 @@
 
 import type { Bot } from 'grammy'
 import type { CapabilityRequests } from '../../capabilities/request.ts'
+import type { Resumer } from '../../capabilities/resume.ts'
 import { answer, appendLabel, failed, isOwner, ownerOnly } from './ui.ts'
 
-export function registerCapabilities(bot: Bot, requests: CapabilityRequests) {
+export function registerCapabilities(bot: Bot, requests: CapabilityRequests, resumer: Resumer) {
+  // FR7: the owner finished the login; resume the origin session (FR8).
+  bot.callbackQuery(/^cap:done:([0-9a-f]+)$/, async ctx => {
+    if (!isOwner(ctx)) return ownerOnly(ctx)
+    const r = resumer.done(ctx.match[1]!)
+    if (r === undefined) return answer(ctx, 'Already done.')
+    void answer(ctx)
+    await appendLabel(ctx, r ? '✅ Done; continuing the task' : '✅ Done; the session was reset, so not continuing')
+  })
+
   bot.callbackQuery(/^cap:(install|details|skip):([0-9a-f]+)$/, async ctx => {
     if (!isOwner(ctx)) return ownerOnly(ctx)
     const [, action, id] = ctx.match as unknown as [string, 'install' | 'details' | 'skip', string]

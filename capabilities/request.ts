@@ -11,6 +11,7 @@ import { randomBytes } from 'crypto'
 import type { Policy } from '../policy/schema.ts'
 import { buildCommands, type Candidate, type Commands } from './templates.ts'
 import type { InstallResult } from './install.ts'
+import type { Origin } from './resume.ts'
 import {
   capabilityId, findCapability, isSkipped, loadLedger, saveLedger, SKIP_MS,
   type Capability, type CapabilityKind,
@@ -21,7 +22,9 @@ export const REQUEST_TIMEOUT_MS = 24 * 60 * 60 * 1000
 export type Tier = Capability['tier']
 
 export type CapabilityRequest = {
-  candidate: Candidate & { tier: Tier; source: string; publisher?: string; homepage?: string; why?: string }
+  candidate: Candidate & { tier: Tier; source: string; publisher?: string; homepage?: string; why?: string
+    /** Login command or URL the owner runs after install (FR7), from the scout's card. */
+    auth?: string }
   reason: string
   resume: string
 }
@@ -31,6 +34,7 @@ export const ledgerKind = (c: Candidate): CapabilityKind => (c.kind === 'mcp' ||
 
 type Pending = {
   req: CapabilityRequest
+  origin: Origin
   commands: Commands
   messageId?: number
   timer: ReturnType<typeof setTimeout>
@@ -45,6 +49,10 @@ export type RequestDeps = {
   sender: (key: string) => string | undefined
   /** Runs an install argv (install.ts `runArgv`, stubbed in tests). */
   install: (argv: string[]) => Promise<InstallResult>
+  /** The key's session generation, captured so a reset session gets no resume turn. */
+  generation: (key: string) => number
+  /** After a successful install: auth handoff and resume turn (resume.ts). */
+  onInstalled: (origin: Origin, req: CapabilityRequest) => unknown
   timeoutMs?: number
   now?: () => number
 }
@@ -116,7 +124,7 @@ export function createCapabilityRequests(deps: RequestDeps) {
 
       const id = randomBytes(4).toString('hex')
       const owner = owners[0]
-      const p: Pending = { req, commands, timer: setTimeout(() => {
+      const p: Pending = { req, origin: { key, generation: deps.generation(key) }, commands, timer: setTimeout(() => {
         if (!pending.has(id)) return
         skip(id, p)
         if (p.messageId != null) void deps.api.editMessageText(owner, p.messageId, `${card(p)}\n\n⌛ No answer; skipped`).catch(() => {})
@@ -161,6 +169,7 @@ export function createCapabilityRequests(deps: RequestDeps) {
         status: r.ok ? 'installed' : 'failed', approvedAt: at, approvedBy: by,
         installedAt: r.ok ? now() : null, skippedUntil: null,
       })
+      if (r.ok) void Promise.resolve(deps.onInstalled(p.origin, p.req)).catch(() => {})
       return r.ok
         ? { ok: true, text: '✅ Installed' }
         : { ok: false, text: `❌ Install failed${r.timedOut ? ' (timed out)' : ''}${r.output ? `:\n${r.output.slice(-1000)}` : ''}` }
