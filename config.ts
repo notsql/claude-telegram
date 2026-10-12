@@ -8,7 +8,7 @@
 import { join } from 'path'
 import { STATE_DIR } from './access.ts'
 
-export const MIN_CLAUDE_VERSION = '2.1.288'
+const MIN_CLAUDE_VERSION = '2.1.288'
 
 export type Config = {
   maxTurns: number

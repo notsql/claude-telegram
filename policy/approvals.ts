@@ -17,7 +17,7 @@ import type { AuditEntry } from './audit.ts'
 const ID_ALPHABET = 'abcdefghijkmnopqrstuvwxyz'
 
 /** `yes abcde` / `no abcde` typed in chat (FR5), same as the legacy channel. */
-export const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
+const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 
 /** The request id and decision of a text reply, or undefined if `text` isn't one. */
 export function parseTextReply(text: string): { id: string; decision: 'allow' | 'deny' } | undefined {
@@ -193,7 +193,7 @@ function suggestedRules(suggestions: unknown): RuleValue[] {
       : [])
 }
 
-export function hookOutput(
+function hookOutput(
   d: Decision | 'expired',
   toolName: string,
   input: Record<string, unknown>,

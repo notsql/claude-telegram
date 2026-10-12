@@ -6,7 +6,7 @@
 
 import type { BufferedMessage } from '../sessions/groupBuffer.ts'
 
-export const escapeXml = (s: string) =>
+const escapeXml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 const hhmm = (ts: number) => new Date(ts).toTimeString().slice(0, 5)

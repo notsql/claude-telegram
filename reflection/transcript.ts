@@ -9,7 +9,7 @@
 import { closeSync, openSync, readSync, statSync } from 'fs'
 
 /** About 8k tokens of dialogue; the newest part wins. */
-export const MAX_DELTA_CHARS = 32_000
+const MAX_DELTA_CHARS = 32_000
 
 const PREVIEW_CHARS = 160
 const preview = (input: Record<string, unknown>) => {

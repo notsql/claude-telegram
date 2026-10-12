@@ -17,8 +17,8 @@ import type { Proposals } from '../reflection/prompt.ts'
 import { MARKER, writeAgent } from './tools.ts'
 import { agentRefusal, AGENT_NAME, type AgentDraft } from './validate.ts'
 
-export const MIN_CONFIDENCE = 0.8
-export const MIN_RECURRENCE = 3
+const MIN_CONFIDENCE = 0.8
+const MIN_RECURRENCE = 3
 const MAX_PENDING = 100
 
 /** Name and description of each agent in `dir` this bot wrote, for the reflector. */
@@ -97,4 +97,3 @@ export function createAgentApplier(opts: AgentApplyOpts) {
   }
 }
 
-export type AgentApplier = ReturnType<typeof createAgentApplier>

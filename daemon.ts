@@ -190,7 +190,7 @@ bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 60 }))
 // Optimistic buttons: a tap is handled off the sequential update loop, so it
 // never waits behind another update's throttled reply. Handlers answer the
 // tap with the expected result first and only change it if the work fails.
-bot.on('callback_query', (ctx, next) => { void next().catch(err => log(`callback handler error: ${err}`)) })
+bot.on('callback_query', (_, next) => { void next().catch(err => log(`callback handler error: ${err}`)) })
 if (!STATIC) setInterval(() => checkApprovals(bot.api), 5000).unref()
 
 // FR10: a missing login is reported, not fatal; the owner can log in without a restart.

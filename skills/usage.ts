@@ -11,7 +11,7 @@ import { dirname } from 'path'
 
 export const OUTCOMES = ['success', 'corrected', 'failed'] as const
 export type Outcome = typeof OUTCOMES[number]
-export const REFINE_AFTER = 3
+const REFINE_AFTER = 3
 
 export type SkillUsage = {
   count: number

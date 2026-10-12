@@ -11,8 +11,8 @@ import { createTurnBudget } from '../config.ts'
 import { readDelta } from './transcript.ts'
 import { reflectionInput, type Proposals } from './prompt.ts'
 
-export const DEBOUNCE_MS = 30_000
-export const DAILY_CAP = 100
+const DEBOUNCE_MS = 30_000
+const DAILY_CAP = 100
 
 export type ReflectionOpts = {
   /** Runs the reflector one-shot on the full input. */

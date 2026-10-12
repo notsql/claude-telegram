@@ -40,7 +40,7 @@ export function cronText(expr: string): string {
 }
 
 /** "Thu 8 Oct 2026, 08:30" in `tz`, built from parts so ICU versions can't change the layout. */
-export function formatTime(d: Date, tz: string): string {
+function formatTime(d: Date, tz: string): string {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   }).formatToParts(d)
@@ -49,7 +49,7 @@ export function formatTime(d: Date, tz: string): string {
 }
 
 /** The next `n` run times after `from`; empty for a one-off in the past. */
-export function nextRuns(job: Job, n = 3, from = new Date()): Date[] {
+function nextRuns(job: Job, n = 3, from = new Date()): Date[] {
   return new Cron(pattern(job), { timezone: job.tz, paused: true }).nextRuns(n, from)
 }
 

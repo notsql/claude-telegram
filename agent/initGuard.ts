@@ -10,7 +10,7 @@
 import type { InitEvent, StreamEvent } from './stream.ts'
 
 /** Problems with the init state; empty when the turn may continue. */
-export function initProblems(init: InitEvent, sessionStartSeen: boolean): string[] {
+function initProblems(init: InitEvent, sessionStartSeen: boolean): string[] {
   const out: string[] = []
   const tg = init.mcp_servers.find(s => s.name === 'tg')
   if (tg?.status !== 'connected') out.push(`MCP server tg ${tg ? tg.status : 'missing'}`)

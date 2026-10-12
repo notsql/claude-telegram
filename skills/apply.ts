@@ -20,7 +20,7 @@ import { nameRefusal } from './paths.ts'
 import { parseSkill, patchSections, splitSections, type SkillStore } from './store.ts'
 import { fieldsToExtra, skillRefusal, type SkillFields } from './validate.ts'
 
-export const MIN_CONFIDENCE = 0.7
+const MIN_CONFIDENCE = 0.7
 const MAX_PENDING = 100
 
 export type SkillProposal = Proposals['skills'][number]
@@ -59,7 +59,7 @@ const clean = (sections: SkillProposal['sections']) =>
   Object.fromEntries(Object.entries(sections).filter((e): e is [string, string] => !!e[1]?.trim()))
 
 /** The existing skill a proposal refers to: by name, else by a similar description. */
-export function matchSkill(store: SkillStore, name: string, description: string) {
+function matchSkill(store: SkillStore, name: string, description: string) {
   const byName = store.read(name)
   if (byName) return byName
   const want = tokens(description)
@@ -85,7 +85,7 @@ export function sectionDiff(body: string, sections: Record<string, string>): str
 }
 
 /** The draft as it will read, for previews and Edit. */
-export function draftText(pl: Planned): string {
+function draftText(pl: Planned): string {
   const cur = pl.op === 'patch' ? pl.store.read(pl.name) : undefined
   const fields = pl.fields ? fieldsToExtra(pl.fields).map(([k, v]) => `${k}: ${v}\n`).join('') : ''
   return `${pl.description}\n${fields}\n${patchSections(cur?.body ?? '', pl.sections)}`

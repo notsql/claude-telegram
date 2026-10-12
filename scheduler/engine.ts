@@ -12,7 +12,7 @@ import { loadJobs, saveJobs, type Job } from './store.ts'
 export const pattern = (job: Job) => (job.kind === 'cron' ? job.expr : job.at)
 
 /** FR7: missed runs younger than this run once on boot. */
-export const CATCH_UP_WINDOW_MS = 6 * 60 * 60 * 1000
+const CATCH_UP_WINDOW_MS = 6 * 60 * 60 * 1000
 
 export type EngineOpts = {
   stateDir: string
@@ -76,4 +76,3 @@ export function createEngine(opts: EngineOpts) {
   return { boot, reload, stop, scheduled: () => [...crons.keys()] }
 }
 
-export type Engine = ReturnType<typeof createEngine>

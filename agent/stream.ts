@@ -25,7 +25,7 @@ const ContentBlock = z.union([
   }),
   z.looseObject({ type: z.string() }),
 ])
-export type ContentBlock = z.infer<typeof ContentBlock>
+type ContentBlock = z.infer<typeof ContentBlock>
 
 const Usage = z.looseObject({
   input_tokens: z.number(),
@@ -33,7 +33,7 @@ const Usage = z.looseObject({
   cache_creation_input_tokens: z.number().optional(),
   cache_read_input_tokens: z.number().optional(),
 })
-export type Usage = z.infer<typeof Usage>
+type Usage = z.infer<typeof Usage>
 
 export const InitEvent = z.looseObject({
   type: z.literal('system'),
@@ -53,7 +53,7 @@ export const InitEvent = z.looseObject({
   capabilities: z.array(z.string()).optional(),
 })
 
-export const HookStartedEvent = z.looseObject({
+const HookStartedEvent = z.looseObject({
   type: z.literal('system'),
   subtype: z.literal('hook_started'),
   hook_id: z.string(),
@@ -61,7 +61,7 @@ export const HookStartedEvent = z.looseObject({
   hook_event: z.string(),
 })
 
-export const HookResponseEvent = z.looseObject({
+const HookResponseEvent = z.looseObject({
   type: z.literal('system'),
   subtype: z.literal('hook_response'),
   hook_id: z.string(),
@@ -72,7 +72,7 @@ export const HookResponseEvent = z.looseObject({
   exit_code: z.number().optional(),
 })
 
-export const ApiRetryEvent = z.looseObject({
+const ApiRetryEvent = z.looseObject({
   type: z.literal('system'),
   subtype: z.literal('api_retry'),
   error: z.unknown().optional(),
@@ -90,7 +90,7 @@ export const AssistantEvent = z.looseObject({
   }),
 })
 
-export const UserEvent = z.looseObject({
+const UserEvent = z.looseObject({
   type: z.literal('user'),
   session_id: z.string(),
   parent_tool_use_id: z.string().nullable().optional(),
@@ -100,14 +100,14 @@ export const UserEvent = z.looseObject({
   }),
 })
 
-export const ToolProgressEvent = z.looseObject({
+const ToolProgressEvent = z.looseObject({
   type: z.literal('tool_progress'),
   tool_name: z.string(),
   parent_tool_use_id: z.string().nullable().optional(),
   elapsed_time_seconds: z.number(),
 })
 
-export const RateLimitEvent = z.looseObject({
+const RateLimitEvent = z.looseObject({
   type: z.literal('rate_limit_event'),
   rate_limit_info: z.looseObject({
     status: z.string(),
@@ -135,13 +135,13 @@ export const ResultEvent = z.looseObject({
 })
 
 export type InitEvent = z.infer<typeof InitEvent>
-export type HookStartedEvent = z.infer<typeof HookStartedEvent>
-export type HookResponseEvent = z.infer<typeof HookResponseEvent>
-export type ApiRetryEvent = z.infer<typeof ApiRetryEvent>
+type HookStartedEvent = z.infer<typeof HookStartedEvent>
+type HookResponseEvent = z.infer<typeof HookResponseEvent>
+type ApiRetryEvent = z.infer<typeof ApiRetryEvent>
 export type AssistantEvent = z.infer<typeof AssistantEvent>
-export type UserEvent = z.infer<typeof UserEvent>
-export type ToolProgressEvent = z.infer<typeof ToolProgressEvent>
-export type RateLimitEvent = z.infer<typeof RateLimitEvent>
+type UserEvent = z.infer<typeof UserEvent>
+type ToolProgressEvent = z.infer<typeof ToolProgressEvent>
+type RateLimitEvent = z.infer<typeof RateLimitEvent>
 export type ResultEvent = z.infer<typeof ResultEvent>
 
 export type StreamEvent =

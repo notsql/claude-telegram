@@ -13,10 +13,10 @@ import { expandPath, isInside } from '../policy/args.ts'
 import { discoverSkills } from '../commands/skillMap.ts'
 import type { Policy } from '../policy/schema.ts'
 
-export const NAME_RE = /^[a-z0-9-]{1,48}$/
+const NAME_RE = /^[a-z0-9-]{1,48}$/
 
 /** Claude Code built-in commands and bundled skills a learned skill must not shadow. */
-export const BUILTIN_NAMES = new Set([
+const BUILTIN_NAMES = new Set([
   'add-dir', 'agents', 'bug', 'clear', 'compact', 'config', 'context', 'cost', 'doctor', 'exit', 'export', 'help',
   'hooks', 'init', 'login', 'logout', 'mcp', 'memory', 'model', 'permissions', 'plugin', 'pr-comments',
   'release-notes', 'resume', 'review', 'security-review', 'skills', 'status', 'vim', 'simplify', 'loop',
@@ -24,7 +24,7 @@ export const BUILTIN_NAMES = new Set([
 ])
 
 export const userSkillsRoot = (base = claudeDir()) => join(base, 'skills')
-export const projectSkillsRoot = (cwd: string) => join(cwd, '.claude', 'skills')
+const projectSkillsRoot = (cwd: string) => join(cwd, '.claude', 'skills')
 export const archiveDir = (root: string) => join(root, '.archive')
 
 /** The root a chat's learned skills are written to. */

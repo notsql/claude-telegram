@@ -13,9 +13,9 @@ import { MARKER } from './tools.ts'
 import { AGENT_NAME } from './validate.ts'
 import type { AgentUsage } from './usage.ts'
 
-export const STALE_DAYS = 60
+const STALE_DAYS = 60
 /** Runs an agent or skill needs before it is worth evaluating. */
-export const EVAL_MIN_RUNS = 5
+const EVAL_MIN_RUNS = 5
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /** Learned agents in `dir` not used for `days`, oldest first. */

@@ -30,7 +30,7 @@ export const PolicySchema = z.object({
 
 export type Policy = z.infer<typeof PolicySchema>
 
-export const ChatEntrySchema = z.object({ policy: PolicySchema.optional() })
+const ChatEntrySchema = z.object({ policy: PolicySchema.optional() })
 export type ChatEntry = z.infer<typeof ChatEntrySchema>
 
 export type ChatType = 'private' | 'group'

@@ -17,7 +17,7 @@ import { loadJobs, saveJobs, type Job } from './store.ts'
 export type JobStatus = 'ok' | 'error' | 'needs_approval' | 'deferred'
 
 /** FR8: consecutive failures before a job is disabled. */
-export const MAX_FAILURES = 3
+const MAX_FAILURES = 3
 
 export type JobRunDeps = {
   stateDir: string

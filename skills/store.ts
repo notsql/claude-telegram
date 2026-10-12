@@ -18,7 +18,7 @@ import { secretRefusal } from '../memory/guard.ts'
 import { archiveDir, validName } from './paths.ts'
 
 export const SECTIONS = ['When to use', 'Prerequisites', 'Steps', 'Pitfalls', 'Verify'] as const
-export const MAX_SKILL_BYTES = 16_384
+const MAX_SKILL_BYTES = 16_384
 
 export type Skill = {
   name: string
@@ -68,7 +68,7 @@ export function parseSkill(text: string, dir = ''): Skill | null {
   return { name, description, extra, metadata, body: m[2]!.trim(), dir }
 }
 
-export function renderSkill(s: Pick<Skill, 'name' | 'description' | 'extra' | 'metadata' | 'body'>): string {
+function renderSkill(s: Pick<Skill, 'name' | 'description' | 'extra' | 'metadata' | 'body'>): string {
   return [
     '---',
     `name: ${quote(s.name)}`,

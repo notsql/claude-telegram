@@ -60,7 +60,7 @@ export function interruptChild(child: Killable, termMs = 5000, killMs = 2000): v
   void child.exited.finally(() => { clearTimeout(term); clearTimeout(kill) })
 }
 
-export function renderMcpConfig(port: number, key: string) {
+function renderMcpConfig(port: number, key: string) {
   return { mcpServers: { tg: {
     type: 'http',
     url: `http://127.0.0.1:${port}/mcp?key=${encodeURIComponent(key)}`,

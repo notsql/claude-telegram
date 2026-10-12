@@ -25,14 +25,14 @@ const Common = {
   failures: z.number().int().nonnegative(),
 }
 
-export const JobSchema = z.discriminatedUnion('kind', [
+const JobSchema = z.discriminatedUnion('kind', [
   z.object({ ...Common, kind: z.literal('cron'), expr: z.string() }),
   z.object({ ...Common, kind: z.literal('at'), at: z.string() }),
 ])
 
 export type Job = z.infer<typeof JobSchema>
 
-export const JobsFileSchema = z.object({ jobs: z.array(JobSchema) })
+const JobsFileSchema = z.object({ jobs: z.array(JobSchema) })
 
 export const jobsPath = (stateDir: string) => join(stateDir, 'jobs.json')
 

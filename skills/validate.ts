@@ -22,10 +22,10 @@ export type SkillFields = {
   'disable-model-invocation'?: boolean
 }
 
-export const FIELD_NAMES = ['arguments', 'argument-hint', 'allowed-tools', 'context', 'agent', 'paths', 'disable-model-invocation'] as const
+const FIELD_NAMES = ['arguments', 'argument-hint', 'allowed-tools', 'context', 'agent', 'paths', 'disable-model-invocation'] as const
 
 /** Commands a `!` block may run: the program, then the allowed first arguments (none listed: any). */
-export const READ_ONLY: Record<string, string[] | null> = {
+const READ_ONLY: Record<string, string[] | null> = {
   git: ['status', 'log', 'diff', 'show', 'rev-parse'],
   gh: ['issue', 'pr', 'repo', 'run'],
   ls: null, cat: null, head: null, tail: null, wc: null, pwd: null, date: null,
@@ -51,7 +51,7 @@ export function commandRefusal(cmd: string): string | undefined {
 }
 
 /** The `` !`…` `` live-context commands in a SKILL.md body. */
-export const liveCommands = (body: string) => [...body.matchAll(/!`([^`]*)`/g)].map(m => m[1]!)
+const liveCommands = (body: string) => [...body.matchAll(/!`([^`]*)`/g)].map(m => m[1]!)
 
 const ARG_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const toolBase = (t: string) => t.replace(/\(.*$/, '').trim()
