@@ -17,7 +17,7 @@ When the agent can't do something, it currently says so and stops: there's no to
   3. **MCP server**: the official MCP registry (`registry.modelcontextprotocol.io`), then Claude Code plugin marketplaces the owner has added.
   4. **Web**: `WebFetch`/`WebSearch` for public data, then browser automation through the configured browser MCP (`safari-mcp`) for sites that need a login or interaction.
   The ladder lives in a shipped skill, `tg-capability-ladder`, which the main agent preloads. It also appears as a one-line rule in the appended system prompt: "never say you can't before running the ladder".
-- **FR2 — Detecting the gap.** Besides the model noticing for itself, a `PostToolUse` hook on `Bash` flags exit code 127 or a `command not found` message. The daemon then adds `additionalContext`: "missing command `<x>`: run tg-capability-ladder".
+- **FR2 — Detecting the gap.** Besides the model noticing for itself, a `PostToolUseFailure` hook on `Bash` (and `PostToolUse` for zero-exit cases) flags exit code 127 or a `command not found` message. The daemon then adds `additionalContext`: "missing command `<x>`: run tg-capability-ladder".
 - **FR3 — Scouting.** Rungs 2 and 3 are delegated to a new subagent, `tg-capability-scout`, which has web tools and read-only Bash for `brew`, `npm view`, `pip index` and `gh api`. It returns at most 3 **candidate cards**: `{kind: cli|mcp|plugin, name, source, publisher, install, homepage, popularity, lastRelease, license, auth, scopes, risk, why}`.
 - **FR4 — Trust tiers.** Each candidate gets a tier from its source:
   - `T1`: Homebrew core and casks, MCP servers published by the vendor itself (verified namespace in the registry), and the official plugin marketplace.

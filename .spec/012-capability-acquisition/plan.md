@@ -9,7 +9,7 @@ capabilities/
   request.ts     capability_request → card in owner DM, approval state, timeout → skip
   resume.ts      after install (+ auth Done) start the follow-up turn in the origin session
   tools.ts       capability_request, capability_list, capability_forget on the daemon MCP server
-  gap.ts         PostToolUse(Bash) detector for exit 127 / "command not found"
+  gap.ts         PostToolUse[Failure](Bash) detector for exit 127 / "command not found"
 assets/agents/tg-capability-scout.md
 assets/skills/tg-capability-ladder/SKILL.md
 ```
@@ -47,7 +47,7 @@ The `tg-capability-scout` agent uses `model: sonnet` and `maxTurns: 15`. Its too
 ## Reuse
 - The approval card pattern and buttons come from 003 `policy/approvals.ts`, and the notice with **Undo** comes from 004/006.
 - The follow-up turn uses the same `runTurn` that the scheduler uses for `mode: session` (007 `run.ts`).
-- The `PostToolUse` hook endpoint already exists (006 `Skill` matcher). Add a `Bash` matcher.
+- The `PostToolUse` hook endpoint already exists (006 `Skill` matcher). Add a `Bash` matcher, plus `PostToolUseFailure` on `Bash`: a non-zero exit arrives there with `error: "Exit code 127\n(eval):1: command not found: x"` (checked live on 2026-10-12). Both are sync so the hint reaches the model.
 
 ## Risks
 - **Supply chain**: trust tiers, exact-command display for T3, no shell, and owner approval every time a new capability is added.
