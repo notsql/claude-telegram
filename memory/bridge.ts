@@ -20,17 +20,18 @@ import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync } from
 import { dirname, join } from 'path'
 import { claudeDir, memoryRoot, userDir } from './paths.ts'
 import { createMemoryStore } from './store.ts'
+import { selfCommand } from '../util/self.ts'
 
-const HOOK_MARK = 'bridge.ts" session-start'
+// Old `bun ".../bridge.ts" session-start` and new self-command forms (011 FR4).
+const HOOK_MARK = /bridge\.ts" session-start|"memory" "session-start"/
 
-export type BridgePaths = { claudeMd: string; settings: string; root: string; script: string }
+export type BridgePaths = { claudeMd: string; settings: string; root: string }
 
 export function bridgePaths(root: string, base = claudeDir()): BridgePaths {
   return {
     claudeMd: join(base, 'CLAUDE.md'),
     settings: join(base, 'settings.json'),
     root,
-    script: join(import.meta.dir, 'bridge.ts'),
   }
 }
 
@@ -47,7 +48,7 @@ type HookEntry = { hooks?: { type?: string; command?: string }[] }
 type Settings = { hooks?: { SessionStart?: HookEntry[] } & Record<string, unknown> } & Record<string, unknown>
 
 const settingsOf = (p: BridgePaths): Settings => JSON.parse(read(p.settings) || '{}')
-const isOurs = (e: HookEntry) => !!e.hooks?.some(h => h.command?.includes(HOOK_MARK))
+const isOurs = (e: HookEntry) => !!e.hooks?.some(h => HOOK_MARK.test(h.command ?? ''))
 
 export function importEnabled(p: BridgePaths): boolean {
   return read(p.claudeMd).split('\n').includes(importLine(p))
@@ -64,11 +65,13 @@ export function setImport(p: BridgePaths, on: boolean): void {
   save(p.claudeMd, lines.join('\n').replace(/^\n+/, '') + '\n')
 }
 
+const hookCommand = () => selfCommand(['memory', 'session-start']).map(a => `"${a}"`).join(' ')
+
 export function setHook(p: BridgePaths, on: boolean): void {
   const s = settingsOf(p)
   const hooks = s.hooks ??= {}
   const entries = (hooks.SessionStart ?? []).filter(e => !isOurs(e))
-  if (on) entries.push({ hooks: [{ type: 'command', command: `bun "${p.script}" session-start` }] })
+  if (on) entries.push({ hooks: [{ type: 'command', command: hookCommand() }] })
   if (entries.length) hooks.SessionStart = entries
   else delete hooks.SessionStart
   if (!Object.keys(hooks).length) delete s.hooks
