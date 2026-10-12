@@ -21,6 +21,7 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 | [006](./006-skills-learning-loop/spec.md) | Self-authored skills / learning loop | P4 | 004, 005 |
 | [007](./007-scheduler/spec.md) | Scheduled jobs (cron) | P5 | 001–003 |
 | [009](./009-subagents-skills/spec.md) | Custom subagents & full skill usage | P2 (shipped agents), P4 (learned agents) | 001, 003, 004/006 |
+| [011](./011-single-binary/spec.md) | Single `tgc` binary with service subcommands | P2 | 001, 004, 005, 009 |
 | [010](./010-agent-teams/spec.md) | Agent teams | **Deferred**: teams need an interactive session, which `-p` can't provide | 009 |
 
 Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](https://code.claude.com/docs/en/headless), [hooks](https://code.claude.com/docs/en/hooks), [sub-agents](https://code.claude.com/docs/en/sub-agents), [skills](https://code.claude.com/docs/en/skills), [agent-teams](https://code.claude.com/docs/en/agent-teams).
