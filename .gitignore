@@ -150,6 +150,5 @@ vite.config.ts.timestamp-*
 # Turbo Repo
 .turbo
 
-# Single-binary build output
-dist/
+# bun build --compile leaves these in the cwd
 *.bun-build
