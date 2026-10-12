@@ -4,8 +4,8 @@
  * `claude plugin` calls that install, update and uninstall them.
  */
 
-import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { readJson } from '../util/files.ts'
 
 export type CatalogEntry = {
   id: string
@@ -19,13 +19,6 @@ export type CatalogEntry = {
 
 type Listed = { name: string; description?: string; category?: string; author?: string | { name?: string }; homepage?: string }
 
-const readJson = <T,>(path: string): T | undefined => {
-  try {
-    return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as T : undefined
-  } catch {
-    return undefined
-  }
-}
 
 export function catalog(claudeDir: string): CatalogEntry[] {
   const known = readJson<Record<string, { installLocation?: string }>>(join(claudeDir, 'plugins', 'known_marketplaces.json')) ?? {}

@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { join } from 'path'
 import { secretRefusal } from '../memory/guard.ts'
 import { archiveDir, validName } from './paths.ts'
+import { writeAtomic } from '../util/files.ts'
 
 export const SECTIONS = ['When to use', 'Prerequisites', 'Steps', 'Pitfalls', 'Verify'] as const
 const MAX_SKILL_BYTES = 16_384
@@ -129,9 +130,7 @@ export function createSkillStore(root: string) {
   }
 
   function write(name: string, text: string): void {
-    mkdirSync(dirOf(name), { recursive: true })
-    writeFileSync(`${fileOf(name)}.tmp`, text)
-    renameSync(`${fileOf(name)}.tmp`, fileOf(name))
+    writeAtomic(fileOf(name), text)
     changed(root, name)
   }
 

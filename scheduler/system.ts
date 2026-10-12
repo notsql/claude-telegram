@@ -7,8 +7,7 @@
  */
 
 import { Cron } from 'croner'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
-import { dirname } from 'path'
+import { readJson, writeAtomic } from '../util/files.ts'
 
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -29,13 +28,8 @@ export type SystemJobOpts = {
 
 export function startSystemJobs(opts: SystemJobOpts) {
   const now = () => opts.now?.() ?? Date.now()
-  let state: Record<string, number> = {}
-  try { state = JSON.parse(readFileSync(opts.stateFile, 'utf8')) } catch {}
-  const save = () => {
-    mkdirSync(dirname(opts.stateFile), { recursive: true })
-    writeFileSync(`${opts.stateFile}.tmp`, JSON.stringify(state) + '\n')
-    renameSync(`${opts.stateFile}.tmp`, opts.stateFile)
-  }
+  const state = readJson<Record<string, number>>(opts.stateFile) ?? {}
+  const save = () => writeAtomic(opts.stateFile, JSON.stringify(state) + '\n')
   const fire = (id: SystemJobId) => {
     state[id] = now()
     save()

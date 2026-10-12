@@ -8,12 +8,13 @@
  * keeps the previous file in `<dir>/.bak/<name>.v<version>.md`.
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Policy } from '../policy/schema.ts'
 import type { ToolResult } from '../memory/tools.ts'
 import { chatTypeOf } from '../policy/resolve.ts'
 import { agentRefusal, AGENT_NAME, type AgentDraft } from './validate.ts'
+import { writeAtomic } from '../util/files.ts'
 
 export const AUTHOR = 'tg-skill-author'
 
@@ -79,8 +80,7 @@ export function writeAgent(dir: string, draft: AgentDraft, current?: string): nu
     mkdirSync(join(dir, '.bak'), { recursive: true })
     writeFileSync(join(dir, '.bak', `${draft.name}.v${prev}.md`), current)
   }
-  writeFileSync(`${file}.tmp`, renderAgent(draft, prev + 1))
-  renameSync(`${file}.tmp`, file)
+  writeAtomic(file, renderAgent(draft, prev + 1))
   return prev + 1
 }
 

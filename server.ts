@@ -15,7 +15,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { Bot, GrammyError, InlineKeyboard, type Context } from 'grammy'
 import type { ReactionTypeEmoji } from 'grammy/types'
-import { readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { join } from 'path'
 import {
@@ -24,19 +24,9 @@ import {
 } from './access.ts'
 import { registerTelegramTools } from './mcp/telegramTools.ts'
 import { type AttachmentMeta, safeName, downloadPhoto } from './telegram/attachments.ts'
+import { ENV_FILE, loadEnvFile } from './config.ts'
 
-const ENV_FILE = join(STATE_DIR, '.env')
-
-// Load ~/.claude/channels/telegram/.env into process.env. Real env wins.
-// Plugin-spawned servers don't get an env block — this is where the token lives.
-try {
-  // Token is a credential — lock to owner. No-op on Windows (would need ACLs).
-  chmodSync(ENV_FILE, 0o600)
-  for (const line of readFileSync(ENV_FILE, 'utf8').split('\n')) {
-    const m = line.match(/^(\w+)=(.*)$/)
-    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2]
-  }
-} catch {}
+loadEnvFile()
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const STATIC = process.env.TELEGRAM_ACCESS_MODE === 'static'

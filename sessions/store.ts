@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
-import { dirname } from 'path'
+import { readFileSync, renameSync } from 'fs'
+import { writeJson } from '../util/files.ts'
 
 export type PastSession = { sessionId: string; startedAt: number; title: string }
 
@@ -41,12 +41,8 @@ export function createSessionStore(file: string, now: () => number = Date.now) {
     }
   }
 
-  // Atomic tmp+rename: a crash mid-write leaves the previous file intact.
   function save(): void {
-    mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
-    const tmp = file + '.tmp'
-    writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 })
-    renameSync(tmp, file)
+    writeJson(file, data)
   }
 
   function entry(key: string): SessionEntry {

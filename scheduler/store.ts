@@ -1,12 +1,12 @@
 /**
- * Scheduled jobs in `STATE_DIR/jobs.json` (007 FR1). Writes go through a
- * temp file and rename so a crash never leaves a half-written file.
+ * Scheduled jobs in `STATE_DIR/jobs.json` (007 FR1), written atomically.
  */
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 import { PolicySchema } from '../policy/schema.ts'
+import { writeJson } from '../util/files.ts'
 
 const Common = {
   id: z.string(),
@@ -44,8 +44,5 @@ export function loadJobs(stateDir: string): Job[] {
 }
 
 export function saveJobs(stateDir: string, jobs: Job[]): void {
-  const path = jobsPath(stateDir)
-  const text = JSON.stringify(JobsFileSchema.parse({ jobs }), null, 2) + '\n'
-  writeFileSync(`${path}.tmp`, text, { mode: 0o600 })
-  renameSync(`${path}.tmp`, path)
+  writeJson(jobsPath(stateDir), JobsFileSchema.parse({ jobs }))
 }

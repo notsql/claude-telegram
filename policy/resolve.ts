@@ -1,4 +1,4 @@
-import type { Access } from '../access.ts'
+import { loadAccess, type Access } from '../access.ts'
 import { defaultPolicy, type ChatType, type Policy } from './schema.ts'
 
 /** Telegram group and supergroup ids are negative; DMs use the user id. */
@@ -23,6 +23,9 @@ export function resolvePolicy(access: Access, key: string, type: ChatType): Poli
     ...(always.length && { alwaysAllow: always }),
   }
 }
+
+/** The key's policy as of now, from access.json. */
+export const policyOf = (key: string): Policy => resolvePolicy(loadAccess(), key, chatTypeOf(key))
 
 /**
  * Where Telegram-side policy writes land (Always, `/policy`): the whole chat,
