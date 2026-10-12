@@ -12,7 +12,7 @@ import { writeJson } from '../util/files.ts'
 
 export type HookEvent =
   | 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PermissionRequest'
-  | 'PostToolUse' | 'SubagentStart' | 'SubagentStop' | 'Stop' | 'PreCompact'
+  | 'PostToolUse' | 'PostToolUseFailure' | 'SubagentStart' | 'SubagentStop' | 'Stop' | 'PreCompact'
 
 /** `PermissionRequest` → `permission-request`, the endpoint's route slug. */
 export const hookSlug = (event: HookEvent) => event.replace(/(?<!^)([A-Z])/g, '-$1').toLowerCase()
@@ -50,8 +50,13 @@ export function renderHookSettings({ port, approvalTimeoutSec }: HookSettingsOpt
       PreToolUse: http('PreToolUse', { timeout: approvalTimeoutSec + 30 }),
       PermissionRequest: http('PermissionRequest', { timeout: approvalTimeoutSec + 30 }),
       ...Object.fromEntries(ASYNC.map(e => [e, http(e, { async: true })])),
-      // 006 FR7: only Skill calls are tracked.
-      PostToolUse: [{ matcher: 'Skill', ...http('PostToolUse', { async: true })[0]! }],
+      // 006 FR7: only Skill calls are tracked. 012 FR2: Bash is sync so its
+      // command-not-found hint reaches the model; a non-zero exit is a failure.
+      PostToolUse: [
+        { matcher: 'Skill', ...http('PostToolUse', { async: true })[0]! },
+        { matcher: 'Bash', ...http('PostToolUse', { timeout: 10 })[0]! },
+      ],
+      PostToolUseFailure: [{ matcher: 'Bash', ...http('PostToolUseFailure', { timeout: 10 })[0]! }],
     },
   }
 }
