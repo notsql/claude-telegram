@@ -68,10 +68,13 @@ function renderMcpConfig(port: number, key: string) {
   } } }
 }
 
-export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): Promise<TurnOutcome> {
-  // T003: inherited Claude Code env makes the child reuse the parent's session.
-  const { CLAUDECODE, CLAUDE_CODE_SESSION_ID, ...env } = process.env
-  const child = Bun.spawn([
+/**
+ * The `claude -p` argv for a turn. No `--strict-mcp-config`: user-scope MCP
+ * servers (the browser MCP for ladder rung 4, servers added by 012) load
+ * alongside `tg`.
+ */
+export function turnArgv(key: string, prompt: string, opts: RunTurnOpts): string[] {
+  return [
     'claude', '-p', prompt,
     ...(opts.resume ? ['--resume', opts.resume] : []),
     '--output-format', 'stream-json', '--verbose',
@@ -82,7 +85,13 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     '--append-system-prompt', TELEGRAM_INSTRUCTIONS,
     ...opts.policyArgs,
     '--max-turns', String(opts.maxTurns),
-  ], {
+  ]
+}
+
+export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): Promise<TurnOutcome> {
+  // T003: inherited Claude Code env makes the child reuse the parent's session.
+  const { CLAUDECODE, CLAUDE_CODE_SESSION_ID, ...env } = process.env
+  const child = Bun.spawn(turnArgv(key, prompt, opts), {
     cwd: opts.cwd,
     stdin: 'ignore',
     stdout: 'pipe',
