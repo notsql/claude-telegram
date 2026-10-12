@@ -11,7 +11,7 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* AC2, AC5, AC8.
 - [x] **T1305** `deliver.ts`: ping cards with buttons, quiet hours, `pingsPerHour`, snooze (FR7).
   *Verify:* AC1.
-- [ ] **T1306** `digest.ts`: morning and evening system jobs, open-loop detection and closure (FR8).
+- [x] **T1306** `digest.ts`: morning and evening system jobs, open-loop detection and closure (FR8).
   *Verify:* AC3.
 - [ ] **T1307** `tools.ts` + `send.ts`: `inbox_*`, `source_*`, `draft_reply` with Send/Edit/Cancel (FR4, FR9).
   *Verify:* AC4, and US5 answered from the store.
