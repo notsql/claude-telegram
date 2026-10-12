@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { resumeView, SESSIONS_CALLBACK, sessionsView } from '../sessions/commands'
 
-const data = (v: { keyboard: { inline_keyboard: { callback_data?: string }[][] } }) =>
+const data = (v: { keyboard: { inline_keyboard: { text: string; callback_data?: string }[][] } }) =>
   v.keyboard.inline_keyboard.flat().map(b => b.callback_data)
 
 test('/sessions shows the status with New, Resume and Compact', () => {

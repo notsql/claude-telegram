@@ -8,7 +8,7 @@
 export type MenuScope = 'all_private_chats' | 'all_group_chats' | 'all_chat_administrators'
 export type MenuCommand = { command: string; description: string }
 /** Where a built-in shows: DMs, groups, and group admins only. */
-export type Placement = 'private' | 'group' | 'admin'
+type Placement = 'private' | 'group' | 'admin'
 export type MenuBuiltin = { name: string; description: string; menu: Placement[] }
 export function buildMenus(builtins: MenuBuiltin[]): Record<MenuScope, MenuCommand[]> {
   const pick = (...where: Placement[]) =>

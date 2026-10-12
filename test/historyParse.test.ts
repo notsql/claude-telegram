@@ -4,7 +4,7 @@ import { join } from 'path'
 import { parseLine, summariseTool, unwrapInbound } from '../history/parse'
 
 const parseFixture = (f: string) =>
-  readFileSync(join(import.meta.dir, 'fixtures/history', f), 'utf8').trim().split('\n').map(parseLine).filter(Boolean)
+  readFileSync(join(import.meta.dir, 'fixtures/history', f), 'utf8').trim().split('\n').map(parseLine).filter(p => p !== undefined)
 
 test('daemon transcript: meta extracted, wrapper stripped, tools summarised, results and junk skipped', () => {
   const S = '11111111-2222-3333-4444-555555555555'

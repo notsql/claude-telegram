@@ -15,9 +15,9 @@ import { parseChats, type ChatEntry } from './policy/schema.ts'
 export const STATE_DIR = process.env.TELEGRAM_STATE_DIR
   ?? join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'channels', 'telegram')
 export const ACCESS_FILE = join(STATE_DIR, 'access.json')
-export const APPROVED_DIR = join(STATE_DIR, 'approved')
+const APPROVED_DIR = join(STATE_DIR, 'approved')
 
-export type PendingEntry = {
+type PendingEntry = {
   senderId: string
   chatId: string
   createdAt: number
@@ -137,7 +137,7 @@ export function saveAccess(a: Access): void {
   renameSync(tmp, ACCESS_FILE)
 }
 
-export function pruneExpired(a: Access): boolean {
+function pruneExpired(a: Access): boolean {
   const now = Date.now()
   let changed = false
   for (const [code, p] of Object.entries(a.pending)) {
@@ -234,7 +234,7 @@ export function dmCommandGate(ctx: Context): { access: Access; senderId: string 
   return { access, senderId }
 }
 
-export function isMentioned(ctx: Context, extraPatterns?: string[]): boolean {
+function isMentioned(ctx: Context, extraPatterns?: string[]): boolean {
   const entities = ctx.message?.entities ?? ctx.message?.caption_entities ?? []
   const text = ctx.message?.text ?? ctx.message?.caption ?? ''
   for (const e of entities) {

@@ -62,4 +62,3 @@ export function createSkillNotices(api: Pick<Api, 'sendMessage'>) {
   }
 }
 
-export type SkillNotices = ReturnType<typeof createSkillNotices>

@@ -51,7 +51,7 @@ const WRITE_TOOLS = [
 
 export const MARKER = /^<!-- source: (\S+) · version: (\d+) -->/m
 
-export function renderAgent(d: AgentDraft, version: number): string {
+function renderAgent(d: AgentDraft, version: number): string {
   const list = (k: string, v?: unknown[]) => (v?.length ? [`${k}:`, ...v.map(x => `  - ${x}`)] : [])
   return [
     '---',

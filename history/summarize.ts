@@ -7,7 +7,7 @@ import type { Database } from 'bun:sqlite'
 import { z } from 'zod'
 import { runOneShot } from '../agent/oneshot.ts'
 
-export const AnswerSchema = z.object({ answer: z.string() })
+const AnswerSchema = z.object({ answer: z.string() })
 export type RunOneShot = (agent: 'tg-summarizer', input: string, schema: typeof AnswerSchema) => Promise<z.infer<typeof AnswerSchema>>
 
 /** `numbered` is the hit list as the tool shows it: `[n] date · session · title` then the snippet. */
@@ -19,7 +19,7 @@ export async function summarizeHits(question: string, numbered: string, run: Run
   return (await run('tg-summarizer', input, AnswerSchema)).answer
 }
 
-export const SummarySchema = z.object({ summary: z.string() })
+const SummarySchema = z.object({ summary: z.string() })
 type RunSummary = (agent: 'tg-summarizer', input: string, schema: typeof SummarySchema) => Promise<z.infer<typeof SummarySchema>>
 
 const SESSION_MAX_CHARS = 24_000

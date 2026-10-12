@@ -27,7 +27,7 @@ test('one row per job: pause or resume, delete, run now; data round-trips throug
 })
 
 test('New job steps: how often, day for weekly, hour, then ready', () => {
-  const data = (v: ReturnType<typeof newJobView>) => v === 'ready' ? 'ready' : v.keyboard.inline_keyboard.flat().map(b => b.callback_data)
+  const data = (v: ReturnType<typeof newJobView>) => v === 'ready' ? 'ready' : v.keyboard.inline_keyboard.flat().map(b => 'callback_data' in b ? b.callback_data : undefined)
   const first = data(newJobView(''))
   expect(first).toEqual(['crn:w:once', 'crn:w:daily', 'crn:w:wkdy', 'crn:w:weekly', 'crn:w:hourly', 'crn:list:'])
   expect(data(newJobView('hourly'))).toBe('ready')

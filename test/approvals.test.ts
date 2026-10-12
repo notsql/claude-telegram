@@ -157,7 +157,7 @@ test('Always prefers the CLI suggestions, e.g. a Read rule for a path outside cw
   }, '5')
   await tick()
   a.decide(idOf(sent[0]!.opts), 'always')
-  expect((await res).hookSpecificOutput.decision.updatedPermissions[0].rules).toEqual([{ toolName: 'Read', ruleContent: '//Users/me/Development/**' }])
+  expect(((await res).hookSpecificOutput.decision.updatedPermissions as { rules: unknown }[])[0]!.rules).toEqual([{ toolName: 'Read', ruleContent: '//Users/me/Development/**' }])
   expect(saved).toEqual(['Read(//Users/me/Development/**)'])
 })
 

@@ -7,7 +7,7 @@
  * "no opinion".
  */
 
-export type HookHandler = (payload: Record<string, unknown>, sessionKey: string) => unknown | Promise<unknown>
+type HookHandler = (payload: Record<string, unknown>, sessionKey: string) => unknown | Promise<unknown>
 
 export type HookServerOpts = {
   /** Bearer token clients must send; random per daemon start. */

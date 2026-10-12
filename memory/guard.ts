@@ -3,7 +3,7 @@
  * capped at 2KB, and names are slugged so they are safe file names.
  */
 
-export const MAX_FILE_BYTES = 2048
+const MAX_FILE_BYTES = 2048
 export const MAX_INDEX_LINES = 200
 export const MAX_WRITES_PER_TURN = 3
 

@@ -46,7 +46,7 @@ const unquote = (v: string) => {
   return v.replace(/^'(.*)'$/, '$1')
 }
 
-export function render(e: MemoryInput): string {
+function render(e: MemoryInput): string {
   const meta = { type: e.type, ...e.metadata }
   return [
     '---',

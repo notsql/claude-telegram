@@ -18,7 +18,7 @@ import type { Policy } from '../policy/schema.ts'
 import { memoryRoot } from './paths.ts'
 import type { MemoryStore } from './store.ts'
 
-export const DEFAULT_BUDGET_TOKENS = 4000
+const DEFAULT_BUDGET_TOKENS = 4000
 
 type Sent = { indexMtime: number; users: Map<string, number> }
 

@@ -5,7 +5,7 @@ import { join } from 'path'
 import { catalog, type CatalogEntry } from '../skills/catalog.ts'
 import { STORE_CALLBACK, categoriesView, confirmView, listView, pluginView } from '../telegram/storeUi.ts'
 
-const data = (v: { keyboard: { inline_keyboard: { callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat().map(b => b.callback_data!)
+const data = (v: { keyboard: { inline_keyboard: { text: string; callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat().map(b => b.callback_data!)
 
 function claudeDir() {
   const dir = mkdtempSync(join(tmpdir(), 'catalog-'))
@@ -39,7 +39,7 @@ test('categories, paged lists and plugin pages; callbacks round-trip', () => {
   const many: CatalogEntry[] = Array.from({ length: 23 }, (_, i) => ({ id: `p${i}@m`, name: `p${i}`, marketplace: 'm', description: '', category: 'dev' }))
   const page = listView(many, 'dev', 2, new Set(['p9@m']))
   expect(page.text).toContain('page 3/3')
-  expect(page.keyboard.inline_keyboard.at(-2)!.map(b => b.callback_data)).toEqual(['sto:l:dev:1'])
+  expect(page.keyboard.inline_keyboard.at(-2)!.map(b => 'callback_data' in b ? b.callback_data : undefined)).toEqual(['sto:l:dev:1'])
   expect(listView(many, 'dev', 0, new Set(['p9@m'])).keyboard.inline_keyboard.flat().some(b => b.text === '✓ P9')).toBe(true)
   const review = c[0]!
   expect(pluginView(review, false).text).toContain('🔌 Code review\n\nReviews diffs\n\nCategory: Development\nBy: Anthropic')

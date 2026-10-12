@@ -70,7 +70,7 @@ export const ProposalsSchema = z.object({
 
 export type Proposals = z.infer<typeof ProposalsSchema>
 
-export const REFLECTION_INSTRUCTIONS = `You curate the long-term memory of a personal assistant that chats with its owner on Telegram. Below are the existing memory entries and the latest exchange. Decide whether the exchange taught anything worth remembering for future conversations. Most exchanges teach nothing: then return empty arrays.
+const REFLECTION_INSTRUCTIONS = `You curate the long-term memory of a personal assistant that chats with its owner on Telegram. Below are the existing memory entries and the latest exchange. Decide whether the exchange taught anything worth remembering for future conversations. Most exchanges teach nothing: then return empty arrays.
 
 Save (in "memory", shared by every chat):
 - feedback: a correction or stated preference about how the assistant should work. Body: the rule, then "**Why:**" and "**How to apply:**" lines.
@@ -82,7 +82,7 @@ Never save: secrets, credentials or keys; anything derivable from code, git hist
 
 Curate: if an existing entry covers the same thing, use op "update" with that entry's exact name and a merged body instead of "create". Use "delete" for an entry the exchange shows is wrong. Names are short kebab-case slugs. Descriptions are one line. Bodies are one or two short sentences. Propose at most 3 changes in total.`
 
-export const SKILL_INSTRUCTIONS = `Skills ("skills"): a skill is a reusable procedure (how to deploy the blog, how to file an expense report), saved as a SKILL.md the assistant loads next time a similar task comes up. Ask: is there a reusable procedure here that isn't already covered by an existing skill? If one covers it, what is wrong or missing in it?
+const SKILL_INSTRUCTIONS = `Skills ("skills"): a skill is a reusable procedure (how to deploy the blog, how to file an expense report), saved as a SKILL.md the assistant loads next time a similar task comes up. Ask: is there a reusable procedure here that isn't already covered by an existing skill? If one covers it, what is wrong or missing in it?
 Consider a skill only when at least one signal holds: the turn used many tool calls (the count is given below; 5 or more counts), the user corrected the approach, the task repeats an earlier request, or the assistant said the procedure is reusable. Otherwise return an empty "skills" array.
 - op "patch" with an existing skill's exact name when it covers the task: give only the sections that change. Prefer patch over create.
 - op "create" for a new procedure. name: kebab-case, at most 48 chars. description: what it does plus a concrete "Use when…" phrase; Claude Code uses it to decide when to load the skill, so make it trigger on the right requests.
@@ -92,7 +92,7 @@ Consider a skill only when at least one signal holds: the turn used many tool ca
 - confidence: 0 to 1, how sure you are this is worth saving. Propose at most one skill.
 Skill outcomes ("skill_outcomes"): for each skill the assistant invoked in the exchange ([tool Skill …] lines), report how it went: "success", "corrected" (the user corrected the approach) or "failed". If a skill was corrected or failed, also patch it with what went wrong. Empty when no skill was invoked.`
 
-export const AGENT_INSTRUCTIONS = `Agents ("agents"): a subagent is a recurring *role* with its own judgement, tools, model or memory (an issue triager, a release checker). Choose the right artefact:
+const AGENT_INSTRUCTIONS = `Agents ("agents"): a subagent is a recurring *role* with its own judgement, tools, model or memory (an issue triager, a release checker). Choose the right artefact:
 | Signal | Produce |
 |---|---|
 | A repeatable procedure (steps) | skill |

@@ -9,7 +9,7 @@ import { createLoadedCache, mcpPrefix } from '../agent/loaded.ts'
 import { installedPlugins } from '../skills/plugins.ts'
 import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, prettyName, skillOn, skillSwitchesView, toggleMcpServer, toggleSkill, togglePlugin } from '../telegram/extensionsUi.ts'
 
-const data = (v: { keyboard: { inline_keyboard: { callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat().map(b => b.callback_data!)
+const data = (v: { keyboard: { inline_keyboard: { text: string; callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat().map(b => b.callback_data!)
 const skills = [{ name: 'deploy', command: 'deploy' }, { name: 'tg-notes', command: 'tg_notes' }, { name: 'figma:render', command: 'figma_render' }]
 const lsp = { id: 'typescript-lsp@claude-plugins-official', name: 'typescript-lsp', on: true }
 const figma = { id: 'figma@claude-plugins-official', name: 'figma', on: false }

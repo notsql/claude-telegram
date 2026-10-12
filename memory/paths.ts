@@ -23,5 +23,5 @@ export function memoryRoot(cwd: string, base = claudeDir()): string {
   return join(base, 'projects', projectDirName(cwd), 'memory')
 }
 
-export const usersDir = (root: string) => join(root, 'users')
+const usersDir = (root: string) => join(root, 'users')
 export const userDir = (root: string, userId: string) => join(usersDir(root), userId)

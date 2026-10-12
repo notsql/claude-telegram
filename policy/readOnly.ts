@@ -74,7 +74,7 @@ function readOnlyName(name: string): boolean {
   return !WRITE_VERB.test(words) && words.split(/[-_]/).some(w => READ_VERB.test(w))
 }
 
-export function readOnlyCommand(command: string): boolean {
+function readOnlyCommand(command: string): boolean {
   const segments = splitCommand(command)
   if (!segments?.length) return false
   const vars = new Map<string, string>()
