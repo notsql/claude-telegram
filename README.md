@@ -109,7 +109,8 @@ The service runs `tgc start` (from a checkout, `bun <repo>/cli.ts start`). Once 
 | --- | --- |
 | Restart (e.g. after `git pull`) | `tgc restart` |
 | Stop | `tgc stop` |
-| Start again / reinstall | `tgc install` |
+| Start again | `tgc restart` |
+| Install or reinstall | `tgc install` |
 | Running? (with PID) | `tgc status` |
 | Show / follow the log | `tgc logs` / `tgc logs -f` |
 | Remove the service | `tgc uninstall` |
