@@ -45,12 +45,13 @@ test('an existing file we never installed is not overwritten', () => {
   expect(readFileSync(join(claude, 'agents', 'tg-a.md'), 'utf8')).toBe('theirs')
 })
 
-test('shipped assets include the eight tg agents and three skills', () => {
+test('shipped assets include the nine tg agents and three skills', () => {
   const claude = mkdtempSync(join(tmpdir(), 'tg-agi-real-'))
   const r = installAssets(claude, join(claude, 'm.json'))
-  expect(r.installed.filter(p => p.startsWith('agents/')).length).toBe(8)
+  expect(r.installed.filter(p => p.startsWith('agents/')).length).toBe(9)
   expect(r.installed).toContain('agents/tg-capability-scout.md')
   expect(r.installed).toContain('agents/tg-triager.md')
+  expect(r.installed).toContain('agents/tg-poller.md')
   expect(r.installed).toContain('skills/tg-capability-ladder/SKILL.md')
   expect(r.installed).toContain('skills/tg-research-method/SKILL.md')
   expect(r.installed).toContain('skills/tg-skill-authoring/SKILL.md')

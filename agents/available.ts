@@ -27,14 +27,14 @@ export function availableAgents(claudeDir: string, cwd?: string): string[] {
 
 /**
  * Agents a chat can usefully run as, with descriptions, for `/settings` (008
- * FR20). Structured-output-only agents (tg-reflector, tg-summarizer, tg-triager) can't
- * hold a conversation, so they're left out.
+ * FR20). Structured-output-only agents (tg-reflector, tg-summarizer, tg-triager) and the
+ * connector poller tg-poller can't hold a conversation, so they're left out.
  */
 export function chatAgents(claudeDir: string, cwd?: string): { name: string; description: string }[] {
   const seen = new Map<string, { name: string; description: string }>()
   for (const f of agentFiles(claudeDir, cwd)) {
     const a = agentInfo(f)
-    if (a.tools !== 'StructuredOutput' && !seen.has(a.name)) seen.set(a.name, { name: a.name, description: a.description })
+    if (a.tools !== 'StructuredOutput' && a.name !== 'tg-poller' && !seen.has(a.name)) seen.set(a.name, { name: a.name, description: a.description })
   }
   return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
 }

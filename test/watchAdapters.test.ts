@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { tgcliItem } from '../watch/adapters/tgcli'
 import { wacliItem } from '../watch/adapters/wacli'
+import { githubCommand, githubItems } from '../watch/adapters/github'
 
 // Recorded from source, not a live capture: gotd/cli v0.11.0 cmd/tg/watch.go
 // (`tgcli watch --output json`, one line per message; `account` only with --account all).
@@ -57,4 +58,33 @@ test('wacli: receipts, presence and empty payloads are skipped', () => {
   expect(wacliItem('whatsapp', { EventType: 'receipt', Chat: 'x@g.us', Sender: 'y', MessageIDs: ['a'], Timestamp: '2026-07-25T10:00:01Z', Type: 'delivered', IsFromMe: false })).toBeNull()
   expect(wacliItem('whatsapp', { EventType: 'chat_presence', Chat: 'x', Sender: 'y', State: 'composing', Media: '' })).toBeNull()
   expect(wacliItem('whatsapp', { ...waDm, Text: '' })).toBeNull()
+})
+
+// Live capture, sanitized (gh 2.x, `gh api 'notifications?all=true&per_page=1'`, 2026-10-12):
+// repository trimmed to the fields read; names and ids replaced.
+const ghNote = {
+  id: '26257711761', unread: false, reason: 'review_requested', updated_at: '2026-10-12T01:20:54Z', last_read_at: '2026-10-11T11:59:33Z',
+  subject: { title: 'feat: ensure at least one admin always exists', url: 'https://api.github.com/repos/acme/app/pulls/20', latest_comment_url: null, type: 'PullRequest' },
+  repository: { id: 1, node_id: 'R_x', name: 'app', full_name: 'acme/app', private: true, html_url: 'https://github.com/acme/app' },
+  url: 'https://api.github.com/notifications/threads/26257711761', subscription_url: 'https://api.github.com/notifications/threads/26257711761/subscription',
+}
+
+test('github: concatenated --paginate pages map to items; cursor is the newest updated_at', () => {
+  const later = { ...ghNote, id: '9', reason: 'subscribed', updated_at: '2026-10-12T03:00:00Z', subject: { ...ghNote.subject, url: null, type: 'Release' } }
+  const r = githubItems('github', `${JSON.stringify([ghNote])}\n${JSON.stringify([later])}\n`, '2026-10-11T00:00:00Z')
+  expect(r.cursor).toBe('2026-10-12T03:00:00Z')
+  expect(r.items[0]).toEqual({
+    source: 'github', extId: '26257711761:2026-10-12T01:20:54Z', ts: Date.parse('2026-10-12T01:20:54Z'),
+    from: { id: 'repo:acme/app', name: 'acme/app' }, chat: { id: 'repo:acme/app', name: 'acme/app', isGroup: true },
+    text: 'PullRequest (review_requested): feat: ensure at least one admin always exists', url: 'https://github.com/acme/app/pull/20',
+    toMe: true, fromMe: false, threadId: '26257711761',
+  })
+  expect(r.items[1]).toMatchObject({ toMe: false, url: 'https://github.com/acme/app' })
+  expect(githubItems('github', '[]', 'c')).toEqual({ items: [], cursor: 'c' })
+  expect(githubItems('github', '', null)).toEqual({ items: [], cursor: null })
+})
+
+test('github: the cursor becomes ?since= on the notifications path', () => {
+  expect(githubCommand(['gh', 'api', 'notifications', '--paginate'], null)).toEqual(['gh', 'api', 'notifications', '--paginate'])
+  expect(githubCommand(['gh', 'api', 'notifications'], '2026-10-12T01:20:54Z')).toEqual(['gh', 'api', 'notifications?since=2026-10-12T01%3A20%3A54Z'])
 })

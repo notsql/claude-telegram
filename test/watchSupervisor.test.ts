@@ -3,7 +3,8 @@ import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { loadSources, saveSources, type Source } from '../watch/registry'
-import { backoffMs, createSupervisor, type Child, type Spawner } from '../watch/supervisor'
+import { AgentPollSchema, backoffMs, createSupervisor, type Child, type Spawner } from '../watch/supervisor'
+import type { Item } from '../watch/store'
 
 const src = (id: string, kind: Source['kind'], command: string[], extra: Partial<Source> = {}): Source => ({
   id, title: id, kind, enabled: true, config: { command, env: { WACLI_X: '1' } }, cursor: null, status: 'ok', lastItemAt: null, errors: 0, ...extra,
@@ -69,12 +70,11 @@ test('backoff resets after a child stayed up for a minute', async () => {
   expect(delays).toEqual([1000, 2000, 1000])
 })
 
-test('webhook: fills {port} and {secret}, no stdout; disabled, poll and unknown commands are not run', async () => {
+test('webhook: fills {port} and {secret}, no stdout; disabled and unknown commands are not run', async () => {
   const stateDir = mkdtempSync(join(tmpdir(), 'tg-watch-'))
   const sources = [
     src('whatsapp', 'webhook', ['wacli', 'sync', '--follow', '--webhook', 'http://127.0.0.1:{port}/ingest/whatsapp', '--webhook-secret', '{secret}']),
     src('paused', 'stream', ['tgcli', 'watch'], { enabled: false }),
-    src('github', 'poll', ['gh', 'api', 'notifications']),
     src('mystery', 'stream', ['mystery-cli']),
   ]
   saveSources(stateDir, sources)
@@ -107,4 +107,56 @@ test('a spawn that throws is retried with backoff instead of crashing', async ()
   })
   await sup.start(1)
   expect(delays).toEqual([1000, 2000])
+})
+
+test('poll: runs gh every interval with ?since=<cursor>, stores items and advances the cursor', async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'tg-watch-'))
+  const sources = [{ ...src('github', 'poll', []), config: { command: ['gh', 'api', 'notifications', '--paginate'], intervalSec: 300 } }]
+  saveSources(stateDir, sources)
+  const page = (id: string, at: string) => JSON.stringify([{ id, reason: 'mention', updated_at: at, subject: { title: 't' + id, url: null, type: 'Issue' }, repository: { full_name: 'o/r', html_url: 'https://github.com/o/r' } }])
+  const outs = [page('1', '2026-10-12T01:00:00Z') + page('2', '2026-10-12T02:00:00Z'), '[]', 'oops']
+  const cmds: string[][] = []
+  const items: Item[] = []
+  const delays: number[] = []
+  let sup: ReturnType<typeof createSupervisor>
+  sup = createSupervisor({
+    stateDir, sources, log: () => {}, onPayload: () => {}, onItem: (_s, i) => items.push(i),
+    spawn: cmd => { cmds.push(cmd); const o = outs[cmds.length - 1]!; return fakeChild([o], o === 'oops' ? 1 : 0) },
+    sleep: async ms => { delays.push(ms); if (delays.length === 3) sup.stop() },
+  })
+  await sup.start(1)
+  expect(items.map(i => i.extId)).toEqual(['1:2026-10-12T01:00:00Z', '2:2026-10-12T02:00:00Z'])
+  expect(cmds[0]).toEqual(['gh', 'api', 'notifications', '--paginate'])
+  expect(cmds[1]).toEqual(['gh', 'api', 'notifications?since=2026-10-12T02%3A00%3A00Z', '--paginate'])
+  expect(delays).toEqual([300_000, 300_000, 300_000])
+  expect(loadSources(stateDir)[0]).toMatchObject({ cursor: '2026-10-12T02:00:00Z', errors: 1 })
+})
+
+test('agent-poll: asks tg-poller with the connector tools and cursor; skipped without a poller', async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'tg-watch-'))
+  const sources = [{ ...src('calendar', 'agent-poll', []), cursor: '2026-10-12T00:00:00Z', config: { connector: 'Google Calendar' } }]
+  saveSources(stateDir, sources)
+  const calls: { input: string; tools: string[] }[] = []
+  const items: Item[] = []
+  const delays: number[] = []
+  let sup: ReturnType<typeof createSupervisor>
+  sup = createSupervisor({
+    stateDir, sources, log: () => {}, onPayload: () => {}, onItem: (_s, i) => items.push(i), now: () => Date.parse('2026-10-12T06:00:00Z'),
+    runPoller: async (input, schema, tools) => {
+      calls.push({ input, tools })
+      return schema.parse({ items: [{ id: 'evt1', ts: '2026-10-12T09:00:00Z', title: 'Standup 09:00' }], cursor: '2026-10-12T06:00:00Z' })
+    },
+    sleep: async ms => { delays.push(ms); sup.stop() },
+  })
+  await sup.start(1)
+  expect(calls[0]!.tools).toEqual(['mcp__claude_ai_Google_Calendar'])
+  expect(calls[0]!.input).toContain('since 2026-10-12T00:00:00Z')
+  expect(items).toEqual([{ source: 'calendar', extId: 'evt1', ts: Date.parse('2026-10-12T09:00:00Z'), from: { id: 'Google Calendar', name: 'Google Calendar' }, chat: { id: 'Google Calendar', name: 'Google Calendar', isGroup: false }, text: 'Standup 09:00', url: undefined, toMe: false, fromMe: false }])
+  expect(delays).toEqual([1_800_000])
+  expect(loadSources(stateDir)[0]!.cursor).toBe('2026-10-12T06:00:00Z')
+  expect(AgentPollSchema.safeParse({ items: [] }).success).toBe(false)
+
+  const logs: string[] = []
+  await createSupervisor({ stateDir, sources, log: l => logs.push(l), onPayload: () => {} }).start(1)
+  expect(logs).toEqual(['watch calendar: no connector or poller; skipped'])
 })
