@@ -29,6 +29,12 @@ describe('service install', () => {
     expect(out).toContain('Environment="PATH=/opt/homebrew/bin:/Users/a b/100%%:/usr/local/bin:/usr/bin:/bin"')
   })
 
+  test('systemd escapes $ in ExecStart only', () => {
+    const out = renderUnit('systemd', { ...u, cmd: ['/x/$y/tgc', 'start'] })
+    expect(out).toContain('ExecStart="/x/$$y/tgc" "start"\n')
+    expect(out).toContain('Environment="PATH=/opt/homebrew/bin:/x/$y:/usr/local/bin:/usr/bin:/bin"')
+  })
+
   test('render rejects unknown variables', () => {
     expect(() => render('{{NOPE}}', {})).toThrow('NOPE')
   })

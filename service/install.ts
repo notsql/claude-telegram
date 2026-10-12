@@ -19,9 +19,9 @@ const LOG_DIR = join(STATE_DIR, 'logs')
 
 const xmlEscape = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-// systemd: `%` is a specifier and `$` expands in ExecStart, even inside quotes.
-const sdEscape = (s: string) =>
-  s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%').replace(/\$/g, '$$$$')
+// systemd: `%` is a specifier everywhere; `$` expands only in ExecStart, even inside quotes.
+const sdEscape = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%')
+const sdArg = (s: string) => sdEscape(s).replace(/\$/g, '$$$$')
 
 export function render(tmpl: string, vars: Record<string, string>, escape = (s: string) => s): string {
   return tmpl.replace(/\{\{(\w+)\}\}/g, (_, k: string) => {
@@ -46,7 +46,7 @@ export function renderUnit(kind: 'launchd' | 'systemd', u: UnitInputs): string {
   }).map(([k, v]) => [k, esc(v)]))
   vars.ARGS = kind === 'launchd'
     ? u.cmd.map(a => `    <string>${esc(a)}</string>`).join('\n')
-    : u.cmd.map(a => `"${esc(a)}"`).join(' ')
+    : u.cmd.map(a => `"${sdArg(a)}"`).join(' ')
   return render(kind === 'launchd' ? launchd : systemd, vars)
 }
 
@@ -69,7 +69,15 @@ const mac = () => {
 const unitFile = () => mac()
   ? join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
   : join(homedir(), '.config', 'systemd', 'user', UNIT)
-const target = () => `gui/${process.getuid!()}/${LABEL}`
+const domain = () => `gui/${process.getuid!()}`
+const target = () => `${domain()}/${LABEL}`
+const loaded = () => Bun.spawnSync(['launchctl', 'print', target()], { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0
+
+/** `bootout` returns before the job is gone, and a `bootstrap` too soon fails with error 5. */
+function bootout(): void {
+  sh(['launchctl', 'bootout', target()], true)
+  for (let i = 0; i < 50 && loaded(); i++) Bun.sleepSync(200)
+}
 
 /** Writes the unit and (re)loads it; replaces an older unit with the same label. */
 export function install(): void {
@@ -80,8 +88,8 @@ export function install(): void {
   mkdirSync(dirname(dest), { recursive: true })
   writeFileSync(dest, renderUnit(mac() ? 'launchd' : 'systemd', { cmd: selfCommand(['start']), claude, stateDir: STATE_DIR, logDir: LOG_DIR }))
   if (mac()) {
-    sh(['launchctl', 'bootout', target()], true)
-    sh(['launchctl', 'bootstrap', `gui/${process.getuid!()}`, dest])
+    bootout()
+    sh(['launchctl', 'bootstrap', domain(), dest])
   } else {
     sh(['systemctl', '--user', 'daemon-reload'])
     sh(['systemctl', '--user', 'enable', '--now', UNIT])
@@ -91,7 +99,7 @@ export function install(): void {
 }
 
 export function uninstall(): void {
-  if (mac()) sh(['launchctl', 'bootout', target()], true)
+  if (mac()) bootout()
   else sh(['systemctl', '--user', 'disable', '--now', UNIT], true)
   rmSync(unitFile(), { force: true })
   if (!mac()) sh(['systemctl', '--user', 'daemon-reload'], true)
@@ -102,8 +110,10 @@ export function stop(): void {
   sh(mac() ? ['launchctl', 'bootout', target()] : ['systemctl', '--user', 'stop', UNIT])
 }
 
+/** Also starts a stopped service: on macOS `stop` unloads it, so it is loaded again. */
 export function restart(): void {
-  sh(mac() ? ['launchctl', 'kickstart', '-k', target()] : ['systemctl', '--user', 'restart', UNIT])
+  if (!mac()) return sh(['systemctl', '--user', 'restart', UNIT])
+  sh(loaded() ? ['launchctl', 'kickstart', '-k', target()] : ['launchctl', 'bootstrap', domain(), unitFile()])
 }
 
 /** Exit code: 0 running, 1 installed but stopped, 3 not installed. */
