@@ -30,6 +30,7 @@ import { inboxPath, insertItem, openInboxDb } from './watch/store.ts'
 import { loadSources, recordItem, type Source } from './watch/registry.ts'
 import { adapterFor, createSupervisor } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
+import { runDigest } from './watch/digest.ts'
 import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from './agent/runner.ts'
 import type { StreamEvent } from './agent/stream.ts'
 import { parseKey } from './sessions/key.ts'
@@ -357,7 +358,7 @@ const watch = config.watch ? (() => {
     store: (id, payload) => store(supervisor.source(id)!, payload),
     log,
   })
-  return { supervisor, route }
+  return { db, supervisor, route }
 })() : undefined
 const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.route, handlers: {
   'permission-request': approvals.handle,
@@ -648,6 +649,12 @@ async function ownerTurn(what: string, title: string, text: string, policy?: Par
 
 async function fireSystemJob(id: SystemJobId): Promise<void> {
   if (turnAbort.signal.aborted) return
+  // 013 FR8: deterministic, no turn.
+  if (id === 'digest-morning' || id === 'digest-evening') {
+    const owner = loadAccess().allowFrom[0]
+    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, owner, title: id === 'digest-morning' ? 'Morning digest' : 'Evening digest' })
+    return
+  }
   // 004 FR8: run as tg-curator (009).
   if (id === 'memory-consolidation') return ownerTurn('memory consolidation', 'Weekly memory consolidation', CONSOLIDATE_PROMPT, { agent: 'tg-curator' })
   skillsUi.proposeArchives()
@@ -660,6 +667,7 @@ async function fireSystemJob(id: SystemJobId): Promise<void> {
 const systemJobs = startSystemJobs({
   stateFile: join(STATE_DIR, 'system-jobs.json'),
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  watch: config.watch,
   run: id => turns.enqueue(SYS_PREFIX + id, { prompt: '', text: '' }),
 })
 if (systemJobs.caughtUp.length) log(`scheduler: catching up system jobs ${systemJobs.caughtUp.join(', ')}`)
