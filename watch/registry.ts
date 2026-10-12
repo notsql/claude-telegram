@@ -62,5 +62,12 @@ export const setCursor = (stateDir: string, id: string, cursor: string | null) =
 export const recordItem = (stateDir: string, id: string, at: number) =>
   updateSource(stateDir, id, s => ({ ...s, lastItemAt: at, errors: 0, status: s.enabled ? 'ok' : s.status }))
 
-export const recordError = (stateDir: string, id: string) =>
+/** Drops source `id`. Throws if unknown. */
+export function removeSource(stateDir: string, id: string): void {
+  const sources = loadSources(stateDir)
+  if (!sources.some(s => s.id === id)) throw new Error(`unknown source "${id}"`)
+  saveSources(stateDir, sources.filter(s => s.id !== id))
+}
+
+export const recordError =(stateDir: string, id: string) =>
   updateSource(stateDir, id, s => ({ ...s, errors: s.errors + 1, status: s.enabled ? 'error' : s.status }))

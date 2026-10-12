@@ -27,7 +27,8 @@ import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
-import { loadSources, recordItem, type Source } from './watch/registry.ts'
+import { loadSources, recordItem, setEnabled, type Source } from './watch/registry.ts'
+import { createHealth, registerHealthButtons } from './watch/health.ts'
 import { adapterFor, createSupervisor } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
 import { runDigest } from './watch/digest.ts'
@@ -350,6 +351,8 @@ const inboxDb = config.watch ? openInboxDb(inboxPath(STATE_DIR)) : undefined
 const watchTools = inboxDb && createWatchTools({
   db: inboxDb, stateDir: STATE_DIR, api: bot.api, spawn: bunSendSpawn, audit: e => audit(e),
   isOwnerDm: key => { const t = parseKey(key); return t.threadId == null && loadAccess().allowFrom.includes(t.chatId) },
+  // T1308: add/pause/resume/remove reach the running supervisor (created below).
+  live: { start: s => watch?.supervisor.startSource(s), stop: id => watch?.supervisor.stopSource(id) },
 })
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
@@ -406,7 +409,16 @@ const watch = config.watch ? (() => {
     store: (id, payload) => store(supervisor.source(id)!, payload),
     log,
   })
-  return { db, supervisor, route, triage, deliver }
+  // FR10: one Fix/Pause notice per failing or silent source.
+  const health = owner ? createHealth({
+    stateDir: STATE_DIR, api: bot.api, owner, log,
+    fix: prompt => turns.enqueue(owner, {
+      prompt: renderInbound(prompt, { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),
+      text: 'Fix source',
+    }),
+    pause: id => { setEnabled(STATE_DIR, id, false); supervisor.stopSource(id) },
+  }) : undefined
+  return { db, supervisor, route, triage, deliver, health }
 })() : undefined
 const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.route, handlers: {
   'permission-request': approvals.handle,
@@ -463,6 +475,7 @@ const budget = createTurnBudget(config.dailyTurnBudget)
 void watch?.supervisor.start(hookServer.port)
 watch?.triage.start()
 watch?.deliver?.start()
+watch?.health?.start()
 
 const pauseMessage = (until: number) => `Usage limit reached. Paused until ${new Date(until).toLocaleString()}.`
 
@@ -592,6 +605,7 @@ const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: (
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
+if (watch?.health) registerHealthButtons(bot, watch.health)
 const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
 // The approval buttons catch all other callback data, so they go last.
@@ -742,6 +756,7 @@ function shutdown(): void {
   watch?.supervisor.stop()
   watch?.triage.stop()
   watch?.deliver?.stop()
+  watch?.health?.stop()
   void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
     hookServer.stop()
