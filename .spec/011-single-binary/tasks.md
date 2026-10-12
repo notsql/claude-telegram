@@ -1,7 +1,7 @@
 # 011 — Tasks
 Depends on: 001 (daemon, service), 004 (memory bridge), 005 (reindex), 009 (assets).
 
-- [ ] **T1101** `cli.ts` dispatcher with `start`, `reindex`, `memory`, `help`, `--version`; `selfCommand()`; package.json scripts go through it. The stale-poller check recognises the daemon by a marker both modes share, not by `daemon.ts` in the command line (FR1, FR2, FR4).
+- [x] **T1101** `cli.ts` dispatcher with `start`, `reindex`, `memory`, `help`, `--version`; `selfCommand()`; package.json scripts go through it. The stale-poller check recognises the daemon by a marker both modes share, not by `daemon.ts` in the command line (FR1, FR2, FR4).
   *Verify:* `test/cli.test.ts` passes (dispatch, unknown command exits 2), and `bun cli.ts start` polls like `bun daemon.ts` and replaces a running one.
 - [x] **T1102** Embed assets and templates: `ASSETS_DIR` mode switch, text-imported service templates (FR3).
   *Verify:* `bun test` passes, and a compiled binary run from `/tmp` installs the `tg-*` agents and skills.

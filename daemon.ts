@@ -145,8 +145,9 @@ try {
 // 011 FR4: the PID file holds `<pid> <start time>`, so an older poller is recognised
 // however it was launched (bun daemon.ts, bun cli.ts start, compiled binary) and a
 // reused PID never matches. An old plain-PID file has no start time: left alone.
+// LC_ALL=C: launchd and a shell otherwise format the date differently.
 const startTime = (pid: number) =>
-  execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, LC_ALL: 'C' } }).trim()
 try {
   const [pid, ...started] = readFileSync(PID_FILE, 'utf8').trim().split(' ')
   const stale = parseInt(pid!, 10)
