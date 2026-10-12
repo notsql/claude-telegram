@@ -142,18 +142,20 @@ try {
 } catch (err) {
   log(`agent install failed: ${err}`)
 }
+// 011 FR4: the PID file holds `<pid> <start time>`, so an older poller is recognised
+// however it was launched (bun daemon.ts, bun cli.ts start, compiled binary) and a
+// reused PID never matches. An old plain-PID file has no start time: left alone.
+const startTime = (pid: number) =>
+  execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
 try {
-  const stale = parseInt(readFileSync(PID_FILE, 'utf8'), 10)
-  if (stale > 1 && stale !== process.pid) {
-    process.kill(stale, 0)
-    const cmd = execFileSync('ps', ['-p', String(stale), '-o', 'args='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-    if (cmd.includes('daemon.ts')) {
-      log(`replacing stale poller pid=${stale}`)
-      process.kill(stale, 'SIGTERM')
-    }
+  const [pid, ...started] = readFileSync(PID_FILE, 'utf8').trim().split(' ')
+  const stale = parseInt(pid!, 10)
+  if (stale > 1 && stale !== process.pid && started.length && startTime(stale) === started.join(' ')) {
+    log(`replacing stale poller pid=${stale}`)
+    process.kill(stale, 'SIGTERM')
   }
 } catch {}
-writeFileSync(PID_FILE, String(process.pid))
+writeFileSync(PID_FILE, `${process.pid} ${startTime(process.pid)}`)
 
 // Without these the process dies silently on any unhandled rejection.
 process.on('unhandledRejection', err => log(`unhandled rejection: ${err}`))
