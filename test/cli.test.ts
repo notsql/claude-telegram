@@ -31,7 +31,15 @@ test('routes start, reindex and memory to their handlers with the rest of argv',
   expect(await run(['reindex'], table)).toBe(0)
   expect(await run(['memory', 'hook', 'on'], table)).toBe(0)
   expect(calls).toEqual([['start', []], ['reindex', []], ['memory', ['hook', 'on']]])
-  expect(Object.keys(commands).sort()).toEqual(['memory', 'reindex', 'start'])
+  expect(Object.keys(commands).sort()).toEqual(['install', 'logs', 'memory', 'reindex', 'restart', 'start', 'status', 'stop', 'uninstall'])
+})
+
+test('routes the service commands and passes through an exit code', async () => {
+  const { calls, table } = stubs()
+  for (const c of ['install', 'uninstall', 'stop', 'restart', 'status']) expect(await run([c], table)).toBe(0)
+  expect(await run(['logs', '-f'], table)).toBe(0)
+  expect(calls).toEqual([['install', []], ['uninstall', []], ['stop', []], ['restart', []], ['status', []], ['logs', ['-f']]])
+  expect(await run(['status'], { status: { usage: '', run: async () => 3 } })).toBe(3)
 })
 
 test('unknown command prints usage on stderr and exits 2', async () => {

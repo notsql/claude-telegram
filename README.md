@@ -103,14 +103,16 @@ bun run install-service
 
 On macOS this loads a launchd agent (`~/Library/LaunchAgents/com.claude.telegram.plist`). On Linux it enables a systemd user unit (`~/.config/systemd/user/claude-telegram.service`); run `loginctl enable-linger $USER` so it also starts at boot before you log in. Logs go to `~/.claude/channels/telegram/logs/`. Rerun the command after moving the repo or upgrading `bun` or `claude`, because their paths are written into the service file.
 
-The service runs `daemon.ts` from this checkout. Once it is installed, don't also run `bun run start:daemon`: each daemon replaces the one already polling, and launchd or systemd restarts the service, so the two keep killing each other. Manage it with:
+The service runs `tgc start` (from a checkout, `bun <repo>/cli.ts start`). Once it is installed, don't also run `bun run start:daemon`: each daemon replaces the one already polling, and launchd or systemd restarts the service, so the two keep killing each other. Manage it with `tgc <command>` (from a checkout, `bun cli.ts <command>`), the same on macOS and Linux:
 
-| | macOS | Linux |
-| --- | --- | --- |
-| Restart (e.g. after `git pull`) | `launchctl kickstart -k gui/$(id -u)/com.claude.telegram` | `systemctl --user restart claude-telegram` |
-| Stop | `launchctl bootout gui/$(id -u)/com.claude.telegram` | `systemctl --user stop claude-telegram` |
-| Start again | `bun run install-service` | `systemctl --user start claude-telegram` |
-| Follow the log | `tail -f ~/.claude/channels/telegram/logs/daemon.err.log` | same |
+| | Command |
+| --- | --- |
+| Restart (e.g. after `git pull`) | `tgc restart` |
+| Stop | `tgc stop` |
+| Start again / reinstall | `tgc install` |
+| Running? (with PID) | `tgc status` |
+| Show / follow the log | `tgc logs` / `tgc logs -f` |
+| Remove the service | `tgc uninstall` |
 
 To debug in the foreground, stop the service first.
 

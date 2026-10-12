@@ -4,8 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart="{{BUN}}" "{{DAEMON}}"
-WorkingDirectory={{ROOT}}
+ExecStart={{ARGS}}
+WorkingDirectory={{STATE_DIR}}
 Environment="PATH={{PATH}}"
 Environment="TELEGRAM_STATE_DIR={{STATE_DIR}}"
 Restart=always
