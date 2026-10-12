@@ -89,6 +89,7 @@ import { registerMemory } from './telegram/handlers/memory.ts'
 import { registerSkills } from './telegram/handlers/skills.ts'
 import { registerAgents } from './telegram/handlers/agents.ts'
 import { registerCapabilities } from './telegram/handlers/capabilities.ts'
+import { registerWatchCommands } from './telegram/handlers/watch.ts'
 import { createCapabilityRequests } from './capabilities/request.ts'
 import { createCapabilityTools } from './capabilities/tools.ts'
 import { runArgv } from './capabilities/install.ts'
@@ -594,6 +595,7 @@ registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
 const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
+const watchUi = watch && registerWatchCommands(bot, { stateDir: STATE_DIR, db: watch.db })
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)
@@ -615,6 +617,7 @@ const commands: Command[] = [
   settingsCommand,
   cronUi.command,
   capsUi.command,
+  ...(watchUi ? [watchUi.sources, watchUi.inbox] : []),
 ]
 const builtins = registry(commands)
 // 008 FR6: the / menu holds the built-ins only; skills live under /skills (FR12).
