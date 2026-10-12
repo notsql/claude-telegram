@@ -11,6 +11,8 @@ describe('config', () => {
     expect(() => loadConfig({ TELEGRAM_MAX_TURNS: 'x' })).toThrow('TELEGRAM_MAX_TURNS')
     expect(loadConfig({}).maxConcurrentSessions).toBe(3)
     expect(() => loadConfig({ TELEGRAM_MAX_CONCURRENT_SESSIONS: '0' })).toThrow('at least 1')
+    expect(loadConfig({}).watch).toBe(false)
+    expect(loadConfig({ TELEGRAM_WATCH: '1' }).watch).toBe(true)
   })
 
   test('cli version check', () => {
