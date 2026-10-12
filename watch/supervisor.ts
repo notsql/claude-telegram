@@ -121,21 +121,25 @@ export function adapterFor(source: Source): Adapter | undefined {
   return Array.isArray(cmd) ? ADAPTERS[basename(String(cmd[0]))] : undefined
 }
 
+type Handle = { stopped: boolean }
+
 export function createSupervisor(opts: SupervisorOpts) {
   const spawn = opts.spawn ?? bunSpawn
   const sleep = opts.sleep ?? (ms => new Promise<void>(r => setTimeout(r, ms)))
   const now = opts.now ?? Date.now
-  const watched = opts.sources.filter(s => s.enabled && (s.kind === 'stream' || s.kind === 'webhook'))
-  const polled = opts.sources.filter(s => s.enabled && (s.kind === 'poll' || s.kind === 'agent-poll'))
-  const secrets = new Map(watched.filter(s => s.kind === 'webhook').map(s => [s.id, randomBytes(32).toString('hex')]))
+  /** Running sources by id; a handle's `stopped` ends its loop (`stopSource`, `stop`). */
+  const running = new Map<string, Handle>()
+  /** Webhook secrets and configs of every source launched so far, for ingest. */
+  const secrets = new Map<string, string>()
+  const launched = new Map<string, Source>()
   const children = new Map<string, Child>()
-  let stopped = false
+  let port: number | undefined
 
-  async function run(source: Source, port: number): Promise<void> {
+  async function run(source: Source, port: number, h: Handle): Promise<void> {
     const { command, env = {} } = source.config as SourceConfig
     const cmd = command.map(a => a.replaceAll('{port}', String(port)).replaceAll('{secret}', secrets.get(source.id) ?? ''))
     const pidFile = opts.pidDir && join(opts.pidDir, `${source.id}.pid`)
-    for (let attempt = 0; !stopped;) {
+    for (let attempt = 0; !h.stopped;) {
       const started = now()
       let code: number
       try {
@@ -154,9 +158,11 @@ export function createSupervisor(opts: SupervisorOpts) {
         opts.log(`watch ${source.id}: spawn failed: ${err}`)
         code = -1
       }
-      children.delete(source.id)
-      if (pidFile) rmSync(pidFile, { force: true })
-      if (stopped) break
+      // A source restarted live may already have a new child and pid file.
+      const replaced = running.has(source.id) && running.get(source.id) !== h
+      if (!replaced) children.delete(source.id)
+      if (pidFile && !replaced) rmSync(pidFile, { force: true })
+      if (h.stopped) break
       if (now() - started >= HEALTHY_MS) attempt = 0
       const delay = backoffMs(attempt++)
       opts.log(`watch ${source.id}: exited code=${code}, restarting in ${delay / 1000}s`)
@@ -185,11 +191,11 @@ export function createSupervisor(opts: SupervisorOpts) {
     return found.cursor
   }
 
-  async function poll(source: Source): Promise<void> {
+  async function poll(source: Source, h: Handle): Promise<void> {
     const cfg = source.config as SourceConfig
     const intervalMs = (cfg.intervalSec ?? (source.kind === 'agent-poll' ? 1800 : 300)) * 1000
     let cursor = source.cursor
-    while (!stopped) {
+    while (!h.stopped) {
       try {
         const next = await pollOnce(source, cursor)
         if (next !== cursor) {
@@ -200,7 +206,7 @@ export function createSupervisor(opts: SupervisorOpts) {
         opts.log(`watch ${source.id}: poll failed: ${err}`)
         try { recordError(opts.stateDir, source.id) } catch {}
       }
-      if (stopped) break
+      if (h.stopped) break
       await sleep(intervalMs)
     }
   }
@@ -224,37 +230,54 @@ export function createSupervisor(opts: SupervisorOpts) {
     reader.end()
   }
 
+  /** Starts one enabled source; resolves when it stops. Resolves at once if it can't run. */
+  function launch(s: Source, port: number): Promise<void> {
+    if (!s.enabled || running.has(s.id)) return Promise.resolve()
+    const cfg = s.config as SourceConfig
+    const ok = s.kind === 'stream' || s.kind === 'webhook'
+      ? !!adapterFor(s)
+      : s.kind === 'poll'
+        ? Array.isArray(cfg.command) && !!POLL_ADAPTERS[basename(String(cfg.command[0]))]
+        : typeof cfg.connector === 'string' && !!opts.runPoller
+    if (!ok) {
+      opts.log(`watch ${s.id}: no ${s.kind === 'agent-poll' ? 'connector or poller' : s.kind === 'poll' ? 'poll adapter for its command' : 'adapter for its command'}; skipped`)
+      return Promise.resolve()
+    }
+    const h: Handle = { stopped: false }
+    running.set(s.id, h)
+    launched.set(s.id, s)
+    if (s.kind === 'webhook') secrets.set(s.id, randomBytes(32).toString('hex'))
+    const p = s.kind === 'stream' || s.kind === 'webhook' ? run(s, port, h) : poll(s, h)
+    return p.finally(() => { if (running.get(s.id) === h) running.delete(s.id) })
+  }
+
   return {
-    /** Webhook secret for a running webhook source; undefined otherwise. */
+    /** Webhook secret of a launched webhook source; undefined otherwise. */
     secretOf: (id: string) => secrets.get(id),
-    source: (id: string) => watched.find(s => s.id === id),
-    /** Starts every watched source; `port` is the hook endpoint's. Resolves when all have stopped. */
-    start(port: number): Promise<void> {
+    source: (id: string) => launched.get(id),
+    /** Starts every enabled source; `port` is the hook endpoint's. Resolves when all have stopped. */
+    start(p: number): Promise<void> {
+      port = p
       if (opts.pidDir) mkdirSync(opts.pidDir, { recursive: true, mode: 0o700 })
-      const runs: Promise<void>[] = []
-      for (const s of watched) {
-        if (!adapterFor(s)) {
-          opts.log(`watch ${s.id}: no adapter for its command; skipped`)
-          continue
-        }
-        runs.push(run(s, port))
-      }
-      for (const s of polled) {
-        const cfg = s.config as SourceConfig
-        const ok = s.kind === 'poll'
-          ? Array.isArray(cfg.command) && !!POLL_ADAPTERS[basename(String(cfg.command[0]))]
-          : typeof cfg.connector === 'string' && !!opts.runPoller
-        if (!ok) {
-          opts.log(`watch ${s.id}: no ${s.kind === 'poll' ? 'poll adapter for its command' : 'connector or poller'}; skipped`)
-          continue
-        }
-        runs.push(poll(s))
-      }
-      return Promise.all(runs).then(() => {})
+      return Promise.all(opts.sources.map(s => launch(s, p))).then(() => {})
+    },
+    /** Starts a source added or resumed while running (013 FR9). False before `start` or if it can't run. */
+    startSource(s: Source): boolean {
+      if (port === undefined) return false
+      void launch(s, port)
+      return running.has(s.id)
+    },
+    /** Stops one source live (pause, remove). */
+    stopSource(id: string) {
+      const h = running.get(id)
+      if (!h) return
+      h.stopped = true
+      running.delete(id)
+      children.get(id)?.kill()
+      children.delete(id)
     },
     stop() {
-      stopped = true
-      for (const c of children.values()) c.kill()
+      for (const id of [...running.keys()]) this.stopSource(id)
     },
   }
 }
