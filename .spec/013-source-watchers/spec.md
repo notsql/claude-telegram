@@ -19,7 +19,7 @@ The agent only acts when I message it or a cron job fires, while the things I mi
   - `agent-poll`: for sources reachable only through an MCP connector (Notion, Gmail and Calendar claude.ai connectors). On an interval (default 30 min) the daemon runs a fresh, cheap `claude -p` with a `--json-schema` prompt like "list new items since <cursor>". This is the costly kind, so it gets the longest interval.
 - **FR2 — Normalised items.** Every kind maps to one shape: `{source, extId, ts, from: {id, name}, chat: {id, name, isGroup}, text, url?, toMe: bool, fromMe: bool, threadId?}`. A per-kind adapter (`jq`-like field map in config, or code for built-ins) does the mapping. Items are stored in `inbox.db` (`bun:sqlite`, FTS5) and deduplicated on `(source, extId)`.
 - **FR3 — Built-in adapters for v1**:
-  - WhatsApp: `wacli`, `webhook` kind, run with `WACLI_READONLY=1` except when sending.
+  - WhatsApp: `wacli`, `webhook` kind, run without `WACLI_READONLY` (`wacli sync` refuses to start in read-only mode); read-only comes from the daemon never calling a send path from a watcher.
   - Telegram account: `tgcli watch`, `stream` kind.
   - GitHub: `gh api notifications`, `poll` kind, every 5 min.
   - Email, calendar and Notion: `agent-poll` through connectors, or a CLI acquired by 012.

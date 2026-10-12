@@ -42,13 +42,13 @@ loops(id PK, item_id, kind /*awaiting_me|i_promised*/, summary, due, opened_at, 
 ## Built-in source configs
 ```json
 [
-  {"id":"whatsapp","kind":"webhook","config":{"command":["wacli","sync","--follow","--webhook","http://127.0.0.1:{port}/ingest/whatsapp","--webhook-allow-private","--webhook-secret","{secret}"],"env":{"WACLI_READONLY":"1"}}},
-  {"id":"telegram-account","kind":"stream","config":{"command":["tgcli","watch","--json"]}},
+  {"id":"whatsapp","kind":"webhook","config":{"command":["wacli","sync","--follow","--presence-mode","quiet","--webhook","http://127.0.0.1:{port}/ingest/whatsapp","--webhook-allow-private","--webhook-secret","{secret}"]}},
+  {"id":"telegram-account","kind":"stream","config":{"command":["tgcli","watch","--output","json"]}},
   {"id":"github","kind":"poll","config":{"command":["gh","api","notifications","--paginate"],"intervalSec":300}},
   {"id":"calendar","kind":"agent-poll","config":{"connector":"Google Calendar","intervalSec":1800}}
 ]
 ```
-Before T1302, check the exact `tgcli watch` output flags and the `wacli` webhook payload, and record them in the adapter tests. The commands above are this plan's assumptions.
+Checked against the installed sources for T1302 (tgcli v0.11.0, wacli 0.20.0): `tgcli watch` takes `--output json`; wacli signs with `X-Wacli-Signature: sha256=<hex HMAC>`, and `wacli sync` refuses `WACLI_READONLY=1`. Use absolute command paths under launchd.
 
 ## Reuse
 - Long-running child supervision follows the stale-PID and restart patterns in `daemon.ts`.
