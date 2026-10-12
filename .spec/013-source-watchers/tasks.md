@@ -15,6 +15,6 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* AC3.
 - [x] **T1307** `tools.ts` + `send.ts`: `inbox_*`, `source_*`, `draft_reply` with Send/Edit/Cancel (FR4, FR9).
   *Verify:* AC4, and US5 answered from the store.
-- [ ] **T1308** `source_add` onboarding through 012, plus health notices with Fix/Pause (FR9, FR10).
+- [x] **T1308** `source_add` onboarding through 012, plus health notices with Fix/Pause (FR9, FR10).
   *Verify:* AC6, AC7.
-- [ ] **T1309** `/sources` and `/inbox` fallback commands (008).
+- [x] **T1309** `/sources` and `/inbox` fallback commands (008).
