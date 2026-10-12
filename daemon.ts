@@ -60,6 +60,7 @@ import { skillsRoot, takenNames } from './skills/paths.ts'
 import { createSkillApplier } from './skills/apply.ts'
 import { createSkillTools } from './skills/tools.ts'
 import { createSkillUsage, invokedSkill } from './skills/usage.ts'
+import { gapHint } from './capabilities/gap.ts'
 import { createSkillNotices } from './skills/notices.ts'
 import { createDiscovery } from './skills/discovery.ts'
 import { createAgentUsage } from './agents/usage.ts'
@@ -338,7 +339,9 @@ const hookServer = startHookServer({ authToken: hookToken, log, handlers: {
   'post-tool-use': (payload, key) => {
     const name = invokedSkill(payload)
     if (name && isLearnedSkill(key, name)) skillUsage.invoked(name)
+    return gapHint(payload)
   },
+  'post-tool-use-failure': payload => gapHint(payload),
   // 009 FR5, FR7: per-agent counts and durations.
   'subagent-start': (payload, key) => {
     agentUsage.start(payload)
