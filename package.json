@@ -9,7 +9,8 @@
     "start:daemon": "bun daemon.ts",
     "test:contract": "bun test test/stream.contract.test.ts",
     "install-service": "bun service/install.ts",
-    "reindex": "bun history/reindex.ts"
+    "reindex": "bun history/reindex.ts",
+    "typecheck": "tsc"
   },
   "dependencies": {
     "@grammyjs/auto-retry": "^2.0.2",
@@ -18,5 +19,9 @@
     "croner": "^10.0.1",
     "grammy": "^1.21.0",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7"
   }
 }

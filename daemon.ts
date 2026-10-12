@@ -476,7 +476,7 @@ const turns = createTurnQueue<Inbound>({
   run: (key, batch) => (key.startsWith(JOB_PREFIX) ? fireJob(key.slice(JOB_PREFIX.length))
     : key.startsWith(SYS_PREFIX) ? fireSystemJob(key.slice(SYS_PREFIX.length) as SystemJobId)
     : runBatch(key, batch))
-    .catch(err => log(`turn failed: ${err}`)),
+    .catch(err => { log(`turn failed: ${err}`) }),
   onQueued: (key, item) => {
     item.queued = true
     if (item.msgId != null) void setReaction(parseKey(key).chatId, item.msgId, QUEUED_REACTION)

@@ -30,7 +30,7 @@ export type ExtraTools = {
 export function registerTelegramTools(mcp: Server, api: Api, token: string, key?: string, policy: Policy = {}, extra?: ExtraTools): void {
   const bound = key ? parseKey(key) : undefined
   mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: visibleTools([
+    tools: [...visibleTools([
       {
         name: 'reply',
         description:
@@ -100,7 +100,7 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
           required: ['chat_id', 'message_id', 'text'],
         },
       },
-    ], policy).concat(extra?.list() ?? []),
+    ], policy), ...extra?.list() ?? []],
   }))
 
   mcp.setRequestHandler(CallToolRequestSchema, async req => {
