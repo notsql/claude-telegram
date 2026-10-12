@@ -30,6 +30,8 @@ import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
 import { loadSources, recordItem, type Source } from './watch/registry.ts'
 import { adapterFor, createSupervisor } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
+import { createTriage, type TriageRules } from './watch/triage.ts'
+import { createDeliver, registerInboxButtons } from './watch/deliver.ts'
 import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from './agent/runner.ts'
 import type { StreamEvent } from './agent/stream.ts'
 import { parseKey } from './sessions/key.ts'
@@ -341,11 +343,21 @@ const approvals = createApprovals({
 })
 // 008 FR5: a skill command's <channel> wrapper, handed to its turn as hook context.
 const skillContext = new Map<string, string>()
-// 013 FR1, FR12: source watchers, only with TELEGRAM_WATCH=1. Items land in inbox.db.
+// 013 FR1, FR12: source watchers, only with TELEGRAM_WATCH=1. Items land in inbox.db,
+// go through triage, and urgent/action items ping the owner (first allowFrom).
+// Mutes and VIPs are in-memory until 014 makes them memory.
 const watch = config.watch ? (() => {
   const db = openInboxDb(inboxPath(STATE_DIR))
+  const rules: TriageRules = { mutedChats: [], mutedSenders: [], vips: [] }
+  const triage = createTriage({ db, rules, log, run: runOneShot, budget: { take: () => budget.take() } })
+  const owner = loadAccess().allowFrom[0]
+  const deliver = owner ? createDeliver({ db, api: bot.api, owner, vips: rules.vips, log, mute: (_source, fromId) => void rules.mutedSenders.push(fromId) }) : undefined
+  if (!owner) log('watch: no owner in allowFrom; pings disabled')
   const insert = (source: Source, item: Item) => {
-    if (insertItem(db, item) !== null) recordItem(STATE_DIR, source.id, Date.now())
+    const id = insertItem(db, item)
+    if (id === null) return
+    recordItem(STATE_DIR, source.id, Date.now())
+    triage.add(id)
   }
   const store = (source: Source, payload: unknown) => {
     const item = adapterFor(source)?.map(source.id, payload)
@@ -355,7 +367,9 @@ const watch = config.watch ? (() => {
   try { sources = loadSources(STATE_DIR) } catch (err) { log(`watch: sources.json unreadable: ${err}`) }
   const supervisor = createSupervisor({
     stateDir: STATE_DIR, sources, onPayload: store, onItem: insert, log, pidDir: join(STATE_DIR, 'watch'),
-    runPoller: (input, schema, tools) => runOneShot('tg-poller', input, schema, tools),
+    runPoller: (input, schema, tools) => budget.take()
+      ? runOneShot('tg-poller', input, schema, tools)
+      : Promise.reject(new Error('daily turn budget spent')),
   })
   const route = createIngestRoute({
     secretOf: supervisor.secretOf,
@@ -363,7 +377,7 @@ const watch = config.watch ? (() => {
     store: (id, payload) => store(supervisor.source(id)!, payload),
     log,
   })
-  return { supervisor, route }
+  return { supervisor, route, triage, deliver }
 })() : undefined
 const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.route, handlers: {
   'permission-request': approvals.handle,
@@ -402,7 +416,6 @@ const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.r
   'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
-void watch?.supervisor.start(hookServer.port)
 
 // 008 FR4, FR19: the skills, plugins and MCP servers each chat can use.
 const discovery = createDiscovery({
@@ -417,6 +430,10 @@ const turnAbort = new AbortController()
 // FR10: set when a turn hits a usage limit; queued turns wait until then.
 let pausedUntil = 0
 const budget = createTurnBudget(config.dailyTurnBudget)
+// After `budget`: agent-poll and triage take from it.
+void watch?.supervisor.start(hookServer.port)
+watch?.triage.start()
+watch?.deliver?.start()
 
 const pauseMessage = (until: number) => `Usage limit reached. Paused until ${new Date(until).toLocaleString()}.`
 
@@ -545,6 +562,7 @@ const usageCommand = registerUsage(bot)
 const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh() })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
+if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
 registerCapabilities(bot, capabilityRequests, resumer)
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
@@ -684,6 +702,8 @@ function shutdown(): void {
   systemJobs.stop()
   stopIndexer()
   watch?.supervisor.stop()
+  watch?.triage.stop()
+  watch?.deliver?.stop()
   void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
     hookServer.stop()
