@@ -15,5 +15,5 @@ Depends on: 001 (runner), 003 (approvals, policy), 006 (skills, reflection), 009
   *Verify:* AC3.
 - [ ] **T1207** Web rung: check the browser MCP loads in daemon turns, and that the ladder skill covers WebFetch → browser (FR1.4).
   *Verify:* AC6.
-- [ ] **T1208** Ledger notices with Undo (uninstall + archive skill), `/caps` in 008, and a skill proposal after the first successful use (FR9, FR10).
+- [x] **T1208** Ledger notices with Undo (uninstall + archive skill), `/caps` in 008, and a skill proposal after the first successful use (FR9, FR10).
   *Verify:* AC7.
