@@ -1,7 +1,7 @@
 # 012 — Tasks
 Depends on: 001 (runner), 003 (approvals, policy), 006 (skills, reflection), 009 (shipped agents/skills).
 
-- [ ] **T1201** `capabilities/ledger.ts` with zod schema and atomic IO, plus `capabilityAcquisition` in the policy schema (FR10, FR11).
+- [x] **T1201** `capabilities/ledger.ts` with zod schema and atomic IO, plus `capabilityAcquisition` in the policy schema (FR10, FR11).
   *Verify:* unit tests; defaults are `ask` in DM and `off` in groups.
 - [ ] **T1202** `templates.ts` + `install.ts`: validate names, build argv, spawn without a shell with a timeout, and pair each install with its uninstall (FR6).
   *Verify:* unit tests, including AC4's injected name being rejected.
