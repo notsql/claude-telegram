@@ -9,7 +9,7 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* GitHub notifications and today's calendar events land as items.
 - [x] **T1304** `triage.ts`: rules stage, plus the shipped `tg-triager` with batching and budget (FR5, FR6, FR11).
   *Verify:* AC2, AC5, AC8.
-- [ ] **T1305** `deliver.ts`: ping cards with buttons, quiet hours, `pingsPerHour`, snooze (FR7).
+- [x] **T1305** `deliver.ts`: ping cards with buttons, quiet hours, `pingsPerHour`, snooze (FR7).
   *Verify:* AC1.
 - [ ] **T1306** `digest.ts`: morning and evening system jobs, open-loop detection and closure (FR8).
   *Verify:* AC3.
