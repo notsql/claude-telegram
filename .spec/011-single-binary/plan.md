@@ -23,7 +23,7 @@ bun build cli.ts --compile --bytecode --format=esm --minify --sourcemap \
 `package.json`: `build` (host) and `build:all` (both targets). The existing `start:daemon`, `install-service` and `reindex` scripts become `bun cli.ts <cmd>`.
 
 ## Mode switch
-One helper, `selfCommand(args)` in `cli.ts`, returns `[process.execPath, ...args]` when `Bun.isStandaloneExecutable` is true, and otherwise `[bun, join(ROOT, 'cli.ts'), ...args]`. Both the service installer and the memory bridge use it, so FR4 lives in one place.
+One helper, `selfCommand(args)` in `util/self.ts`, returns `[process.execPath, ...args]` when `Bun.isStandaloneExecutable` is true, and otherwise `[bun, join(ROOT, 'cli.ts'), ...args]`. Both the service installer and the memory bridge use it, so FR4 lives in one place.
 
 ## Risks
 - Bun version drift between build and run only costs startup speed (bytecode fallback), not correctness.

@@ -98,7 +98,7 @@ async function sharedRoot(): Promise<string> {
   return memoryRoot(loadConfig({ ...env, ...process.env }).cwd)
 }
 
-async function main(argv: string[]): Promise<void> {
+export async function main(argv: string[]): Promise<void> {
   const [cmd, ...flags] = argv
   const root = await sharedRoot()
   if (cmd === 'session-start') {

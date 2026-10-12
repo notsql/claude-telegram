@@ -18,10 +18,12 @@ export async function reindex(db: Database, projectsDir: string, log: (msg: stri
   await scan(db, projectsDir, log)
 }
 
-if (import.meta.main) {
+export async function main(): Promise<void> {
   const db = openHistoryDb(join(STATE_DIR, 'history.db'))
   const t = performance.now()
   await reindex(db, join(claudeDir(), 'projects'), console.log)
   const { n } = db.query('SELECT COUNT(*) AS n FROM messages').get() as { n: number }
   console.log(`reindexed ${n} messages in ${Math.round(performance.now() - t)}ms`)
 }
+
+if (import.meta.main) await main()
