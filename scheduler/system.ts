@@ -14,6 +14,9 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 export const SYSTEM_JOBS = [
   { id: 'memory-consolidation', title: 'Weekly memory consolidation', expr: '0 3 * * 0' },
   { id: 'skill-pruning', title: 'Weekly skill pruning', expr: '30 3 * * 0' },
+  // 013 FR8: only when source watchers are on.
+  { id: 'digest-morning', title: 'Morning digest', expr: '30 8 * * *', watch: true },
+  { id: 'digest-evening', title: 'Evening digest', expr: '30 18 * * *', watch: true },
 ] as const
 
 export type SystemJobId = (typeof SYSTEM_JOBS)[number]['id']
@@ -22,6 +25,8 @@ export type SystemJobOpts = {
   /** `{ [id]: lastRunMs }`. */
   stateFile: string
   tz: string
+  /** 013 FR12: registers the `watch` jobs (digests) only when true. */
+  watch?: boolean
   run: (id: SystemJobId) => unknown
   now?: () => number
 }
@@ -37,7 +42,8 @@ export function startSystemJobs(opts: SystemJobOpts) {
   }
 
   const caughtUp: SystemJobId[] = []
-  const crons = SYSTEM_JOBS.map(j => {
+  const jobs = SYSTEM_JOBS.filter(j => !('watch' in j) || opts.watch)
+  const crons = jobs.map(j => {
     const last = state[j.id]
     // First start: count from now rather than running straight away.
     if (last === undefined) { state[j.id] = now(); save() }
@@ -48,7 +54,7 @@ export function startSystemJobs(opts: SystemJobOpts) {
 
   return {
     caughtUp,
-    nextRun: (id: SystemJobId) => crons[SYSTEM_JOBS.findIndex(j => j.id === id)]?.nextRun() ?? null,
+    nextRun: (id: SystemJobId) => crons[jobs.findIndex(j => j.id === id)]?.nextRun() ?? null,
     stop: () => { for (const c of crons) c.stop() },
   }
 }
