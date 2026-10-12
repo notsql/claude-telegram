@@ -609,7 +609,7 @@ if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
 if (watch?.health) registerHealthButtons(bot, watch.health)
 const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
-const watchUi = watch && registerWatchCommands(bot, { stateDir: STATE_DIR, db: watch.db })
+const watchUi = watch && registerWatchCommands(bot, { stateDir: STATE_DIR, db: watch.db, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) } })
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)

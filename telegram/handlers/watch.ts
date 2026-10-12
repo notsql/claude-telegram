@@ -61,24 +61,26 @@ const entryButtons = (id: number): InlineKeyboardButton[][] => [[
 
 const ownerDm = (ctx: Context) => isOwner(ctx) && ctx.chat?.type === 'private'
 
-export function registerWatchCommands(bot: Bot, o: { stateDir: string; db: Database }) {
+export function registerWatchCommands(bot: Bot, o: { stateDir: string; db: Database; live: { start: (s: Source) => unknown; stop: (id: string) => void } }) {
   bot.callbackQuery(/^src:(pause|resume):([a-z0-9][a-z0-9_-]*)$/, async ctx => {
     if (!isOwner(ctx)) return ownerOnly(ctx)
     const enable = ctx.match![1] === 'resume'
     try {
-      setEnabled(o.stateDir, ctx.match![2]!, enable)
+      const s = setEnabled(o.stateDir, ctx.match![2]!, enable)
+      if (s.enabled) o.live.start(s)
+      else o.live.stop(s.id)
     } catch (e) {
       return answer(ctx, e instanceof Error ? e.message : String(e))
     }
     void answer(ctx, enable ? 'Resumed' : 'Paused')
     const v = sourcesView(o.stateDir)
-    await ctx.editMessageText(`${v.text}\n\n${enable ? 'Resumed' : 'Paused'}; applies on restart.`, { reply_markup: withClose(v.keyboard) }).catch(() => {})
+    await ctx.editMessageText(`${v.text}\n\n${enable ? 'Resumed' : 'Paused'}.`, { reply_markup: withClose(v.keyboard) }).catch(() => {})
   })
 
   const sources: Command = { name: 'sources', description: 'Watched sources: status, pause, resume', menu: ['private'], handler: async ctx => {
     if (!ownerDm(ctx)) return
     const v = sourcesView(o.stateDir)
-    await ctx.reply(v.keyboard ? `${v.text}\n\nPause and Resume apply on restart.` : v.text, { reply_markup: withClose(v.keyboard) })
+    await ctx.reply(v.text, { reply_markup: withClose(v.keyboard) })
   } }
 
   const inbox: Command = { name: 'inbox', description: 'Urgent and action items, open loops', menu: ['private'], handler: async ctx => {

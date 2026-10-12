@@ -24,7 +24,8 @@ function setup() {
   const db = openInboxDb(':memory:')
   const callbacks: [RegExp, (ctx: any) => Promise<unknown>][] = []
   const bot = { callbackQuery: (re: RegExp, fn: any) => callbacks.push([re, fn]) } as any
-  const ui = registerWatchCommands(bot, { stateDir, db })
+  const live: string[] = []
+  const ui = registerWatchCommands(bot, { stateDir, db, live: { start: s => void live.push(`start:${s.id}`), stop: id => void live.push(`stop:${id}`) } })
   const replies: { text: string; extra: any }[] = []
   const edits: { text: string; extra: any }[] = []
   const ctx = (from = 42, type = 'private', data?: string) => ({
@@ -41,7 +42,7 @@ function setup() {
     c.match = data.match(re)
     await fn(c)
   }
-  return { stateDir, db, ui, replies, edits, ctx, tap }
+  return { stateDir, db, ui, replies, edits, ctx, tap, live }
 }
 
 test('/sources lists status, last item and errors, with Pause/Resume that write sources.json', async () => {
@@ -52,7 +53,6 @@ test('/sources lists status, last item and errors, with Pause/Resume that write 
   expect(r.text).toContain('✅ WA (wa, stream): last item 5m ago')
   expect(r.text).toContain('⚠️ GH (gh, stream): no items yet, 2 errors')
   expect(r.text).toContain('⏸ MAIL')
-  expect(r.text).toContain('apply on restart')
   expect(r.extra.parse_mode).toBeUndefined()
   const cbs = r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)
   expect(cbs).toEqual(['src:pause:wa', 'src:pause:gh', 'src:resume:mail', 'ui:close'])
@@ -62,7 +62,8 @@ test('/sources lists status, last item and errors, with Pause/Resume that write 
   const byId = Object.fromEntries(loadSources(s.stateDir).map(x => [x.id, x]))
   expect(byId.wa).toMatchObject({ enabled: false, status: 'paused' })
   expect(byId.mail).toMatchObject({ enabled: true, status: 'ok' })
-  expect(s.edits.at(-1)!.text).toContain('Resumed; applies on restart.')
+  expect(s.live).toEqual(['stop:wa', 'start:mail'])
+  expect(s.edits.at(-1)!.text).toContain('Resumed.')
 })
 
 test('/sources and /inbox are owner-DM only', async () => {
