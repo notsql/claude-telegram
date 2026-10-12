@@ -8,7 +8,7 @@
  * would start its own poller on the same bot token and cause 409 conflicts.
  */
 
-import { writeFileSync, renameSync } from 'fs'
+import { writeJson } from '../util/files.ts'
 
 export type HookEvent =
   | 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PermissionRequest'
@@ -56,9 +56,6 @@ export function renderHookSettings({ port, approvalTimeoutSec }: HookSettingsOpt
   }
 }
 
-/** Atomic write, so a turn never reads a half-written file. */
 export function writeHookSettings(path: string, opts: HookSettingsOpts): void {
-  const tmp = `${path}.tmp`
-  writeFileSync(tmp, JSON.stringify(renderHookSettings(opts), null, 2) + '\n', { mode: 0o600 })
-  renameSync(tmp, path)
+  writeJson(path, renderHookSettings(opts))
 }

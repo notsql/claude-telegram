@@ -6,8 +6,7 @@
  * since the last refinement trigger a refinement proposal.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
-import { dirname } from 'path'
+import { readJson, writeJson } from '../util/files.ts'
 
 export const OUTCOMES = ['success', 'corrected', 'failed'] as const
 export type Outcome = typeof OUTCOMES[number]
@@ -22,14 +21,8 @@ export type SkillUsage = {
 }
 
 export function createSkillUsage(file: string) {
-  const load = (): Record<string, SkillUsage> => {
-    try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return {} }
-  }
-  const save = (all: Record<string, SkillUsage>) => {
-    mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(`${file}.tmp`, JSON.stringify(all, null, 2) + '\n', { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
-  }
+  const load = () => readJson<Record<string, SkillUsage>>(file) ?? {}
+  const save = (all: Record<string, SkillUsage>) => writeJson(file, all)
   const entry = (all: Record<string, SkillUsage>, name: string) =>
     (all[name] ??= { count: 0, outcomes: { success: 0, corrected: 0, failed: 0 }, bad_since_refine: 0 })
 

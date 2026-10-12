@@ -6,8 +6,9 @@
  */
 
 import { Glob } from 'bun'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { dirname, join, sep } from 'path'
+import { readJson, writeJson } from '../util/files.ts'
 
 export type Skill = { name: string; description: string; path: string }
 
@@ -62,7 +63,7 @@ export function discoverSkills(claudeDir: string, cwds: string[]): Skill[] {
 export type CommandTable = Record<string, string>
 
 export function loadTable(file: string): CommandTable {
-  try { return JSON.parse(readFileSync(file, 'utf8')).skills ?? {} } catch { return {} }
+  return readJson<{ skills?: CommandTable }>(file)?.skills ?? {}
 }
 
 /**
@@ -84,8 +85,5 @@ export function assign(table: CommandTable, names: string[], reserved: Iterable<
 }
 
 export function saveTable(file: string, table: CommandTable): void {
-  mkdirSync(dirname(file), { recursive: true })
-  const tmp = `${file}.tmp`
-  writeFileSync(tmp, JSON.stringify({ skills: table }, null, 2) + '\n', { mode: 0o600 })
-  renameSync(tmp, file)
+  writeJson(file, { skills: table })
 }

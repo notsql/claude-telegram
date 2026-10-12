@@ -5,9 +5,10 @@
  * copies the old file to `.bak/<name>.<ts>.md`, which Undo restores (FR9).
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'fs'
 import { join } from 'path'
 import { MAX_INDEX_LINES, refusal, slug } from './guard.ts'
+import { writeAtomic } from '../util/files.ts'
 
 export const MEMORY_TYPES = ['user', 'feedback', 'project', 'reference'] as const
 export type MemoryType = typeof MEMORY_TYPES[number]
@@ -34,10 +35,6 @@ export type WriteResult = {
 
 const INDEX = 'MEMORY.md'
 
-function atomicWrite(path: string, text: string): void {
-  writeFileSync(`${path}.tmp`, text)
-  renameSync(`${path}.tmp`, path)
-}
 
 const quote = (v: string) => (/^[\w .,/@()+-]*$/.test(v) && v.trim() === v && v !== '' ? v : JSON.stringify(v))
 const unquote = (v: string) => {
@@ -106,7 +103,7 @@ export function createMemoryStore(dir: string) {
     if (line === undefined) { if (at >= 0) lines.splice(at, 1) }
     else if (at >= 0) lines[at] = line
     else lines.push(line)
-    atomicWrite(indexPath, lines.length ? lines.join('\n') + '\n' : '')
+    writeAtomic(indexPath, lines.length ? lines.join('\n') + '\n' : '')
   }
 
   function backup(name: string): string | undefined {
@@ -142,7 +139,7 @@ export function createMemoryStore(dir: string) {
       if (why) throw new Error(why)
       mkdirSync(dir, { recursive: true })
       const prev = backup(name)
-      atomicWrite(fileOf(name), text)
+      writeAtomic(fileOf(name), text)
       setIndexLine(name, `- [${name}](${name}.md) — ${description}`)
       return { entry: readEntry(`${name}.md`)!, op: prev ? 'update' : 'create', backup: prev, indexFull: indexLines() > MAX_INDEX_LINES }
     },

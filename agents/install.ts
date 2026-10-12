@@ -9,6 +9,7 @@
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs'
 import { dirname, join, relative } from 'path'
+import { readJson } from '../util/files.ts'
 
 export const ASSETS_DIR = join(import.meta.dir, '..', 'assets')
 
@@ -30,8 +31,7 @@ function files(dir: string): string[] {
  * the manifest are relative to `claudeDir`, e.g. `agents/tg-researcher.md`.
  */
 export function installAssets(claudeDir: string, manifestFile: string, assets = ASSETS_DIR): InstallResult {
-  let manifest: Manifest = {}
-  try { manifest = JSON.parse(readFileSync(manifestFile, 'utf8')) } catch {}
+  const manifest = readJson<Manifest>(manifestFile) ?? {}
   const result: InstallResult = { installed: [], updated: [], kept: [] }
 
   for (const src of [...files(join(assets, 'agents')), ...files(join(assets, 'skills'))]) {

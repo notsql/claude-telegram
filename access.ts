@@ -7,10 +7,11 @@
 
 import type { Api, Context } from 'grammy'
 import { randomBytes } from 'crypto'
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'fs'
+import { readFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { parseChats, type ChatEntry } from './policy/schema.ts'
+import { writeJson } from './util/files.ts'
 
 export const STATE_DIR = process.env.TELEGRAM_STATE_DIR
   ?? join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'channels', 'telegram')
@@ -132,9 +133,7 @@ export function assertAllowedChat(chat_id: string): void {
 export function saveAccess(a: Access): void {
   if (STATIC) return
   mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
-  const tmp = ACCESS_FILE + '.tmp'
-  writeFileSync(tmp, JSON.stringify(a, null, 2) + '\n', { mode: 0o600 })
-  renameSync(tmp, ACCESS_FILE)
+  writeJson(ACCESS_FILE, a)
 }
 
 function pruneExpired(a: Access): boolean {

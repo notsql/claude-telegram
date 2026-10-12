@@ -10,7 +10,7 @@ import { Bot, GrammyError, type Context } from 'grammy'
 import type { InlineKeyboardMarkup, ReactionTypeEmoji } from 'grammy/types'
 import { autoRetry } from '@grammyjs/auto-retry'
 import { apiThrottler } from '@grammyjs/transformer-throttler'
-import { readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { randomBytes } from 'crypto'
 import { join } from 'path'
@@ -50,7 +50,7 @@ import { renderInbound, renderSkillInvocation } from './agent/inbound.ts'
 import { createTopicNames } from './sessions/topics.ts'
 import { startProgress } from './agent/progress.ts'
 import { apiKeyRefusal, isLoggedIn } from './agent/auth.ts'
-import { loadConfig, cliVersionRefusal, createTurnBudget } from './config.ts'
+import { ENV_FILE, loadConfig, loadEnvFile, cliVersionRefusal, createTurnBudget } from './config.ts'
 import { claudeDir, memoryRoot, userDir } from './memory/paths.ts'
 import { installAssets } from './agents/install.ts'
 import { openHistoryDb } from './history/db.ts'
@@ -99,7 +99,6 @@ import { startSystemJobs, type SystemJobId } from './scheduler/system.ts'
 import type { Policy } from './policy/schema.ts'
 import type { StreamEvent } from './agent/stream.ts'
 
-const ENV_FILE = join(STATE_DIR, '.env')
 const PID_FILE = join(STATE_DIR, 'daemon.pid')
 const SETTINGS_FILE = join(STATE_DIR, 'hook-settings.json')
 const COMMANDS_FILE = join(STATE_DIR, 'commands.json')
@@ -110,14 +109,7 @@ const SHUTDOWN_DEADLINE_MS = 9000
 
 const log = (line: string) => process.stderr.write(`telegram daemon: ${line}\n`)
 
-// Load the state-dir .env into process.env. Real env wins.
-try {
-  chmodSync(ENV_FILE, 0o600)
-  for (const line of readFileSync(ENV_FILE, 'utf8').split('\n')) {
-    const m = line.match(/^(\w+)=(.*)$/)
-    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2]
-  }
-} catch {}
+loadEnvFile()
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const STATIC = process.env.TELEGRAM_ACCESS_MODE === 'static'

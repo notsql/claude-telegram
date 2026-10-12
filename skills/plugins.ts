@@ -5,21 +5,14 @@
  * user settings, then the project's `settings.json` and `settings.local.json`.
  */
 
-import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { isInside } from '../policy/args.ts'
+import { readJson } from '../util/files.ts'
 
 export type Plugin = { id: string; name: string; on: boolean }
 
 type Installed = { plugins?: Record<string, { scope?: string; projectPath?: string }[]> }
 
-const readJson = <T,>(path: string): T | undefined => {
-  try {
-    return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as T : undefined
-  } catch {
-    return undefined
-  }
-}
 
 export function installedPlugins(claudeDir: string, cwd: string): Plugin[] {
   const installed = readJson<Installed>(join(claudeDir, 'plugins', 'installed_plugins.json'))?.plugins ?? {}

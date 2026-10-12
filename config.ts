@@ -5,8 +5,25 @@
  * minimum `claude` CLI version (FR12), pinned to the T003 spike.
  */
 
+import { chmodSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { STATE_DIR } from './access.ts'
+
+export const ENV_FILE = join(STATE_DIR, '.env')
+
+/**
+ * Loads the state-dir `.env` into `process.env`; real env wins. The bot token
+ * lives here (plugin-spawned servers get no env block), so it is kept owner-only.
+ */
+export function loadEnvFile(): void {
+  try {
+    chmodSync(ENV_FILE, 0o600)
+    for (const line of readFileSync(ENV_FILE, 'utf8').split('\n')) {
+      const m = line.match(/^(\w+)=(.*)$/)
+      if (m && process.env[m[1]!] === undefined) process.env[m[1]!] = m[2]
+    }
+  } catch {}
+}
 
 const MIN_CLAUDE_VERSION = '2.1.288'
 

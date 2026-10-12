@@ -5,8 +5,7 @@
  * start time is held per `agent_id` and the duration taken at Stop.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
-import { dirname } from 'path'
+import { readJson, writeJson } from '../util/files.ts'
 
 export type AgentUsage = {
   count: number
@@ -17,14 +16,8 @@ export type AgentUsage = {
 
 export function createAgentUsage(file: string) {
   const running = new Map<string, { type: string; started: number }>()
-  const load = (): Record<string, AgentUsage> => {
-    try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return {} }
-  }
-  const save = (all: Record<string, AgentUsage>) => {
-    mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(`${file}.tmp`, JSON.stringify(all, null, 2) + '\n', { mode: 0o600 })
-    renameSync(`${file}.tmp`, file)
-  }
+  const load = () => readJson<Record<string, AgentUsage>>(file) ?? {}
+  const save = (all: Record<string, AgentUsage>) => writeJson(file, all)
 
   return {
     all: load,
