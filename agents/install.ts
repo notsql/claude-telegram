@@ -11,7 +11,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, relative } from 'path'
 import { readJson } from '../util/files.ts'
 
-export const ASSETS_DIR = join(import.meta.dir, '..', 'assets')
+// FR3: compiled, every module's dir is /$bunfs/root and --asset embeds ./assets there
+export const ASSETS_DIR = Bun.isStandaloneExecutable ? join(import.meta.dir, 'assets') : join(import.meta.dir, '..', 'assets')
 
 type Manifest = Record<string, string>
 export type InstallResult = { installed: string[]; updated: string[]; kept: string[] }

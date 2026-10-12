@@ -4,10 +4,13 @@
  * bakes a PATH that finds both `claude` and `bun`.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { STATE_DIR } from '../access.ts'
+// FR3: text imports are bundled into the compiled binary
+import launchd from './launchd.plist.tmpl' with { type: 'text' }
+import systemd from './systemd.service.tmpl' with { type: 'text' }
 
 const LABEL = 'com.claude.telegram'
 const ROOT = dirname(import.meta.dir)
@@ -45,12 +48,10 @@ function main(): void {
     LABEL, ROOT, BUN: bun, DAEMON: join(ROOT, 'daemon.ts'),
     PATH: servicePath(claude, bun), STATE_DIR, LOG_DIR: logDir,
   }
-  const tmpl = (name: string) => readFileSync(join(import.meta.dir, name), 'utf8')
-
   if (process.platform === 'darwin') {
     const dest = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
     mkdirSync(dirname(dest), { recursive: true })
-    writeFileSync(dest, render(tmpl('launchd.plist.tmpl'), vars, xmlEscape))
+    writeFileSync(dest, render(launchd, vars, xmlEscape))
     const domain = `gui/${process.getuid!()}`
     run(['launchctl', 'bootout', `${domain}/${LABEL}`], true)
     run(['launchctl', 'bootstrap', domain, dest])
@@ -58,7 +59,7 @@ function main(): void {
   } else if (process.platform === 'linux') {
     const dest = join(homedir(), '.config', 'systemd', 'user', 'claude-telegram.service')
     mkdirSync(dirname(dest), { recursive: true })
-    writeFileSync(dest, render(tmpl('systemd.service.tmpl'), vars))
+    writeFileSync(dest, render(systemd, vars))
     run(['systemctl', '--user', 'daemon-reload'])
     run(['systemctl', '--user', 'enable', '--now', 'claude-telegram.service'])
     console.log(`installed ${dest}\nlogs: ${logDir}`)
