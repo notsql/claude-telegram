@@ -27,7 +27,7 @@ export function availableAgents(claudeDir: string, cwd?: string): string[] {
 
 /**
  * Agents a chat can usefully run as, with descriptions, for `/settings` (008
- * FR20). Structured-output-only agents (tg-reflector, tg-summarizer) can't
+ * FR20). Structured-output-only agents (tg-reflector, tg-summarizer, tg-triager) can't
  * hold a conversation, so they're left out.
  */
 export function chatAgents(claudeDir: string, cwd?: string): { name: string; description: string }[] {

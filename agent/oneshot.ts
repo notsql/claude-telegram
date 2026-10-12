@@ -10,7 +10,7 @@
 import { z } from 'zod'
 
 export async function runOneShot<T extends z.ZodType>(
-  agent: 'tg-reflector' | 'tg-summarizer',
+  agent: 'tg-reflector' | 'tg-summarizer' | 'tg-triager',
   input: string,
   schema: T,
 ): Promise<z.infer<T>> {
