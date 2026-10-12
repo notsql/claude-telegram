@@ -90,6 +90,7 @@ Consider a skill only when at least one signal holds: the turn used many tool ca
 - fields (optional SKILL.md frontmatter, only where relevant): "arguments" (names the user passes, used as $name in the steps, e.g. ["issue"]) with "argument-hint"; "allowed-tools" (a narrow pre-approved list such as "Bash(gh issue view:*)", never bare Bash); "context": "fork" plus "agent" for heavy procedures that should run in a subagent; "paths" (globs the skill applies to); "disable-model-invocation": true for side-effecting skills such as deploys. Steps may use !\`command\` blocks for live context: read-only commands only (git status/log/diff, gh issue view, ls, cat…), no pipes, variables or shell operators.
 - Never include secrets, tokens, personal data or one-off details (specific file contents, dates, chat names).
 - confidence: 0 to 1, how sure you are this is worth saving. Propose at most one skill.
+- Newly installed capability (listed in the context below): if the exchange used one successfully, that alone is a signal. Propose op "create" with exactly the listed use-… name, covering when to use it and the commands or tools that worked.
 Skill outcomes ("skill_outcomes"): for each skill the assistant invoked in the exchange ([tool Skill …] lines), report how it went: "success", "corrected" (the user corrected the approach) or "failed". If a skill was corrected or failed, also patch it with what went wrong. Empty when no skill was invoked.`
 
 const AGENT_INSTRUCTIONS = `Agents ("agents"): a subagent is a recurring *role* with its own judgement, tools, model or memory (an issue triager, a release checker). Choose the right artefact:
@@ -106,8 +107,10 @@ Propose an agent only when the role recurs: the similar-task count below must be
 - confidence: 0 to 1. Propose at most one agent.`
 
 /** The `<skills_context>` block: existing learned skills (name and description only) and the turn's signals. */
-export function skillsContext(skills: { name: string; description: string }[], toolCalls: number, similar: string[], agents: { name: string; description: string }[] = []): string {
+export function skillsContext(skills: { name: string; description: string }[], toolCalls: number, similar: string[], agents: { name: string; description: string }[] = [], capabilities: string[] = []): string {
   return [
+    // 012 FR9: installed capabilities with no skill yet, as `use-<name>: <kind> <name>`.
+    ...capabilities.length ? [`Newly installed capabilities with no skill yet:\n${capabilities.map(c => `- ${c}`).join('\n')}`] : [],
     `Existing skills:\n${skills.map(s => `- ${s.name}: ${s.description}`).join('\n') || '(none)'}`,
     `Existing learned agents:\n${agents.map(a => `- ${a.name}: ${a.description}`).join('\n') || '(none)'}`,
     `Similar tasks including this one: ${similar.length + 1}`,
