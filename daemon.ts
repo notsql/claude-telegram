@@ -83,6 +83,7 @@ import { registerCapabilities } from './telegram/handlers/capabilities.ts'
 import { createCapabilityRequests } from './capabilities/request.ts'
 import { createCapabilityTools } from './capabilities/tools.ts'
 import { runArgv } from './capabilities/install.ts'
+import { createResumer } from './capabilities/resume.ts'
 import { registerSessions } from './telegram/handlers/sessions.ts'
 import { registerUsage } from './telegram/handlers/usage.ts'
 import { registerSettings } from './telegram/handlers/settings.ts'
@@ -315,6 +316,18 @@ const capabilityRequests = createCapabilityRequests({
   owners: () => loadAccess().allowFrom,
   sender: key => participants.active(key)[0],
   install: argv => runArgv(argv),
+  generation: key => sessions.generation(key),
+  onInstalled: (origin, req) => resumer.installed(origin, req.candidate.name, req.resume, req.candidate.auth),
+})
+// 012 FR7/FR8: login handoff, then a follow-up turn queued in the origin session (same runInSession path as `mode: session` jobs).
+const resumer = createResumer({
+  api: bot.api,
+  owners: () => loadAccess().allowFrom,
+  generation: key => sessions.generation(key),
+  run: (key, text) => turns.enqueue(key, {
+    prompt: renderInbound(text, { origin: 'capability', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
+    text,
+  }),
 })
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests) })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
@@ -510,7 +523,7 @@ const usageCommand = registerUsage(bot)
 const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh() })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
-registerCapabilities(bot, capabilityRequests)
+registerCapabilities(bot, capabilityRequests, resumer)
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)

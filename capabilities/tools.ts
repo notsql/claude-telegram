@@ -21,6 +21,7 @@ const TOOL = {
           name: { type: 'string' },
           tier: { type: 'string', enum: ['T1', 'T2', 'T3'] },
           source: { type: 'string' },
+          auth: { type: 'string', description: 'If it needs a login: the exact command to run or URL to open. The owner does it; never ask for a secret.' },
         },
         required: ['kind', 'name', 'tier', 'source'],
       },

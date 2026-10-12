@@ -32,6 +32,8 @@ const make = (timeoutMs?: number) => createCapabilityRequests({
   sender: key => sender[key],
   // Stub: never installs anything real.
   install: async argv => { installs.push(argv); return { ok: true, code: 0, timedOut: false, output: '' } },
+  generation: () => 0,
+  onInstalled: () => {},
   now: () => clock,
   timeoutMs,
 })
