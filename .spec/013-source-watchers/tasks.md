@@ -1,7 +1,7 @@
 # 013 — Tasks
 Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system jobs), 012 (acquiring new connectors).
 
-- [ ] **T1301** `watch/registry.ts` + `store.ts` (`inbox.db` schema, FTS5, dedupe), plus the `TELEGRAM_WATCH` flag (FR1, FR2, FR12).
+- [x] **T1301** `watch/registry.ts` + `store.ts` (`inbox.db` schema, FTS5, dedupe), plus the `TELEGRAM_WATCH` flag (FR1, FR2, FR12).
   *Verify:* unit tests; inserting the same item twice keeps one row.
 - [ ] **T1302** `supervisor.ts` + `ingest.ts` + adapters for `tgcli watch` (stream) and `wacli` (webhook, HMAC), run read-only (FR1, FR3, FR4).
   *Verify:* live messages on both accounts land in `inbox.db` within 10s.
