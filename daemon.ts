@@ -30,6 +30,8 @@ import { inboxPath, insertItem, openInboxDb } from './watch/store.ts'
 import { loadSources, recordItem, type Source } from './watch/registry.ts'
 import { adapterFor, createSupervisor } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
+import { createWatchTools, registerDraftButtons } from './watch/tools.ts'
+import { bunSendSpawn } from './watch/send.ts'
 import { isMissingSession, runTurn, type RunTurnOpts, type TurnOutcome } from './agent/runner.ts'
 import type { StreamEvent } from './agent/stream.ts'
 import { parseKey } from './sessions/key.ts'
@@ -326,7 +328,13 @@ const resumer = createResumer({
     text,
   }),
 })
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests) })
+// 013 FR9: inbox/source/draft tools, owner DM only. Sends run only from the owner's Send tap.
+const inboxDb = config.watch ? openInboxDb(inboxPath(STATE_DIR)) : undefined
+const watchTools = inboxDb && createWatchTools({
+  db: inboxDb, stateDir: STATE_DIR, api: bot.api, spawn: bunSendSpawn, audit: e => audit(e),
+  isOwnerDm: key => { const t = parseKey(key); return t.threadId == null && loadAccess().allowFrom.includes(t.chatId) },
+})
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -343,7 +351,7 @@ const approvals = createApprovals({
 const skillContext = new Map<string, string>()
 // 013 FR1, FR12: source watchers, only with TELEGRAM_WATCH=1. Items land in inbox.db.
 const watch = config.watch ? (() => {
-  const db = openInboxDb(inboxPath(STATE_DIR))
+  const db = inboxDb!
   const store = (source: Source, payload: unknown) => {
     const item = adapterFor(source)?.map(source.id, payload)
     if (item && insertItem(db, item) !== null) recordItem(STATE_DIR, source.id, Date.now())
@@ -540,6 +548,7 @@ const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: (
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 registerCapabilities(bot, capabilityRequests, resumer)
+const draftReply = watchTools && registerDraftButtons(bot, watchTools)
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)
@@ -578,7 +587,7 @@ const inbound = registerInbound(bot, {
   commandsFile: COMMANDS_FILE,
   skillsHere: key => discovery.skillsHere(key),
   builtins,
-  replies: [memoryUi.addReply, cronUi.addReply, skillsUi.addReply],
+  replies: [memoryUi.addReply, cronUi.addReply, skillsUi.addReply, ...draftReply ? [draftReply] : []],
   beforeGate: skillsUi.editReply,
   textApproval,
 })
