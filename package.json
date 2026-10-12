@@ -7,6 +7,8 @@
   "scripts": {
     "start": "bun install --no-summary 1>&2 && bun server.ts",
     "start:daemon": "bun cli.ts start",
+    "build": "bun build cli.ts --compile --bytecode --format=esm --minify --sourcemap --asset ./assets --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/tgc",
+    "build:all": "bun build cli.ts --compile --bytecode --format=esm --minify --sourcemap --asset ./assets --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-darwin-arm64 --outfile dist/tgc-darwin-arm64 && bun build cli.ts --compile --bytecode --format=esm --minify --sourcemap --asset ./assets --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-linux-x64 --outfile dist/tgc-linux-x64",
     "test:contract": "bun test test/stream.contract.test.ts",
     "install-service": "bun service/install.ts",
     "reindex": "bun cli.ts reindex",

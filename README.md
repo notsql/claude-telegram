@@ -126,6 +126,17 @@ To debug in the foreground, stop the service first.
 
 **In chat.** The bot shows "typing…" while it works, and posts a progress message on turns longer than 8 seconds. The answer always arrives as a new message, so you get a notification. Each chat and forum topic is its own conversation, and up to `TELEGRAM_MAX_CONCURRENT_SESSIONS` of them work at once. Messages sent while the bot is busy in that chat are answered together in the next turn; a 🫡 reaction marks a message that is waiting. `/stop` interrupts the turn running in the chat or topic where you send it, and `/sessions` → 🆕 New starts a fresh conversation there (see [Commands](#commands)). When your usage limit is reached, the bot says when it will resume and holds queued messages until then.
 
+### Single binary
+
+The daemon also builds into one self-contained executable, `tgc`, with the bundled agents, skills and templates embedded:
+
+```sh
+bun run build       # dist/tgc for this machine
+bun run build:all   # dist/tgc-darwin-arm64 and dist/tgc-linux-x64
+```
+
+A host needs only the `tgc` file and the `claude` CLI logged in (see the requirements above); no repo checkout, Bun or `node_modules`. The binary ships precompiled bytecode, which is tied to the Bun version that built it; on a mismatch it falls back to parsing the source, which is slower to start but still works. `tgc install` sets up the background service. Run `tgc help` for all commands.
+
 ### Commands
 
 You don't need commands: ask in plain words and the agent does the same thing with its tools. Commands are a sure shortcut that runs the same code. Type `/` to see them; groups show the same ones except `/start` and `/help`. Commands only work for senders in your `allowFrom` list.

@@ -149,3 +149,7 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Single-binary build output
+dist/
+*.bun-build
