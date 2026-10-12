@@ -79,6 +79,10 @@ import { registerClose, sendTo } from './telegram/handlers/ui.ts'
 import { registerMemory } from './telegram/handlers/memory.ts'
 import { registerSkills } from './telegram/handlers/skills.ts'
 import { registerAgents } from './telegram/handlers/agents.ts'
+import { registerCapabilities } from './telegram/handlers/capabilities.ts'
+import { createCapabilityRequests } from './capabilities/request.ts'
+import { createCapabilityTools } from './capabilities/tools.ts'
+import { runArgv } from './capabilities/install.ts'
 import { registerSessions } from './telegram/handlers/sessions.ts'
 import { registerUsage } from './telegram/handlers/usage.ts'
 import { registerSettings } from './telegram/handlers/settings.ts'
@@ -304,7 +308,15 @@ const sessionDeps = { lifecycle, title: (key: string) => sessions.title(key), ru
 const sessionTools = createSessionTools(sessionDeps)
 // 007 FR6: the scheduler is created further down, once the turn queue exists.
 const scheduleTools = createScheduleTools({ stateDir: STATE_DIR, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools })
+// 012 FR5: capability requests go to the owner DM; the daemon runs the install.
+const capabilityRequests = createCapabilityRequests({
+  api: bot.api,
+  stateDir: STATE_DIR,
+  owners: () => loadAccess().allowFrom,
+  sender: key => participants.active(key)[0],
+  install: argv => runArgv(argv),
+})
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests) })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -498,6 +510,7 @@ const usageCommand = registerUsage(bot)
 const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh() })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
+registerCapabilities(bot, capabilityRequests)
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)
