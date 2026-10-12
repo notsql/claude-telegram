@@ -26,6 +26,8 @@ export const PolicySchema = z.object({
   approvers: z.array(z.string()),
   /** FR12: let non-owners start turns on the owner's subscription. Terminal skill only. */
   allowOthersOnSubscription: z.boolean(),
+  /** 012 FR11: whether `capability_request` may be called here. */
+  capabilityAcquisition: z.enum(['ask', 'off']),
 }).partial()
 
 export type Policy = z.infer<typeof PolicySchema>
@@ -40,7 +42,7 @@ const GROUP_READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 
 /** Defaults by chat type (FR8). `approvers` defaults to the owner IDs, filled in at resolve time. */
 export function defaultPolicy(type: ChatType): Policy {
   return type === 'private'
-    ? { permissionMode: 'default', memoryScope: 'global', historyScope: 'all', autoLearn: 'auto', schedulerAllowed: true }
+    ? { permissionMode: 'default', memoryScope: 'global', historyScope: 'all', autoLearn: 'auto', schedulerAllowed: true, capabilityAcquisition: 'ask' }
     : {
         permissionMode: 'default',
         allowedTools: GROUP_READ_ONLY_TOOLS,
@@ -48,6 +50,7 @@ export function defaultPolicy(type: ChatType): Policy {
         historyScope: 'chat',
         autoLearn: 'propose',
         schedulerAllowed: false,
+        capabilityAcquisition: 'off',
       }
 }
 
