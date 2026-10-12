@@ -7,7 +7,7 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* live messages on both accounts land in `inbox.db` within 10s.
 - [ ] **T1303** `poll` kind + GitHub adapter; `agent-poll` kind using `runOneShot` with a schema and a cursor (FR1, FR3).
   *Verify:* GitHub notifications and today's calendar events land as items.
-- [ ] **T1304** `triage.ts`: rules stage, plus the shipped `tg-triager` with batching and budget (FR5, FR6, FR11).
+- [x] **T1304** `triage.ts`: rules stage, plus the shipped `tg-triager` with batching and budget (FR5, FR6, FR11).
   *Verify:* AC2, AC5, AC8.
 - [ ] **T1305** `deliver.ts`: ping cards with buttons, quiet hours, `pingsPerHour`, snooze (FR7).
   *Verify:* AC1.
