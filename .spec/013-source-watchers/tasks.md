@@ -24,3 +24,5 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* after marking "want go?"-style chat questions 🔕, similar ones stop being sent while a "pay the bill by Friday" message still is.
 - [x] **T1312** Digest triage and feedback: the digest summarises through `tg-summarizer` and sends only worthwhile conversations, each with ✍️ Reply, ✅ Done and 🔕 Not like this (FR8, FR13).
   *Verify:* with a newsletter, a casual chat and a "review the PR" message pending, the digest lists only the last, with buttons, and the other two never reappear.
+- [x] **T1313** `sweep.ts`: the `attention-sweep` system job finds tasks still waiting on the owner (GitHub `gh search`, `agent-poll` connectors) and hands them to delivery; health notices go to the delivery chat (FR10, FR14).
+  *Verify:* unit tests; a PR awaiting review shows up once in the 📍 group after a sweep, and not again on the next one.

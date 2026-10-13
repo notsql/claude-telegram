@@ -1,7 +1,8 @@
 /**
  * Source health (013 FR10): a source that failed 5 times in a row, or has
- * been silent past its `expectSilenceMaxSec`, posts one notice to the owner DM
- * with **Fix** (a turn in the owner DM that diagnoses it with the 012 ladder)
+ * been silent past its `expectSilenceMaxSec`, posts one notice to the inbox
+ * delivery target (📍, else the owner DM) with **Fix** (a turn in the owner DM
+ * that diagnoses it with the 012 ladder)
  * and **Pause** (paused live). It is not posted again until the source
  * recovers (an item resets its errors and silence) and fails anew.
  */
@@ -16,8 +17,9 @@ const CHECK_MS = 60_000
 
 export type HealthDeps = {
   stateDir: string
-  api: { sendMessage(chatId: string, text: string, extra: { reply_markup: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown> }
-  owner: string
+  api: { sendMessage(chatId: string, text: string, extra: { message_thread_id?: number; reply_markup: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown> }
+  /** Where notices go: the inbox delivery target (deliver.ts). */
+  target: () => { chatId: string; threadId?: number }
   /** Starts the Fix turn in the owner DM. */
   fix: (prompt: string) => void
   /** Pauses the source in sources.json and the supervisor. */
@@ -55,7 +57,9 @@ export function createHealth(d: HealthDeps) {
       if (!why) { notified.delete(s.id); continue }
       if (notified.has(s.id)) continue
       notified.add(s.id)
-      await d.api.sendMessage(d.owner, `⚠️ Source ${s.title} (${s.id}) ${why}.`, {
+      const to = d.target()
+      await d.api.sendMessage(to.chatId, `⚠️ Source ${s.title} (${s.id}) ${why}.`, {
+        ...(to.threadId ? { message_thread_id: to.threadId } : {}),
         reply_markup: { inline_keyboard: [[{ text: '🔧 Fix', callback_data: `wsh:fix:${s.id}` }, { text: '⏸ Pause', callback_data: `wsh:pause:${s.id}` }]] },
       }).catch(err => d.log(`watch ${s.id}: health notice failed: ${err}`))
     }

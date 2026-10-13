@@ -29,7 +29,8 @@ import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
 import { loadSources, loadTarget, recordItem, setEnabled, type Source } from './watch/registry.ts'
 import { createHealth, registerHealthButtons } from './watch/health.ts'
-import { adapterFor, createSupervisor } from './watch/supervisor.ts'
+import { runSweep } from './watch/sweep.ts'
+import { adapterFor, createSupervisor, type RunPoller } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
 import { runDigest } from './watch/digest.ts'
 import { createWatchTools, draftPrompt, registerDraftButtons } from './watch/tools.ts'
@@ -410,11 +411,11 @@ const watch = config.watch ? (() => {
   }
   let sources: Source[] = []
   try { sources = loadSources(STATE_DIR) } catch (err) { log(`watch: sources.json unreadable: ${err}`) }
+  const runPoller: RunPoller = (input, schema, tools) => budget.take()
+    ? runOneShot('tg-poller', input, schema, tools)
+    : Promise.reject(new Error('daily turn budget spent'))
   const supervisor = createSupervisor({
-    stateDir: STATE_DIR, sources, onPayload: store, onItem: insert, log, pidDir: join(STATE_DIR, 'watch'),
-    runPoller: (input, schema, tools) => budget.take()
-      ? runOneShot('tg-poller', input, schema, tools)
-      : Promise.reject(new Error('daily turn budget spent')),
+    stateDir: STATE_DIR, sources, onPayload: store, onItem: insert, log, pidDir: join(STATE_DIR, 'watch'), runPoller,
   })
   const route = createIngestRoute({
     secretOf: supervisor.secretOf,
@@ -424,14 +425,14 @@ const watch = config.watch ? (() => {
   })
   // FR10: one Fix/Pause notice per failing or silent source.
   const health = owner ? createHealth({
-    stateDir: STATE_DIR, api: bot.api, owner, log,
+    stateDir: STATE_DIR, api: bot.api, target: () => inboxTarget(owner), log,
     fix: prompt => turns.enqueue(owner, {
       prompt: renderInbound(prompt, { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),
       text: 'Fix source',
     }),
     pause: id => { setEnabled(STATE_DIR, id, false); supervisor.stopSource(id) },
   }) : undefined
-  return { db, supervisor, route, triage, deliver, health, examples }
+  return { db, supervisor, route, triage, deliver, health, examples, runPoller }
 })() : undefined
 const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.route, handlers: {
   'permission-request': approvals.handle,
@@ -741,6 +742,14 @@ async function fireSystemJob(id: SystemJobId): Promise<void> {
   if (id === 'digest-morning' || id === 'digest-evening') {
     const owner = loadAccess().allowFrom[0]
     if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: id === 'digest-morning' ? 'Morning digest' : 'Evening digest', run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, log })
+    return
+  }
+  // 013 FR14: findings become `action` items; delivery sends them to the inbox target.
+  if (id === 'attention-sweep') {
+    if (!watch) return
+    const n = await runSweep({ db: watch.db, sources: loadSources(STATE_DIR), runPoller: watch.runPoller, log })
+    log(`attention sweep: ${n} new task(s)`)
+    if (n) await watch.deliver?.tick()
     return
   }
   // 004 FR8: run as tg-curator (009).

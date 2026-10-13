@@ -123,7 +123,7 @@ function health(stateDir: string, now: () => number) {
   const fixes: string[] = []
   const paused: string[] = []
   const h = createHealth({
-    stateDir, owner: OWNER, log: () => {}, now,
+    stateDir, target: () => ({ chatId: '-100', threadId: 7 }), log: () => {}, now,
     api: { async sendMessage(chatId, text, extra) { notices.push({ chatId, text, extra }) } },
     fix: p => fixes.push(p),
     pause: id => { setEnabled(stateDir, id, false); paused.push(id) },
@@ -149,7 +149,8 @@ test('AC7: a source that keeps failing posts exactly one Fix notice', async () =
   await sup.start(1)
   for (let i = 0; i < 3; i++) await h.check()
   expect(notices).toHaveLength(1)
-  expect(notices[0]!.chatId).toBe(OWNER)
+  expect(notices[0]!.chatId).toBe('-100')
+  expect(notices[0]!.extra.message_thread_id).toBe(7)
   expect(notices[0]!.text).toContain('failed 7 times in a row')
   expect(notices[0]!.extra.reply_markup.inline_keyboard[0].map((b: any) => b.callback_data)).toEqual(['wsh:fix:whatsapp', 'wsh:pause:whatsapp'])
 
