@@ -24,7 +24,7 @@ const icon = (s: Source) => (!s.enabled ? '⏸' : s.status === 'error' ? '⚠️
 const back = (data: string): InlineKeyboardButton[] => [{ text: '« Back', callback_data: data }]
 
 /**
- * The 📡 Sources settings page: one button per source, ➕ Add source, and
+ * The 📡 Sources settings page: one button per source, + Add source, and
  * 📍 Send updates here unless `here` (this chat's key) is already the target.
  * 🎯 Tune shows real messages, so it is offered in a DM only.
  */
@@ -36,7 +36,7 @@ export function sourcesView(stateDir: string, here: string, dm = false): View {
     text: `📡 Sources\n\n${sources.length ? 'Tap a source to see it or pause it.' : 'None yet.'}\n\nWhat needs you is summarised and sent to ${where}.`,
     keyboard: { inline_keyboard: [
       ...sources.map(s => [{ text: `${icon(s)} ${s.title}`, callback_data: `src:s:${s.id}` }]),
-      [{ text: '➕ Add source', callback_data: 'src:a' }],
+      [{ text: '+ Add source', callback_data: 'src:a' }],
       ...(target?.key === here ? [] : [[{ text: '📍 Send updates here', callback_data: 'src:here' }]]),
       ...(dm ? [[{ text: `🎯 Tune what gets flagged (${loadExamples(stateDir).length})`, callback_data: 'src:t' }]] : []),
       back('pol:m'),
@@ -89,13 +89,13 @@ export function tuneView(stateDir: string, c: Candidate | undefined): View {
   }
 }
 
-/** ➕ Add source: the built-ins not added yet (marked when their tool still needs installing), then ✏️ Something else. */
+/** + Add source: the built-ins not added yet (marked when their tool still needs installing), then ✏️ Something else. */
 export function addView(stateDir: string, which: (bin: string) => string | null): View {
   const sources = loadSources(stateDir)
   const missing = Object.values(BUILTINS).filter(b => !sources.some(s => s.id === b.id))
   const ready = (id: string) => !('error' in propose({ builtin: id }, which))
   return {
-    text: `➕ Add source\n\n${missing.length ? 'Pick one to watch. 🔧 means its tool gets installed first; I\'ll walk you through it in your DM.' : 'Every built-in source is added.'}`,
+    text: `+ Add source\n\n${missing.length ? 'Pick one to watch. 🔧 means its tool gets installed first; I\'ll walk you through it in your DM.' : 'Every built-in source is added.'}`,
     keyboard: { inline_keyboard: [
       ...missing.map(b => [{ text: ready(b.id) ? b.title : `🔧 ${b.title}`, callback_data: `src:add:${b.id}` }]),
       [{ text: '✏️ Something else…', callback_data: 'src:o' }],
@@ -149,7 +149,7 @@ export function registerSources(bot: Bot, o: {
           saveSources(o.stateDir, [...sources, r.source])
           o.live.start(r.source)
         }
-        void answer(ctx, `➕ Added ${b.title}`)
+        void answer(ctx, `+ Added ${b.title}`)
         return void await show(sourcesView(o.stateDir, here, dm))
       }
       if (action === 'o') {

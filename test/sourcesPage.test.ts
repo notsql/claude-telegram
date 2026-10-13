@@ -49,7 +49,7 @@ test('Settings → Sources lists sources as buttons; a source opens its page wit
   await s.tap('src:m')
   const r = s.edits[0]!
   expect(r.extra.parse_mode).toBeUndefined()
-  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '➕ Add source', '📍 Send updates here', '🎯 Tune what gets flagged (0)', '« Back', '✕ Close'])
+  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '+ Add source', '📍 Send updates here', '🎯 Tune what gets flagged (0)', '« Back', '✕ Close'])
   expect(cbs(r)).toEqual(['src:s:wa', 'src:s:gh', 'src:s:mail', 'src:a', 'src:here', 'src:t', 'pol:m', 'ui:close'])
 
   await s.tap('src:s:wa')
@@ -68,7 +68,7 @@ test('Settings → Sources lists sources as buttons; a source opens its page wit
   expect(s.live).toEqual(['stop:wa', 'start:mail'])
 })
 
-test('➕ Add source: an installed built-in is added and started; one needing a tool starts setup in the DM', async () => {
+test('+ Add source: an installed built-in is added and started; one needing a tool starts setup in the DM', async () => {
   const s = setup()
   await s.tap('src:a')
   expect(s.edits.at(-1)!.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text))
