@@ -17,10 +17,13 @@ const src = (id: string, over: Partial<Source> = {}): Source => ({
 function setup() {
   const stateDir = mkdtempSync(join(tmpdir(), 'tg-sources-'))
   const callbacks: [RegExp, (ctx: any) => Promise<unknown>][] = []
-  const bot = { callbackQuery: (re: RegExp, fn: any) => callbacks.push([re, fn]) } as any
+  const asked: { chatId: string; text: string; extra: any }[] = []
+  const bot = { callbackQuery: (re: RegExp, fn: any) => callbacks.push([re, fn]), api: { sendMessage: async (chatId: string, text: string, extra: any) => { asked.push({ chatId, text, extra }); return { chat: { id: Number(chatId) }, message_id: 50 } } } } as any
+  const setups: string[][] = []
   const live: string[] = []
   const db = openInboxDb(':memory:')
-  registerSources(bot, { stateDir, db, live: { start: s => void live.push(`start:${s.id}`), stop: id => void live.push(`stop:${id}`) }, which: bin => (bin === 'gh' ? '/opt/homebrew/bin/gh' : null) })
+  const ui = registerSources(bot, { stateDir, db, live: { start: s => void live.push(`start:${s.id}`), stop: id => void live.push(`stop:${id}`) }, which: bin => (bin === 'gh' ? '/opt/homebrew/bin/gh' : null),
+    owner: () => '42', setup: (prompt, text) => void setups.push([prompt, text]) })
   const edits: { text: string; extra: any }[] = []
   const ctx = (from = 42, type = 'private', data?: string) => ({
     from: { id: from }, chat: { id: from, type },
@@ -35,7 +38,7 @@ function setup() {
     c.match = data.match(re)
     await fn(c)
   }
-  return { stateDir, db, edits, ctx, tap, live, callbacks }
+  return { stateDir, db, edits, ctx, tap, live, callbacks, asked, setups, ui }
 }
 
 const cbs = (e: { extra: any }) => e.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)
@@ -65,10 +68,12 @@ test('Settings → Sources lists sources as buttons; a source opens its page wit
   expect(s.live).toEqual(['stop:wa', 'start:mail'])
 })
 
-test('➕ Add source lists built-ins not added yet; picking an installed one adds and starts it; a missing CLI is not added', async () => {
+test('➕ Add source: an installed built-in is added and started; one needing a tool starts setup in the DM', async () => {
   const s = setup()
   await s.tap('src:a')
-  expect(cbs(s.edits.at(-1)!)).toEqual(['src:add:whatsapp', 'src:add:telegram-account', 'src:add:github', 'src:add:calendar', 'src:m', 'ui:close'])
+  expect(s.edits.at(-1)!.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text))
+    .toEqual(['🔧 WhatsApp', '🔧 Telegram account', 'GitHub', 'Calendar', '✏️ Something else…', '« Back', '✕ Close'])
+  expect(cbs(s.edits.at(-1)!)).toEqual(['src:add:whatsapp', 'src:add:telegram-account', 'src:add:github', 'src:add:calendar', 'src:o', 'src:m', 'ui:close'])
   await s.tap('src:add:github')
   expect(loadSources(s.stateDir).map(x => [x.id, (x.config.command as string[])[0]])).toEqual([['github', '/opt/homebrew/bin/gh']])
   expect(s.live).toEqual(['start:github'])
@@ -77,6 +82,20 @@ test('➕ Add source lists built-ins not added yet; picking an installed one add
   expect(cbs(s.edits.at(-1)!)).not.toContain('src:add:github')
   await s.tap('src:add:whatsapp')
   expect(loadSources(s.stateDir).map(x => x.id)).toEqual(['github'])
+  expect(s.setups).toEqual([['Add the built-in source "whatsapp" with source_add. If its tool is missing, help me install it, then add it.', 'Set up WhatsApp']])
+})
+
+test('✏️ Something else asks in the owner DM; the owner\'s reply starts setup', async () => {
+  const s = setup()
+  await s.tap('src:o', 'supergroup')
+  expect(s.asked).toHaveLength(1)
+  expect(s.asked[0]!.chatId).toBe('42')
+  expect(s.asked[0]!.extra.reply_markup.force_reply).toBe(true)
+  const reply = (from: number, text: string, to = 50) => ({ from: { id: from }, chat: { id: 42, type: 'private' }, message: { text, reply_to_message: { message_id: to } } }) as any
+  expect(await s.ui.addReply(reply(42, 'hi', 49))).toBe(false)
+  expect(await s.ui.addReply(reply(42, 'my Outlook inbox'))).toBe(true)
+  expect(s.setups).toEqual([['Watch this as a new source with source_add, installing whatever it needs: my Outlook inbox', 'Add source: my Outlook inbox']])
+  expect(await s.ui.addReply(reply(42, 'again'))).toBe(false)
 })
 
 test('Sources is owner only, and works in a group', async () => {

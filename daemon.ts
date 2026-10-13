@@ -621,7 +621,13 @@ if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
 if (watch?.health) registerHealthButtons(bot, watch.health)
 const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
-if (watch) registerSources(bot, { stateDir: STATE_DIR, db: watch.db, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) }, which: findBin })
+const sourcesUi = watch && registerSources(bot, { stateDir: STATE_DIR, db: watch.db, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) }, which: findBin,
+  owner: () => loadAccess().allowFrom[0],
+  setup: (prompt, text) => {
+    const owner = loadAccess().allowFrom[0]
+    if (owner) turns.enqueue(owner, { prompt: renderInbound(prompt, { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }), text })
+  },
+})
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)
@@ -661,7 +667,7 @@ const inbound = registerInbound(bot, {
   commandsFile: COMMANDS_FILE,
   skillsHere: key => discovery.skillsHere(key),
   builtins,
-  replies: [memoryUi.addReply, cronUi.addReply, skillsUi.addReply, ...draftReply ? [draftReply] : []],
+  replies: [memoryUi.addReply, cronUi.addReply, skillsUi.addReply, ...draftReply ? [draftReply] : [], ...sourcesUi ? [sourcesUi.addReply] : []],
   beforeGate: skillsUi.editReply,
   textApproval,
 })

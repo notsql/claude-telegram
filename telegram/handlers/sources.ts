@@ -4,20 +4,20 @@
  */
 
 import type { Database } from 'bun:sqlite'
-import type { Bot } from 'grammy'
+import type { Bot, Context } from 'grammy'
 import type { InlineKeyboardButton } from 'grammy/types'
 import { loadSources, loadTarget, saveSources, saveTarget, setEnabled, type Source } from '../../watch/registry.ts'
 import { BUILTINS, propose } from '../../watch/onboard.ts'
 import { addExample, loadExamples } from '../../watch/prefs.ts'
 import { withClose } from '../close.ts'
-import { answer, isOwner, keyOf, ownerOnly } from './ui.ts'
+import { answer, createReplyPrompts, isOwner, keyOf, ownerOnly } from './ui.ts'
 
 const ago = (t: number, now: number) => {
   const m = Math.round((now - t) / 60_000)
   return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`
 }
 
-export const SOURCES_CALLBACK = /^src:(m|s|a|t|here|pause|resume|add)(?::([a-z0-9][a-z0-9_-]*))?$/
+export const SOURCES_CALLBACK = /^src:(m|s|a|o|t|here|pause|resume|add)(?::([a-z0-9][a-z0-9_-]*))?$/
 
 type View = { text: string; keyboard: { inline_keyboard: InlineKeyboardButton[][] } }
 const icon = (s: Source) => (!s.enabled ? '⏸' : s.status === 'error' ? '⚠️' : '✅')
@@ -89,14 +89,16 @@ export function tuneView(stateDir: string, c: Candidate | undefined): View {
   }
 }
 
-/** ➕ Add source: the built-ins not added yet. */
-export function addView(stateDir: string): View {
+/** ➕ Add source: the built-ins not added yet (marked when their tool still needs installing), then ✏️ Something else. */
+export function addView(stateDir: string, which: (bin: string) => string | null): View {
   const sources = loadSources(stateDir)
   const missing = Object.values(BUILTINS).filter(b => !sources.some(s => s.id === b.id))
+  const ready = (id: string) => !('error' in propose({ builtin: id }, which))
   return {
-    text: `➕ Add source\n\n${missing.length ? 'Pick one to watch.' : 'Every built-in source is added.'} Ask me to watch anything else.`,
+    text: `➕ Add source\n\n${missing.length ? 'Pick one to watch. 🔧 means its tool gets installed first; I\'ll walk you through it in your DM.' : 'Every built-in source is added.'}`,
     keyboard: { inline_keyboard: [
-      ...missing.map(b => [{ text: b.title, callback_data: `src:add:${b.id}` }]),
+      ...missing.map(b => [{ text: ready(b.id) ? b.title : `🔧 ${b.title}`, callback_data: `src:add:${b.id}` }]),
+      [{ text: '✏️ Something else…', callback_data: 'src:o' }],
       back('src:m'),
     ] },
   }
@@ -108,12 +110,18 @@ export function registerSources(bot: Bot, o: {
   live: { start: (s: Source) => unknown; stop: (id: string) => void }
   /** Resolves a CLI to its absolute path (`findBin`); injectable for tests. */
   which: (bin: string) => string | null
+  /** The owner DM's key; the source_* tools only run there. */
+  owner: () => string | undefined
+  /** Starts an owner-DM turn that sets a source up with source_add (and 012 installs). */
+  setup: (prompt: string, text: string) => void
 }) {
+  // ✏️ Something else: the reply describing the source, keyed to the owner DM.
+  const others = createReplyPrompts<true>(bot.api)
   // Skipped messages, until restart.
   const skipped = new Set<number>()
   bot.callbackQuery(SOURCES_CALLBACK, async ctx => {
     if (!isOwner(ctx)) return ownerOnly(ctx)
-    const [, action, id] = ctx.match as unknown as [string, 'm' | 's' | 'a' | 't' | 'here' | 'pause' | 'resume' | 'add', string?]
+    const [, action, id] = ctx.match as unknown as [string, 'm' | 's' | 'a' | 'o' | 't' | 'here' | 'pause' | 'resume' | 'add', string?]
     const msg = ctx.callbackQuery.message
     if (!msg) return answer(ctx)
     const here = keyOf(msg)
@@ -132,7 +140,10 @@ export function registerSources(bot: Bot, o: {
         const r = b && propose({ builtin: id }, o.which)
         if (!b || !r) return answer(ctx, 'Unknown source.')
         // A missing CLI goes through the agent, which offers to install it (012).
-        if ('error' in r) return answer(ctx, `${b.title} needs a tool that isn't installed. Ask me to watch ${b.title} and I'll offer to install it.`)
+        if ('error' in r) {
+          o.setup(`Add the built-in source "${b.id}" with source_add. If its tool is missing, help me install it, then add it.`, `Set up ${b.title}`)
+          return answer(ctx, `🔧 Setting up ${b.title}: continue in your DM.`, !dm)
+        }
         const sources = loadSources(o.stateDir)
         if (!sources.some(s => s.id === r.source.id)) {
           saveSources(o.stateDir, [...sources, r.source])
@@ -140,6 +151,12 @@ export function registerSources(bot: Bot, o: {
         }
         void answer(ctx, `➕ Added ${b.title}`)
         return void await show(sourcesView(o.stateDir, here, dm))
+      }
+      if (action === 'o') {
+        const owner = o.owner()
+        if (!owner) return answer(ctx, 'No owner set.')
+        void answer(ctx, dm ? undefined : 'Continue in your DM.', !dm)
+        return void await others.ask(owner, '📡 What should I watch? Reply to this message with the app, inbox or feed.', 'e.g. my Outlook inbox, a Slack channel, an RSS feed', true)
       }
       if (action === 't') {
         if (!dm) return answer(ctx, 'Tuning shows your messages, so it only works in a DM.')
@@ -160,9 +177,20 @@ export function registerSources(bot: Bot, o: {
     } catch (e) {
       return answer(ctx, e instanceof Error ? e.message : String(e))
     }
-    const v = action === 's' ? sourceView(o.stateDir, id!) : action === 'a' ? addView(o.stateDir) : sourcesView(o.stateDir, here, dm)
+    const v = action === 's' ? sourceView(o.stateDir, id!) : action === 'a' ? addView(o.stateDir, o.which) : sourcesView(o.stateDir, here, dm)
     if (!v) return answer(ctx, 'That source is gone.')
     void answer(ctx)
     await show(v)
   })
+
+  /** The owner's reply to ✏️ Something else; true if it was one. */
+  async function addReply(ctx: Context): Promise<boolean> {
+    if (!others.peek(ctx) || !isOwner(ctx)) return false
+    others.done(ctx)
+    const what = ctx.message?.text?.trim()
+    if (what) o.setup(`Watch this as a new source with source_add, installing whatever it needs: ${what}`, `Add source: ${what}`)
+    return true
+  }
+
+  return { addReply }
 }
