@@ -31,7 +31,7 @@ export type SettingsDeps = {
   audit: ReturnType<typeof createAudit>
   /** The `/` menus depend on settings; refresh them after a change. */
   refreshMenu: () => void
-  /** 013: show 📡 Sources in the owner DM when watching is on. */
+  /** 013: show 📡 Sources when watching is on. */
   sources: boolean
 }
 
@@ -44,8 +44,7 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sour
     const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y' | 'b', string?, string?]
     const show = (r: View) => ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
     const user = String(ctx.from.id)
-    const dm = msg.chat.type === 'private'
-    const home = () => policyView(key, policyOf(here), { sources: sources && dm })
+    const home = () => policyView(key, policyOf(here), { sources })
     switch (action) {
       case 's': {
         const access = loadAccess()
@@ -83,12 +82,12 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sour
     await answer(ctx)
     const p = policyOf(here)
     if (action === 'm') return void await show(home())
-    if (action === 'b') return void await show(dm ? bypassConfirmView() : fieldView('permissionMode', p, { dm }))
+    if (action === 'b') return void await show(bypassConfirmView())
     if (action === 'p') return void await show(permissionsView(p))
     if (action === 'c') return void await show(rulesView(p, Number(a), Number(b ?? 0)))
     if (action === 'r') return void await show(ruleView(p, Number(a), Number(b)))
     if (action === 'z') return void await show(resetView())
-    if (a && a in EDITABLE) await show(fieldView(a as EditableField, p, { dm }))
+    if (a && a in EDITABLE) await show(fieldView(a as EditableField, p))
   })
 
   // Set on the session key, so a forum topic can run as its own agent (009 US3).
@@ -196,7 +195,7 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sour
   return { name: 'settings', description: "This chat's settings and permissions", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
     if (!isOwner(ctx)) return
     const here = sessionKey(ctx.msg!)
-    const r = policyView(policyKey(here), policyOf(here), { sources: sources && ctx.chat?.type === 'private' })
+    const r = policyView(policyKey(here), policyOf(here), { sources })
     await ctx.reply(r.text, { reply_markup: withClose(r.keyboard) })
   } }
 }

@@ -17,4 +17,4 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* AC4, and US5 answered from the store.
 - [x] **T1308** `source_add` onboarding through 012, plus health notices with Fix/Pause (FR9, FR10).
   *Verify:* AC6, AC7.
-- [x] **T1309** ⚙️ Settings → 📡 Sources and the `/inbox` fallback command (008).
+- [x] **T1309** ⚙️ Settings → 📡 Sources fallback page (008). (`/inbox` dropped 2026-10-13.)

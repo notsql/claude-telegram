@@ -9,7 +9,7 @@ The agent only acts when I message it or a cron job fires, while the things I mi
 - **US3**: "Also watch my Outlook mail." No Outlook connector exists, so the agent acquires one (012), then adds the source. From then on Outlook items show up in pings and digests.
 - **US4**: I tap **Draft reply**. The agent drafts one in my style and shows **Send** / **Edit** / **Cancel**. It is sent through the source's CLI only after I tap Send.
 - **US5**: "What did I miss from Alex this week?" The agent answers from the inbox store across all sources.
-- **US6**: Fallback: `/sources` lists sources with status, last item and error count, with ⏸ / ▶ / 🗑 buttons. `/inbox` shows open items.
+- **US6**: Fallback: ⚙️ Settings → 📡 Sources lists sources with status, last item and error count, with ⏸ / ▶ buttons. Open items are asked for in plain words.
 
 ## Functional requirements
 - **FR1 — Source registry.** `sources.json` in STATE_DIR. Each source has `{id, title, kind, enabled, config, cursor, status, lastItemAt, errors}`. There are four kinds:
