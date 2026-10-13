@@ -7,14 +7,6 @@ import { alwaysRuleAt, applyPolicyEdit, bypassConfirmView, fieldView, label, per
 
 const buttons = (v: { keyboard: { inline_keyboard: { text: string; callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat()
 
-test('no group page offers Full auto (AC6)', () => {
-  const p = { permissionMode: 'default' as const }
-  for (const v of [policyView('-100', p), fieldView('permissionMode', p, { dm: false }), permissionsView(p)]) {
-    expect(JSON.stringify(v)).not.toContain('bypass')
-    expect(JSON.stringify(v)).not.toContain('pol:b')
-  }
-})
-
 test('labels turn camel and Pascal case into words', () => {
   expect(label('permissionMode')).toBe('Permission mode')
   expect(label('acceptEdits')).toBe('Accept edits')
@@ -70,20 +62,19 @@ test('applyPolicyEdit stores allowed values on the exact key', () => {
   expect(a.chats!['-100:7']!.policy).toEqual({ memoryScope: 'none', schedulerAllowed: true })
 })
 
-test('applyPolicyEdit rejects bypass in groups, cwd and unknown fields', () => {
+test('applyPolicyEdit rejects cwd and unknown fields', () => {
   const a = defaultAccess()
-  expect(() => applyPolicyEdit(a, '-100', 'permissionMode', 'bypassPermissions')).toThrow('only for DMs')
-  expect(() => applyPolicyEdit(a, '-100:7', 'permissionMode', 'bypassPermissions')).toThrow('only for DMs')
   expect(() => applyPolicyEdit(a, '5', 'cwd', '/')).toThrow()
   expect(a.chats).toBeUndefined()
 })
 
-test('Full auto: DM only, behind a confirm page', () => {
+test('Full auto: DMs and groups, behind a confirm page (AC6)', () => {
   const a = defaultAccess()
   expect(applyPolicyEdit(a, '5', 'permissionMode', 'bypassPermissions')).toBe('bypassPermissions')
+  expect(applyPolicyEdit(a, '-100:7', 'permissionMode', 'bypassPermissions')).toBe('bypassPermissions')
   const cb = (v: ReturnType<typeof fieldView>) => v.keyboard.inline_keyboard.flat().map(b => 'callback_data' in b ? b.callback_data : '')
-  expect(cb(fieldView('permissionMode', {}, { dm: true }))).toContain('pol:b')
-  expect(cb(fieldView('permissionMode', {}, { dm: false }))).not.toContain('pol:b')
+  expect(cb(fieldView('permissionMode', {}))).toContain('pol:b')
+  expect(cb(fieldView('permissionMode', {}))).not.toContain('pol:s:permissionMode:bypassPermissions')
   expect(cb(bypassConfirmView())).toContain('pol:s:permissionMode:bypassPermissions')
   expect(label('bypassPermissions')).toBe('Full auto')
 })

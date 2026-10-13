@@ -6,8 +6,8 @@
  * one button per kind of rule (`pol:c:<kind>:<page>`); a rule (`pol:r:<kind>:<i>`)
  * shows its details, and an Always rule can be removed (`pol:x:<i>`). Offers a fixed set of values per field; `cwd` and
  * trust settings are never offered here (FR13) and edits outside the set are
- * rejected. Full auto (`bypassPermissions`) is DM only, behind a confirm page
- * (`pol:b`); hard scope limits still apply (FR9).
+ * rejected. Full auto (`bypassPermissions`) is behind a confirm page (`pol:b`);
+ * hard scope limits still apply (FR9).
  */
 
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from 'grammy/types'
@@ -38,7 +38,7 @@ const ABOUT: { [F in EditableField]: { what: string; values: Record<(typeof EDIT
       default: 'Asks you before using a tool that no rule allows.',
       acceptEdits: 'Edits files without asking; other tools still ask.',
       plan: 'Only reads and plans; makes no changes.',
-      bypassPermissions: 'Runs every tool without asking. Hard scope limits still apply. DMs only.',
+      bypassPermissions: 'Runs every tool without asking. Hard scope limits still apply.',
     },
   },
   model: {
@@ -132,14 +132,13 @@ export function policyView(key: string, p: Policy, o: { sources?: boolean } = {}
 }
 
 /** One setting: what it does and what each value means, with the current one marked. */
-export function fieldView(f: EditableField, p: Policy, o: { dm?: boolean } = { dm: true }): PolicyView {
+export function fieldView(f: EditableField, p: Policy): PolicyView {
   const values = ABOUT[f].values as Record<string, string>
-  const options = EDITABLE[f].filter(v => v !== 'bypassPermissions' || o.dm)
   return {
-    text: [`${label(f)}: ${value(p, f)}`, ABOUT[f].what, '', ...options.map(v => `${v === current(p, f) ? '• ' : ''}${label(v)}: ${values[v]}`)].join('\n'),
+    text: [`${label(f)}: ${value(p, f)}`, ABOUT[f].what, '', ...EDITABLE[f].map(v => `${v === current(p, f) ? '• ' : ''}${label(v)}: ${values[v]}`)].join('\n'),
     keyboard: { inline_keyboard: [
       // Full auto goes through a confirm page first.
-      options.map(v => button(`${v === current(p, f) ? '• ' : ''}${label(v)}`, v === 'bypassPermissions' && v !== current(p, f) ? 'pol:b' : `pol:s:${f}:${v}`)),
+      EDITABLE[f].map(v => button(`${v === current(p, f) ? '• ' : ''}${label(v)}`, v === 'bypassPermissions' && v !== current(p, f) ? 'pol:b' : `pol:s:${f}:${v}`)),
       [button('« Back', f === 'permissionMode' ? 'pol:p' : 'pol:m')],
     ] },
   }
@@ -222,8 +221,6 @@ export function resetPolicy(access: Access, key: string): void {
 export function applyPolicyEdit(access: Access, key: string, field: string, value: string): unknown {
   const allowed = (EDITABLE as Record<string, readonly string[]>)[field]
   if (!allowed?.includes(value)) throw new Error(`${field}=${value} can't be set from Telegram`)
-  // Group keys are negative chat ids: anyone there can put text in front of the agent.
-  if (value === 'bypassPermissions' && key.startsWith('-')) throw new Error('Full auto is only for DMs')
   const policy = ((access.chats ??= {})[key] ??= {}).policy ??= {}
   const record = policy as Record<string, unknown>
   if (field === 'model' && value === 'default') delete record.model
@@ -237,7 +234,7 @@ export function bypassConfirmView(): PolicyView {
     text: [
       '⚠️ Full auto', '',
       'Every tool runs without asking you: shell commands, file edits, installs, web and MCP tools.',
-      'Hard scope limits still apply. Anyone who can write to this DM as you can make it act.',
+      'Hard scope limits still apply. In a group only you start turns, but what others write there still reaches the agent.',
     ].join('\n'),
     keyboard: { inline_keyboard: [
       [button('⚡ Turn on full auto', 'pol:s:permissionMode:bypassPermissions')],
