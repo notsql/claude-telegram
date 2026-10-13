@@ -6,9 +6,17 @@
  * again from the resume turn.
  */
 
-import { basename } from 'path'
+import { homedir } from 'os'
+import { basename, join } from 'path'
 import { ADAPTERS, POLL_ADAPTERS } from './supervisor.ts'
 import type { Source } from './registry.ts'
+
+/**
+ * Resolves a CLI to its absolute path, also looking in the user's own bin dirs,
+ * which launchd's PATH leaves out (tgcli lives in ~/.local/bin).
+ */
+export const findBin = (bin: string): string | null =>
+  Bun.which(bin, { PATH: [process.env.PATH ?? '', ...['.local/bin', 'go/bin', '.bun/bin', 'bin'].map(d => join(process.env.HOME || homedir(), d))].join(':') })
 
 type Proposal = Pick<Source, 'id' | 'title' | 'kind' | 'config'>
 

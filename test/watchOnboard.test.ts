@@ -1,11 +1,12 @@
 import { expect, test } from 'bun:test'
-import { mkdtempSync } from 'fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { openInboxDb, type Item } from '../watch/store'
 import { loadSources, saveSources, setEnabled, type Source } from '../watch/registry'
 import { createSupervisor, type Child, type Spawner } from '../watch/supervisor'
 import { createWatchTools } from '../watch/tools'
+import { findBin } from '../watch/onboard'
 import { createHealth, ERROR_THRESHOLD } from '../watch/health'
 
 const OWNER = '42'
@@ -180,4 +181,20 @@ test('silence past expectSilenceMaxSec posts one notice; an item clears it', asy
   t += 3600_001
   await h.check()
   expect(notices).toHaveLength(2)
+})
+
+test('findBin also looks in the user bin dirs launchd leaves off PATH', () => {
+  const home = mkdtempSync(join(tmpdir(), 'tg-home-'))
+  mkdirSync(join(home, '.local/bin'), { recursive: true })
+  writeFileSync(join(home, '.local/bin/tgcli'), '#!/bin/sh\n', { mode: 0o755 })
+  const { HOME, PATH } = process.env
+  process.env.HOME = home
+  process.env.PATH = '/usr/bin:/bin'
+  try {
+    expect(findBin('tgcli')).toBe(join(home, '.local/bin/tgcli'))
+    expect(findBin('no-such-cli-xyz')).toBeNull()
+  } finally {
+    process.env.HOME = HOME
+    process.env.PATH = PATH
+  }
 })

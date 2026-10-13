@@ -91,6 +91,7 @@ import { registerSkills } from './telegram/handlers/skills.ts'
 import { registerAgents } from './telegram/handlers/agents.ts'
 import { registerCapabilities } from './telegram/handlers/capabilities.ts'
 import { registerSources } from './telegram/handlers/sources.ts'
+import { findBin } from './watch/onboard.ts'
 import { createCapabilityRequests } from './capabilities/request.ts'
 import { createCapabilityTools } from './capabilities/tools.ts'
 import { runArgv } from './capabilities/install.ts'
@@ -609,7 +610,7 @@ if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
 if (watch?.health) registerHealthButtons(bot, watch.health)
 const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
-if (watch) registerSources(bot, { stateDir: STATE_DIR, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) }, which: bin => Bun.which(bin) })
+if (watch) registerSources(bot, { stateDir: STATE_DIR, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) }, which: findBin })
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)

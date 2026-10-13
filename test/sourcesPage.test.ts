@@ -35,19 +35,26 @@ function setup() {
   return { stateDir, edits, ctx, tap, live, callbacks }
 }
 
-test('Settings → Sources lists status, last item and errors, with Pause/Resume that act live', async () => {
+const cbs = (e: { extra: any }) => e.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)
+
+test('Settings → Sources lists sources as buttons; a source opens its page with Pause/Resume that act live', async () => {
   const s = setup()
   saveSources(s.stateDir, [src('wa', { lastItemAt: Date.now() - 5 * 60_000 }), src('gh', { status: 'error', errors: 2 }), src('mail', { enabled: false, status: 'paused' })])
   await s.tap('src:m')
   const r = s.edits[0]!
-  expect(r.text).toContain('✅ WA (wa, stream): last item 5m ago')
-  expect(r.text).toContain('⚠️ GH (gh, stream): no items yet, 2 errors')
-  expect(r.text).toContain('⏸ MAIL')
   expect(r.extra.parse_mode).toBeUndefined()
-  const cbs = r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)
-  expect(cbs).toEqual(['src:pause:wa', 'src:pause:gh', 'src:resume:mail', 'src:add:whatsapp', 'src:add:telegram-account', 'src:add:github', 'src:add:calendar', 'pol:m', 'ui:close'])
+  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '➕ Add source', '« Back', '✕ Close'])
+  expect(cbs(r)).toEqual(['src:s:wa', 'src:s:gh', 'src:s:mail', 'src:a', 'pol:m', 'ui:close'])
+
+  await s.tap('src:s:wa')
+  expect(s.edits.at(-1)!.text).toBe('✅ WA\n\nWatching (stream)\nLast item 5m ago')
+  expect(cbs(s.edits.at(-1)!)).toEqual(['src:pause:wa', 'src:m', 'ui:close'])
+  await s.tap('src:s:gh')
+  expect(s.edits.at(-1)!.text).toBe('⚠️ GH\n\nFailing (stream)\nNo items yet\n2 errors')
 
   await s.tap('src:pause:wa')
+  expect(s.edits.at(-1)!.text).toContain('Paused (stream)')
+  expect(cbs(s.edits.at(-1)!)).toEqual(['src:resume:wa', 'src:m', 'ui:close'])
   await s.tap('src:resume:mail')
   const byId = Object.fromEntries(loadSources(s.stateDir).map(x => [x.id, x]))
   expect(byId.wa).toMatchObject({ enabled: false, status: 'paused' })
@@ -55,12 +62,16 @@ test('Settings → Sources lists status, last item and errors, with Pause/Resume
   expect(s.live).toEqual(['stop:wa', 'start:mail'])
 })
 
-test('Settings → Sources ➕ adds an installed built-in and starts it; a missing CLI is not added', async () => {
+test('➕ Add source lists built-ins not added yet; picking an installed one adds and starts it; a missing CLI is not added', async () => {
   const s = setup()
+  await s.tap('src:a')
+  expect(cbs(s.edits.at(-1)!)).toEqual(['src:add:whatsapp', 'src:add:telegram-account', 'src:add:github', 'src:add:calendar', 'src:m', 'ui:close'])
   await s.tap('src:add:github')
   expect(loadSources(s.stateDir).map(x => [x.id, (x.config.command as string[])[0]])).toEqual([['github', '/opt/homebrew/bin/gh']])
   expect(s.live).toEqual(['start:github'])
-  expect(s.edits.at(-1)!.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)).not.toContain('src:add:github')
+  expect(cbs(s.edits.at(-1)!)).toEqual(['src:s:github', 'src:a', 'pol:m', 'ui:close'])
+  await s.tap('src:a')
+  expect(cbs(s.edits.at(-1)!)).not.toContain('src:add:github')
   await s.tap('src:add:whatsapp')
   expect(loadSources(s.stateDir).map(x => x.id)).toEqual(['github'])
 })
