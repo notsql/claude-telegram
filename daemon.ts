@@ -431,7 +431,7 @@ const watch = config.watch ? (() => {
     }),
     pause: id => { setEnabled(STATE_DIR, id, false); supervisor.stopSource(id) },
   }) : undefined
-  return { db, supervisor, route, triage, deliver, health }
+  return { db, supervisor, route, triage, deliver, health, examples }
 })() : undefined
 const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.route, handlers: {
   'permission-request': approvals.handle,
@@ -737,10 +737,10 @@ async function ownerTurn(what: string, title: string, text: string, policy?: Par
 
 async function fireSystemJob(id: SystemJobId): Promise<void> {
   if (turnAbort.signal.aborted) return
-  // 013 FR8: deterministic, no turn.
+  // 013 FR8: a one-shot summary, no turn.
   if (id === 'digest-morning' || id === 'digest-evening') {
     const owner = loadAccess().allowFrom[0]
-    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: id === 'digest-morning' ? 'Morning digest' : 'Evening digest' })
+    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: id === 'digest-morning' ? 'Morning digest' : 'Evening digest', run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, log })
     return
   }
   // 004 FR8: run as tg-curator (009).

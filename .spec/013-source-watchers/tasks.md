@@ -22,3 +22,5 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* AC1 in a group chosen with 📍; a family-chat logistics question that someone else answered sends nothing.
 - [ ] **T1311** Feedback: task-focused prompts, 🔕 Not like this, 🎯 Tune page, examples in both Haiku passes (FR13).
   *Verify:* after marking "want go?"-style chat questions 🔕, similar ones stop being sent while a "pay the bill by Friday" message still is.
+- [x] **T1312** Digest triage and feedback: the digest summarises through `tg-summarizer` and sends only worthwhile conversations, each with ✍️ Reply, ✅ Done and 🔕 Not like this (FR8, FR13).
+  *Verify:* with a newsletter, a casual chat and a "review the PR" message pending, the digest lists only the last, with buttons, and the other two never reappear.

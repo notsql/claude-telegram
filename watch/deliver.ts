@@ -60,7 +60,7 @@ export type DeliverOpts = {
   log?: (msg: string) => void
 }
 
-type Row = {
+export type Row = {
   id: number; source: string; ts: number; from_id: string | null; from_name: string | null
   chat_id: string | null; chat_name: string | null; is_group: number; text: string
   to_me: number; from_me: number; thread_id: string | null; label: string; reason: string | null
@@ -104,7 +104,7 @@ const short = (s: string) => (s.length > 20 ? `${s.slice(0, 19)}…` : s)
 const REPLIED = `EXISTS (SELECT 1 FROM items r WHERE r.from_me = 1 AND r.source = i.source
   AND r.chat_id IS i.chat_id AND r.thread_id IS i.thread_id AND r.ts > i.ts)`
 
-type Thread = { name: string; source: string; items: Row[]; context: Row[] }
+export type Thread = { name: string; source: string; items: Row[]; context: Row[] }
 
 export function briefInput(threads: Thread[], examples = ''): string {
   return [
@@ -123,8 +123,8 @@ export function briefInput(threads: Thread[], examples = ''): string {
 }
 
 /** One message: each important conversation with its summary. */
-export function briefText(picked: { thread: Thread; summary: string }[]): string {
-  const text = ['📥 Needs you', ...picked.map(({ thread: t, summary }) =>
+export function briefText(picked: { thread: Thread; summary: string }[], title = '📥 Needs you'): string {
+  const text = [title, ...picked.map(({ thread: t, summary }) =>
     `${t.items.some(r => r.label === 'urgent') ? '🔴' : '🟠'} ${t.name} · ${t.source}\n${summary}`)].join('\n\n')
   return text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text
 }
@@ -139,6 +139,24 @@ export function briefButtons(picked: { thread: Thread }[]): InlineKeyboardButton
       { text: '🔕 Not like this', callback_data: `inb:nah:${id}` },
     ]
   })
+}
+
+/** Groups items by conversation, each with the `CONTEXT` messages before its first item. */
+export function threadsOf(db: Database, rows: Row[]): Thread[] {
+  const byChat = new Map<string, Thread>()
+  for (const r of rows) {
+    const k = `${r.source}\0${r.chat_id}\0${r.thread_id}`
+    const th = byChat.get(k) ?? byChat.set(k, { name: (r.is_group ? r.chat_name : r.from_name) ?? r.chat_name ?? r.from_id ?? 'unknown', source: r.source, items: [], context: [] }).get(k)!
+    th.items.push(r)
+  }
+  const threads = [...byChat.values()]
+  for (const th of threads) {
+    const first = th.items[0]!
+    th.context = (db.query(
+      `SELECT * FROM items WHERE source = ? AND chat_id IS ? AND thread_id IS ? AND ts < ? ORDER BY ts DESC LIMIT ${CONTEXT}`,
+    ).all(first.source, first.chat_id, first.thread_id, first.ts) as Row[]).reverse()
+  }
+  return threads
 }
 
 export function createDeliver(o: DeliverOpts) {
@@ -173,19 +191,7 @@ export function createDeliver(o: DeliverOpts) {
       if (sent.length >= cap) return
       if (!o.budget.take()) return log('deliver: daily turn budget spent, items held')
 
-      const byChat = new Map<string, Thread>()
-      for (const r of due) {
-        const k = `${r.source}\0${r.chat_id}\0${r.thread_id}`
-        const th = byChat.get(k) ?? byChat.set(k, { name: (r.is_group ? r.chat_name : r.from_name) ?? r.chat_name ?? r.from_id ?? 'unknown', source: r.source, items: [], context: [] }).get(k)!
-        th.items.push(r)
-      }
-      const threads = [...byChat.values()]
-      for (const th of threads) {
-        const first = th.items[0]!
-        th.context = (o.db.query(
-          `SELECT * FROM items WHERE source = ? AND chat_id IS ? AND thread_id IS ? AND ts < ? ORDER BY ts DESC LIMIT ${CONTEXT}`,
-        ).all(first.source, first.chat_id, first.thread_id, first.ts) as Row[]).reverse()
-      }
+      const threads = threadsOf(o.db, due)
 
       let out: z.infer<typeof BriefSchema>
       try {

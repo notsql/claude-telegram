@@ -42,6 +42,8 @@ The agent only acts when I message it or a cron job fires, while the things I mi
   - *I promised*: commitments the triager extracted from my own messages ("I'll send it tomorrow").
 
   A loop closes when a later `fromMe` item answers it, or when I tap **Done**.
+
+  The digest is **not a dump** (revised 2026-10-13 at the owner's request). Candidates (undelivered `fyi`/`action` items and the items behind open *awaiting me* loops) go, by conversation and with context, to the `tg-summarizer` one-shot with the owner's feedback examples. Only conversations worth a roundup are sent: a task or decision, someone waiting on me, or news that changes my plans. Each has a one-line summary and the same ✍️ Reply / ✅ Done / 🔕 Not like this buttons as a ping. The rest are marked `digested` and their loops closed. *I promised* loops are listed as before. A spent budget or failed call holds everything for the next digest.
 - **FR9 — Tools.** These are on the daemon MCP server, owner DM only:
   - `inbox_search({q, source?, from?, since?})`, `inbox_list({status})`, `inbox_mark({id, status})`
   - `source_list`
