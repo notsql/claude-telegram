@@ -26,3 +26,5 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* with a newsletter, a casual chat and a "review the PR" message pending, the digest lists only the last, with buttons, and the other two never reappear.
 - [x] **T1313** `sweep.ts`: the `attention-sweep` system job finds tasks still waiting on the owner (GitHub `gh search`, `agent-poll` connectors) and hands them to delivery; health notices go to the delivery chat (FR10, FR14).
   *Verify:* unit tests; a PR awaiting review shows up once in the 📍 group after a sweep, and not again on the next one.
+- [x] **T1314** 🤖 Do it on every summarised conversation and deadline nudges for loops with a `due` (FR7, FR15).
+  *Verify:* unit tests; tapping 🤖 Do it on "pay the bill by Friday" starts a DM turn, and a task due in 2h gets one ⏰ Due soon message.

@@ -18,7 +18,7 @@ test('findings become one action item each; a second sweep adds nothing', async 
     db, now: () => Date.parse('2026-10-14T00:00:00Z'),
     sources: [gh, notion, src({ id: 'wa', kind: 'webhook', config: { command: ['wacli'] } }), src({ id: 'off', kind: 'agent-poll', enabled: false, config: { connector: 'Gmail' } })],
     exec: async (cmd: string[]) => { cmds.push(cmd); return cmd[2] === 'prs' ? JSON.stringify([hit]) : '[]' },
-    runPoller: async (_input: string, _s: any, t: string[]) => { tools.push(t); return { items: [{ id: 'p1', ts: 'bad', title: 'Submit the expense report by Friday', from: 'Finance' }], cursor: 'now' } },
+    runPoller: async (_input: string, _s: any, t: string[]) => { tools.push(t); return { items: [{ id: 'p1', ts: 'bad', title: 'Submit the expense report by Friday', from: 'Finance', due: '2026-10-17T10:00:00Z' }], cursor: 'now' } },
   }
   expect(await runSweep(o)).toBe(2)
   expect(cmds.map(c => c.slice(0, 3))).toEqual([['/opt/homebrew/bin/gh', 'search', 'prs'], ['/opt/homebrew/bin/gh', 'search', 'issues']])
@@ -28,6 +28,8 @@ test('findings become one action item each; a second sweep adds nothing', async 
     { source: 'github', ext_id: `sweep:${hit.url}`, chat_id: `sweep:${hit.url}`, text: 'Review PR: Fix login', label: 'action', to_me: 1, status: 'new' },
     { source: 'notion', ext_id: 'sweep:p1', chat_id: 'sweep:p1', text: 'Submit the expense report by Friday', label: 'action', to_me: 1, status: 'new' },
   ])
+  expect(db.query('SELECT kind, summary, due FROM loops').all())
+    .toEqual([{ kind: 'awaiting_me', summary: 'Submit the expense report by Friday', due: Date.parse('2026-10-17T10:00:00Z') }])
   expect(await runSweep(o)).toBe(0)
 })
 

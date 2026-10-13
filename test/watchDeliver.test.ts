@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { openInboxDb, insertItem, type Item } from '../watch/store.ts'
-import { BriefSchema, createDeliver, inQuietHours, snoozeUntil, type DeliverApi } from '../watch/deliver.ts'
+import { BriefSchema, createDeliver, inQuietHours, NUDGE_LEAD_MS, snoozeUntil, type DeliverApi } from '../watch/deliver.ts'
 import type { z } from 'zod'
 
 const item = (n: number, over: Partial<Item> = {}): Item => ({
@@ -24,6 +24,7 @@ function setup(start = at(12), vips: string[] = []) {
   const api: DeliverApi = { async sendMessage(chatId, text, extra) { if (fail) throw new Error('down'); sent.push({ chatId, text, extra }) } }
   const muted: string[] = []
   const disliked: number[] = []
+  const acted: number[] = []
   let t = start
   let target: { chatId: string; threadId?: number } = { chatId: '42' }
   const d = createDeliver({
@@ -32,6 +33,7 @@ function setup(start = at(12), vips: string[] = []) {
     budget: { take: () => budget },
     examples: () => '<example want="no">reply to lunch</example>',
     dislike: r => disliked.push(r.id),
+    act: r => acted.push(r.id),
   })
   const add = (n: number, label: string, over: Partial<Item> = {}) => {
     const id = insertItem(db, item(n, over))!
@@ -40,7 +42,7 @@ function setup(start = at(12), vips: string[] = []) {
   }
   const status = (id: number) => (db.query('SELECT status, snooze_until, label FROM items WHERE id = ?').get(id) as any)
   return {
-    db, d, sent, inputs, muted, disliked, add, status,
+    db, d, sent, inputs, muted, disliked, acted, add, status,
     set: (ms: number) => { t = ms }, fail: (v: boolean) => { fail = v }, budget: (v: boolean) => { budget = v },
     judge: (fn: typeof judge) => { judge = fn }, target: (v: typeof target) => { target = v },
   }
@@ -57,7 +59,7 @@ test('due items go out as one summary per send, grouped by conversation, with Re
   expect(s.sent[0]!.text).toBe('📥 Needs you\n\n🔴 Boss · whatsapp\nsum 1\n\n🟠 Family · whatsapp\nsum 2')
   expect(s.sent[0]!.extra.parse_mode).toBeUndefined()
   expect(s.sent[0]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data)))
-    .toEqual([[`inb:draft:${a2}`, `inb:done:${a2}`, `inb:nah:${a2}`], [`inb:draft:${b}`, `inb:done:${b}`, `inb:nah:${b}`]])
+    .toEqual([[`inb:do:${a2}`, `inb:draft:${a2}`], [`inb:done:${a2}`, `inb:nah:${a2}`], [`inb:do:${b}`, `inb:draft:${b}`], [`inb:done:${b}`, `inb:nah:${b}`]])
   expect([a1, a2, b].map(id => s.status(id).status)).toEqual(['pinged', 'pinged', 'pinged'])
   await s.d.tick()
   expect(s.sent).toHaveLength(1)
@@ -181,4 +183,36 @@ test('🔕 Not like this records the item as unwanted and settles the conversati
   expect(s.d.tap('nah', b)).toBe('🔕 Got it, fewer like this')
   expect(s.disliked).toEqual([b])
   expect([a, b].map(id => s.status(id).status)).toEqual(['done', 'done'])
+})
+
+test('🤖 Do it starts a turn for the item and leaves it open', () => {
+  const s = setup()
+  const a = s.add(1, 'action', { text: 'pay the bill by Friday' })
+  expect(s.d.tap('do', a)).toBe('🤖 On it, in your DM…')
+  expect(s.acted).toEqual([a])
+  expect(s.status(a).status).toBe('new')
+})
+
+test('FR15: a loop due within the lead time is nudged once; overdue reads as such; quiet hours hold it', async () => {
+  const s = setup(at(12))
+  s.judge(() => ({ threads: [] }))
+  const loop = (id: number, due: number) => s.db.query('INSERT INTO loops (item_id, kind, summary, due, opened_at) VALUES (?, ?, ?, ?, 0)').run(id, 'awaiting_me', `task ${id}`, due)
+  const soon = s.add(1, 'fyi'); loop(soon, at(14))
+  const late = s.add(2, 'fyi', { chat: { id: 'c2', name: 'Bills', isGroup: true } }); loop(late, at(11))
+  const far = s.add(3, 'fyi'); loop(far, at(12) + NUDGE_LEAD_MS + 1)
+  await s.d.tick()
+  expect(s.sent).toHaveLength(1)
+  expect(s.sent[0]!.text).toBe(`⏰ Due soon\n\n🔴 Overdue · Bills · whatsapp\ntask ${late}\n\n🟠 Due 14:00 · Chat · whatsapp\ntask ${soon}`)
+  expect(s.sent[0]!.extra.reply_markup.inline_keyboard.map((r: any[]) => r.map(x => x.callback_data)))
+    .toEqual([[`inb:do:${late}`, `inb:done:${late}`], [`inb:do:${soon}`, `inb:done:${soon}`]])
+  await s.d.tick()
+  expect(s.sent).toHaveLength(1)
+
+  s.set(at(23, 30))
+  await s.d.tick()
+  expect(s.sent).toHaveLength(1)
+  s.set(new Date(2026, 9, 13, 8).getTime())
+  await s.d.tick()
+  expect(s.sent).toHaveLength(2)
+  expect(s.sent[1]!.text).toContain(`task ${far}`)
 })

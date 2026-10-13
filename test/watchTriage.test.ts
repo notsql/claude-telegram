@@ -118,3 +118,13 @@ test('a batch carries earlier messages of its chats as unlabelled context', asyn
   expect(inputs[0]).not.toContain('other chat')
   expect(inputs[0]!.indexOf('already sorted')).toBeLessThan(inputs[0]!.indexOf('can you?'))
 })
+
+test('FR15: an action item with a deadline gets a loop to nudge on; fyi does not', async () => {
+  const s = setup(i => ({ items: ids(i).map((id, n) => ({ id, label: n ? 'fyi' as const : 'action' as const, reason: 'pay the bill', due: '2026-10-17T09:00:00Z' })) }))
+  const a = insertItem(s.db, item(1))!
+  const b = insertItem(s.db, item(2))!
+  s.triage.add(a); s.triage.add(b)
+  await s.triage.flush()
+  expect(s.db.query('SELECT item_id, kind, summary, due FROM loops').all())
+    .toEqual([{ item_id: a, kind: 'awaiting_me', summary: 'pay the bill', due: Date.parse('2026-10-17T09:00:00Z') }])
+})

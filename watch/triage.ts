@@ -135,9 +135,12 @@ export function createTriage(o: TriageOpts) {
           const r = byId.get(t.id)
           if (!r) continue // the model can't label items it wasn't given
           setLabel.run(r.from_me ? 'noise' : t.label, t.reason, r.id)
+          const due = t.due ? Date.parse(t.due) : NaN
           if (t.loop && (t.loop.kind === 'i_promised') === !!r.from_me) {
-            const due = t.due ? Date.parse(t.due) : NaN
             addLoop.run(r.id, t.loop.kind, t.loop.summary, Number.isNaN(due) ? null : due, now())
+          } else if (!r.from_me && !Number.isNaN(due) && (t.label === 'urgent' || t.label === 'action')) {
+            // FR15: a task with a deadline gets a loop so it can be nudged.
+            addLoop.run(r.id, 'awaiting_me', t.reason || r.text, due, now())
           }
         }
       })()

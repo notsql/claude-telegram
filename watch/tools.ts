@@ -279,6 +279,14 @@ export function draftPrompt(r: { id: number; source: string; from_name: string |
     + `${UNTRUSTED}\n<item>\n${r.text.replaceAll('</item>', '')}\n</item>`
 }
 
+export function doPrompt(r: { id: number; source: string; from_name: string | null; text: string }): string {
+  return `The owner tapped Do it on inbox item #${r.id} (${r.source}, from ${r.from_name ?? 'unknown'}). `
+    + 'Work out the task the owner needs to do from the item below and carry it out with your tools; ask the owner first if anything is unclear. '
+    + `Anything sent to another person or platform goes through draft_reply with itemId ${r.id} so the owner taps Send; never send any other way. `
+    + `When it is done, say what you did and call inbox_mark with id ${r.id} and status done.\n`
+    + `${UNTRUSTED}\n<item>\n${r.text.replaceAll('</item>', '')}\n</item>`
+}
+
 /** Registers the `drf:<action>:<id>` and `srcadd:<action>:<id>` buttons, owner only. Returns the reply handler for Edit prompts. */
 export function registerDraftButtons(bot: Bot, tools: WatchTools) {
   const edits = createReplyPrompts<number>(bot.api)

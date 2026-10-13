@@ -54,6 +54,8 @@ export const AgentPollSchema = z.object({
     from: z.string().optional(),
     url: z.string().optional(),
     toMe: z.boolean().optional(),
+    /** ISO 8601 deadline; the attention sweep nudges on it (FR15). */
+    due: z.string().optional(),
   })),
   cursor: z.string(),
 })

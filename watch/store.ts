@@ -30,6 +30,8 @@ const MIGRATIONS = [
    CREATE TABLE loops (
      id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES items(id), kind TEXT NOT NULL,
      summary TEXT NOT NULL, due INTEGER, opened_at INTEGER NOT NULL, closed_at INTEGER);`,
+  // 013 FR15: when a deadline nudge went out for the loop.
+  `ALTER TABLE loops ADD COLUMN nudged_at INTEGER;`,
 ]
 
 /** FR2 normalised item. */

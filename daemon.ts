@@ -33,7 +33,7 @@ import { runSweep } from './watch/sweep.ts'
 import { adapterFor, createSupervisor, type RunPoller } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
 import { runDigest } from './watch/digest.ts'
-import { createWatchTools, draftPrompt, registerDraftButtons } from './watch/tools.ts'
+import { createWatchTools, doPrompt, draftPrompt, registerDraftButtons } from './watch/tools.ts'
 import { bunSendSpawn } from './watch/send.ts'
 import { createTriage, type TriageRules } from './watch/triage.ts'
 import { createDeliver, registerInboxButtons } from './watch/deliver.ts'
@@ -390,6 +390,11 @@ const watch = config.watch ? (() => {
   const owner = loadAccess().allowFrom[0]
   const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, examples,
     dislike: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: false, at: Date.now() }), mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
+    // Do it: a turn in the owner DM that carries out the task (T1314).
+    act: r => turns.enqueue(owner, {
+      prompt: renderInbound(doPrompt(r), { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),
+      text: 'Do it',
+    }),
     // Draft reply: a turn in the owner DM that calls draft_reply (T1307).
     draft: r => turns.enqueue(owner, {
       prompt: renderInbound(draftPrompt(r), { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),

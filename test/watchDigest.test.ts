@@ -58,7 +58,7 @@ test('AC3: an unanswered DM appears after 4h with Reply, Done and Not like this,
   expect(await s.run()).toBe(true)
   expect(s.sent[0]!.text).toBe('📋 Evening digest\n\n🔴 Ana · whatsapp\nsum 1')
   expect(s.sent[0]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data)))
-    .toEqual([[`inb:draft:${id}`, `inb:done:${id}`, `inb:nah:${id}`]])
+    .toEqual([[`inb:do:${id}`, `inb:draft:${id}`], [`inb:done:${id}`, `inb:nah:${id}`]])
   // A second digest still shows it while unanswered.
   await s.run()
   expect(s.sent[1]!.text).toContain('Ana · whatsapp')

@@ -48,11 +48,11 @@ export function sweepInput(connector: string, now: number): string {
     `Using the ${connector} connector, find what is still waiting on the owner right now (now is ${new Date(now).toISOString()}), whenever it arrived:`,
     'open tasks assigned to them, requests or emails waiting on their reply, invites they have not answered, and anything due or overdue within the next two days.',
     'Skip newsletters, notifications, receipts and anything already done or answered.',
-    'For each, `title` is the action the owner needs to take, starting with a verb, with the deadline if there is one. Return `cursor` as now.',
+    'For each, `title` is the action the owner needs to take, starting with a verb, with the deadline if there is one, and `due` is that deadline in ISO 8601. Return `cursor` as now.',
   ].join(' ')
 }
 
-const task = (source: Source, id: string, ts: number, title: string, from: string, url?: string): Item => ({
+const task = (source: Source, id: string, ts: number, title: string, from: string, url?: string, due?: string): Item & { due?: number } => ({
   source: source.id,
   extId: `sweep:${id}`,
   ts,
@@ -63,6 +63,7 @@ const task = (source: Source, id: string, ts: number, title: string, from: strin
   url,
   toMe: true,
   fromMe: false,
+  ...(due && !Number.isNaN(Date.parse(due)) ? { due: Date.parse(due) } : {}),
 })
 
 export function githubTasks(source: Source, verb: string, stdout: string, now: number): Item[] {
@@ -73,10 +74,10 @@ export function githubTasks(source: Source, verb: string, stdout: string, now: n
   })
 }
 
-export function connectorTasks(source: Source, connector: string, out: z.infer<typeof AgentPollSchema>, now: number): Item[] {
+export function connectorTasks(source: Source, connector: string, out: z.infer<typeof AgentPollSchema>, now: number): (Item & { due?: number })[] {
   return out.items.map(i => {
     const ts = Date.parse(i.ts)
-    return task(source, i.id, Number.isNaN(ts) ? now : ts, i.title, i.from ?? connector, i.url)
+    return task(source, i.id, Number.isNaN(ts) ? now : ts, i.title, i.from ?? connector, i.url, i.due)
   })
 }
 
@@ -93,11 +94,12 @@ export async function runSweep(o: SweepOpts): Promise<number> {
   const now = o.now ?? Date.now
   const log = o.log ?? (() => {})
   const label = o.db.query(`UPDATE items SET label = 'action', reason = 'attention sweep' WHERE id = ?`)
+  const addLoop = o.db.query(`INSERT INTO loops (item_id, kind, summary, due, opened_at) VALUES (?, 'awaiting_me', ?, ?, ?)`)
   let stored = 0
   for (const s of o.sources.filter(s => s.enabled)) {
     const cfg = s.config as { command?: string[]; connector?: string }
     try {
-      let found: Item[] = []
+      let found: (Item & { due?: number })[] = []
       if (s.kind === 'poll' && basename(String(cfg.command?.[0])) === 'gh') {
         for (const q of githubSweeps(cfg.command![0]!)) found.push(...githubTasks(s, q.verb, await exec(q.cmd), now()))
       } else if (s.kind === 'agent-poll' && cfg.connector) {
@@ -106,7 +108,11 @@ export async function runSweep(o: SweepOpts): Promise<number> {
       }
       for (const item of found) {
         const id = insertItem(o.db, item)
-        if (id !== null) { label.run(id); stored++ }
+        if (id === null) continue
+        label.run(id)
+        // FR15: a deadline makes it a loop that gets nudged.
+        if (item.due) addLoop.run(id, item.text, item.due, now())
+        stored++
       }
     } catch (e) {
       log(`sweep ${s.id}: ${e instanceof Error ? e.message : e}`)

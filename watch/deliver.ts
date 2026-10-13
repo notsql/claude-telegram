@@ -3,8 +3,13 @@
  * conversation and handed, with each conversation's recent messages, to the
  * `tg-summarizer` one-shot for a last importance check and a one-line summary.
  * The important ones go out as one plain-text message to the delivery target
- * (a chat picked on the Sources page; the owner DM by default), with ✍️ Reply
- * and ✅ Done per conversation. The rest become `fyi` for the digest.
+ * (a chat picked on the Sources page; the owner DM by default), with 🤖 Do it,
+ * ✍️ Reply, ✅ Done and 🔕 Not like this per conversation. The rest become
+ * `fyi` for the digest.
+ *
+ * Deadline nudges (FR15): an open loop with a `due` within `NUDGE_LEAD_MS`, or
+ * past it, gets one "⏰ Due soon" message with 🤖 Do it and ✅ Done, under the
+ * same quiet hours and hourly cap, with no model call.
  *
  * Items the owner already answered (a later `fromMe` in the same chat) are
  * settled as `done` without a model call. Quiet hours hold messages except for
@@ -50,6 +55,8 @@ export type DeliverOpts = {
   dislike?: (item: { id: number; text: string }) => void
   /** Called on Mute sender (cards sent before summaries); durable mutes are memory (014). */
   mute: (source: string, fromId: string) => void
+  /** Called on Do it: starts a turn in the owner DM that carries out the task (tools.ts). */
+  act?: (item: { id: number; source: string; from_name: string | null; text: string }) => void
   /** Called on Draft reply: starts a turn that drafts with `draft_reply` (tools.ts). */
   draft?: (item: { id: number; source: string; from_name: string | null; text: string }) => void
   /** Local "HH:MM" bounds; default 23:00–07:30. */
@@ -66,7 +73,9 @@ export type Row = {
   to_me: number; from_me: number; thread_id: string | null; label: string; reason: string | null
 }
 
-export type Action = 'done' | 'snz1' | 'snzn' | 'snzt' | 'mute' | 'draft' | 'nah'
+export type Action = 'done' | 'snz1' | 'snzn' | 'snzt' | 'mute' | 'draft' | 'nah' | 'do'
+
+export const NUDGE_LEAD_MS = 3 * 3_600_000
 
 const mins = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h! * 60 + m! }
 
@@ -129,16 +138,25 @@ export function briefText(picked: { thread: Thread; summary: string }[], title =
   return text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text
 }
 
-/** ✍️ Reply and ✅ Done per conversation, both on its latest item. */
+/** Two rows per conversation, all on its latest item: 🤖 Do it and ✍️ Reply, then ✅ Done and 🔕 Not like this. */
 export function briefButtons(picked: { thread: Thread }[]): InlineKeyboardButton[][] {
-  return picked.map(({ thread: t }) => {
+  return picked.flatMap(({ thread: t }) => {
     const id = t.items.at(-1)!.id
     return [
-      { text: `✍️ Reply · ${short(t.name)}`, callback_data: `inb:draft:${id}` },
-      { text: '✅ Done', callback_data: `inb:done:${id}` },
-      { text: '🔕 Not like this', callback_data: `inb:nah:${id}` },
+      [{ text: `🤖 Do it · ${short(t.name)}`, callback_data: `inb:do:${id}` }, { text: '✍️ Reply', callback_data: `inb:draft:${id}` }],
+      [{ text: '✅ Done', callback_data: `inb:done:${id}` }, { text: '🔕 Not like this', callback_data: `inb:nah:${id}` }],
     ]
   })
+}
+
+type NudgeRow = { id: number; item_id: number; summary: string; due: number; source: string; name: string }
+
+const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+
+/** One "⏰ Due soon" message; past deadlines read as overdue. */
+export function nudgeText(rows: NudgeRow[], t: number): string {
+  const text = ['⏰ Due soon', ...rows.map(r => `${r.due <= t ? '🔴 Overdue' : `🟠 Due ${hhmm(r.due)}`} · ${r.name} · ${r.source}\n${r.summary}`)].join('\n\n')
+  return text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text
 }
 
 /** Groups items by conversation, each with the `CONTEXT` messages before its first item. */
@@ -170,6 +188,33 @@ export function createDeliver(o: DeliverOpts) {
 
   const setStatus = o.db.query('UPDATE items SET status = ?, snooze_until = ? WHERE id = ?')
 
+  /** FR15: one message for every open loop due within the lead time that hasn't been nudged. Returns whether it sent. */
+  async function nudge(t: number): Promise<boolean> {
+    const rows = o.db.query(
+      `SELECT l.id, l.item_id, l.summary, l.due, i.source, coalesce(i.chat_name, i.from_name, i.source) AS name
+       FROM loops l JOIN items i ON i.id = l.item_id
+       WHERE l.closed_at IS NULL AND l.nudged_at IS NULL AND l.due IS NOT NULL AND l.due <= ? AND i.status != 'done'
+       ORDER BY l.due LIMIT 20`,
+    ).all(t + NUDGE_LEAD_MS) as NudgeRow[]
+    if (!rows.length) return false
+    const to = o.target()
+    try {
+      await o.api.sendMessage(to.chatId, nudgeText(rows, t), {
+        ...(to.threadId ? { message_thread_id: to.threadId } : {}),
+        reply_markup: { inline_keyboard: rows.map(r => [
+          { text: `🤖 Do it · ${short(r.name)}`, callback_data: `inb:do:${r.item_id}` },
+          { text: '✅ Done', callback_data: `inb:done:${r.item_id}` },
+        ]) },
+      })
+    } catch (e) {
+      log(`deliver: nudge ${e instanceof Error ? e.message : e}`)
+      return false
+    }
+    const mark = o.db.query('UPDATE loops SET nudged_at = ? WHERE id = ?')
+    o.db.transaction(() => { for (const r of rows) mark.run(t, r.id) })()
+    return true
+  }
+
   /** Sends one summary of every due conversation the quiet hours, the hourly cap and the budget allow. */
   async function tick(): Promise<void> {
     if (running) return
@@ -181,6 +226,10 @@ export function createDeliver(o: DeliverOpts) {
            AND status IN ('new', 'snoozed') AND ${REPLIED}`,
       ).run()
       const quietNow = inQuietHours(t, quiet)
+      if (!quietNow) {
+        while (sent.length && sent[0]! <= t - 3_600_000) sent.shift()
+        if (sent.length < cap && await nudge(t)) sent.push(now())
+      }
       const due = (o.db.query(
         `SELECT * FROM items WHERE label IN ('urgent', 'action') AND from_me = 0
            AND (status = 'new' OR (status = 'snoozed' AND snooze_until <= ?))
@@ -260,6 +309,10 @@ export function createDeliver(o: DeliverOpts) {
         if (r.from_id) o.mute(r.source, r.from_id)
         setStatus.run('done', null, id)
         return `🔕 Muted ${r.from_name ?? r.from_id ?? 'sender'}`
+      case 'do':
+        if (!o.act) return 'Doing tasks is not available yet.'
+        o.act(r)
+        return '🤖 On it, in your DM…'
       case 'draft':
         if (!o.draft) return 'Drafting replies is not available yet.'
         o.draft(r)
@@ -277,11 +330,11 @@ export function createDeliver(o: DeliverOpts) {
 
 /** Registers the `inb:<action>:<id>` buttons, owner only. */
 export function registerInboxButtons(bot: Bot, deliver: Pick<ReturnType<typeof createDeliver>, 'tap'>): void {
-  bot.callbackQuery(/^inb:(done|snz1|snzn|snzt|mute|draft|nah):(\d+)$/, async ctx => {
+  bot.callbackQuery(/^inb:(done|snz1|snzn|snzt|mute|draft|nah|do):(\d+)$/, async ctx => {
     if (!isOwner(ctx)) return ownerOnly(ctx)
     const action = ctx.match![1] as Action
     const label = deliver.tap(action, Number(ctx.match![2]))
     await answer(ctx, label)
-    if (action !== 'draft') await appendLabel(ctx, label)
+    if (action !== 'draft' && action !== 'do') await appendLabel(ctx, label)
   })
 }
