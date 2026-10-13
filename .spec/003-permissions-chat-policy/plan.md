@@ -49,7 +49,7 @@ If the daemon is unreachable, the http hook fails, the request goes unanswered, 
 - Daemon tools added later (004–007) register a `requires` flag (for example `schedulerAllowed`). The tool registry leaves them out when the flag is false.
 
 ## Terminal skill
-Extend `skills/access/SKILL.md` with `policy <key> <field> <value>`, `policy show <key>` and `policy reset <key>`. `bypassPermissions` can only be set here.
+Extend `skills/access/SKILL.md` with `policy <key> <field> <value>`, `policy show <key>` and `policy reset <key>`. `bypassPermissions` can be set here, or from `/settings` in a DM (FR9).
 
 ## Risks
 - **Prompt fatigue**: mitigated by sensible default `allowedTools` for the owner DM and by the Always button.

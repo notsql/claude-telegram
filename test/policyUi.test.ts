@@ -3,13 +3,16 @@ import { defaultAccess } from '../access.ts'
 import { removeAlwaysAllow } from '../policy/resolve.ts'
 import { AGENT_CALLBACK } from '../telegram/agentUi.ts'
 import { EXTENSIONS_CALLBACK } from '../telegram/extensionsUi.ts'
-import { alwaysRuleAt, applyPolicyEdit, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView } from '../telegram/policyUi.ts'
+import { alwaysRuleAt, applyPolicyEdit, bypassConfirmView, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView } from '../telegram/policyUi.ts'
 
 const buttons = (v: { keyboard: { inline_keyboard: { text: string; callback_data?: string }[][] } }) => v.keyboard.inline_keyboard.flat()
 
-test('no page offers bypassPermissions (AC6)', () => {
+test('no group page offers Full auto (AC6)', () => {
   const p = { permissionMode: 'default' as const }
-  for (const v of [policyView('5', p), fieldView('permissionMode', p), permissionsView(p)]) expect(JSON.stringify(v)).not.toContain('bypass')
+  for (const v of [policyView('-100', p), fieldView('permissionMode', p, { dm: false }), permissionsView(p)]) {
+    expect(JSON.stringify(v)).not.toContain('bypass')
+    expect(JSON.stringify(v)).not.toContain('pol:b')
+  }
 })
 
 test('labels turn camel and Pascal case into words', () => {
@@ -67,11 +70,22 @@ test('applyPolicyEdit stores allowed values on the exact key', () => {
   expect(a.chats!['-100:7']!.policy).toEqual({ memoryScope: 'none', schedulerAllowed: true })
 })
 
-test('applyPolicyEdit rejects bypass, cwd and unknown fields', () => {
+test('applyPolicyEdit rejects bypass in groups, cwd and unknown fields', () => {
   const a = defaultAccess()
-  expect(() => applyPolicyEdit(a, '5', 'permissionMode', 'bypassPermissions')).toThrow()
+  expect(() => applyPolicyEdit(a, '-100', 'permissionMode', 'bypassPermissions')).toThrow('only for DMs')
+  expect(() => applyPolicyEdit(a, '-100:7', 'permissionMode', 'bypassPermissions')).toThrow('only for DMs')
   expect(() => applyPolicyEdit(a, '5', 'cwd', '/')).toThrow()
   expect(a.chats).toBeUndefined()
+})
+
+test('Full auto: DM only, behind a confirm page', () => {
+  const a = defaultAccess()
+  expect(applyPolicyEdit(a, '5', 'permissionMode', 'bypassPermissions')).toBe('bypassPermissions')
+  const cb = (v: ReturnType<typeof fieldView>) => v.keyboard.inline_keyboard.flat().map(b => 'callback_data' in b ? b.callback_data : '')
+  expect(cb(fieldView('permissionMode', {}, { dm: true }))).toContain('pol:b')
+  expect(cb(fieldView('permissionMode', {}, { dm: false }))).not.toContain('pol:b')
+  expect(cb(bypassConfirmView())).toContain('pol:s:permissionMode:bypassPermissions')
+  expect(label('bypassPermissions')).toBe('Full auto')
 })
 
 test('removeAlwaysAllow drops one rule', () => {

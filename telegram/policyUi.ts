@@ -4,9 +4,10 @@
  * that explains its values (`pol:s:<field>:<value>`), plus Reset (`pol:z`,
  * confirmed by `pol:y`). 🔐 Permissions (`pol:p`) has the permission mode and
  * one button per kind of rule (`pol:c:<kind>:<page>`); a rule (`pol:r:<kind>:<i>`)
- * shows its details, and an Always rule can be removed (`pol:x:<i>`). Offers a fixed set of values per field; `bypassPermissions`,
- * `cwd` and trust settings are never offered here (FR9, FR13) and edits outside
- * the set are rejected.
+ * shows its details, and an Always rule can be removed (`pol:x:<i>`). Offers a fixed set of values per field; `cwd` and
+ * trust settings are never offered here (FR13) and edits outside the set are
+ * rejected. Full auto (`bypassPermissions`) is DM only, behind a confirm page
+ * (`pol:b`); hard scope limits still apply (FR9).
  */
 
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from 'grammy/types'
@@ -16,7 +17,7 @@ import type { Policy } from '../policy/schema.ts'
 
 /** Field → values settable from Telegram. `default` on model clears the override. */
 export const EDITABLE = {
-  permissionMode: ['default', 'acceptEdits', 'plan'],
+  permissionMode: ['default', 'acceptEdits', 'plan', 'bypassPermissions'],
   model: ['default', 'sonnet', 'opus', 'haiku'],
   memoryScope: ['global', 'none'],
   historyScope: ['all', 'chat', 'none'],
@@ -26,7 +27,7 @@ export const EDITABLE = {
 
 export type EditableField = keyof typeof EDITABLE
 
-export const POLICY_CALLBACK = /^pol:(m|p|f|s|c|r|x|z|y)(?::(\w+))?(?::(\w+))?$/
+export const POLICY_CALLBACK = /^pol:(m|p|f|s|c|r|x|z|y|b)(?::(\w+))?(?::(\w+))?$/
 const PAGE = 8
 
 /** What each setting does, and what each value means, shown before you pick. */
@@ -37,6 +38,7 @@ const ABOUT: { [F in EditableField]: { what: string; values: Record<(typeof EDIT
       default: 'Asks you before using a tool that no rule allows.',
       acceptEdits: 'Edits files without asking; other tools still ask.',
       plan: 'Only reads and plans; makes no changes.',
+      bypassPermissions: 'Runs every tool without asking. Hard scope limits still apply. DMs only.',
     },
   },
   model: {
@@ -91,6 +93,7 @@ export type PolicyView = { text: string; keyboard: InlineKeyboardMarkup }
 /** `permissionMode` → `Permission mode`, `acceptEdits` → `Accept edits`, `true` → `Yes`. */
 export function label(name: string): string {
   if (name === 'true' || name === 'false') return name === 'true' ? 'Yes' : 'No'
+  if (name === 'bypassPermissions') return 'Full auto'
   return words(name).replace(/ ([A-Z][a-z])/g, (_, w: string) => ` ${w.toLowerCase()}`)
 }
 
@@ -106,12 +109,13 @@ const button = (text: string, data: string): InlineKeyboardButton => ({ text: te
 const SETTINGS = (Object.keys(EDITABLE) as EditableField[]).filter(f => f !== 'permissionMode')
 
 /** The main page: each setting with what it does, as buttons, then Permissions and Reset. */
-export function policyView(key: string, p: Policy): PolicyView {
+export function policyView(key: string, p: Policy, o: { sources?: boolean } = {}): PolicyView {
   const lines = [`⚙️ Settings for ${key}`, '']
   for (const f of SETTINGS) lines.push(`${label(f)}: ${value(p, f)}`, `${ABOUT[f].what}`, '')
   lines.push(`🔐 Permissions: ${value(p, 'permissionMode')} mode. Which tools run without asking.`)
   lines.push('🧩 Skills, plugins & MCP: which ones are on in this chat.')
   lines.push(`🤖 Agent: ${p.agent ?? 'Default assistant'}. Who answers here.`)
+  if (o.sources) lines.push('📡 Sources: inboxes watched for pings and digests.')
   if (p.cwd) lines.push(`Working directory: ${p.cwd}`)
   lines.push('', 'Tap a setting to change it.')
   return {
@@ -121,18 +125,21 @@ export function policyView(key: string, p: Policy): PolicyView {
       [button('🔐 Permissions', 'pol:p')],
       [button('🧩 Skills, plugins & MCP', 'ext:m')],
       [button(`🤖 Agent: ${p.agent ?? 'Default'}`, 'agn:m')],
+      ...(o.sources ? [[button('📡 Sources', 'src:m')]] : []),
       [button('↺ Reset to defaults', 'pol:z')],
     ] },
   }
 }
 
 /** One setting: what it does and what each value means, with the current one marked. */
-export function fieldView(f: EditableField, p: Policy): PolicyView {
+export function fieldView(f: EditableField, p: Policy, o: { dm?: boolean } = { dm: true }): PolicyView {
   const values = ABOUT[f].values as Record<string, string>
+  const options = EDITABLE[f].filter(v => v !== 'bypassPermissions' || o.dm)
   return {
-    text: [`${label(f)}: ${value(p, f)}`, ABOUT[f].what, '', ...EDITABLE[f].map(v => `${v === current(p, f) ? '• ' : ''}${label(v)}: ${values[v]}`)].join('\n'),
+    text: [`${label(f)}: ${value(p, f)}`, ABOUT[f].what, '', ...options.map(v => `${v === current(p, f) ? '• ' : ''}${label(v)}: ${values[v]}`)].join('\n'),
     keyboard: { inline_keyboard: [
-      EDITABLE[f].map(v => button(`${v === current(p, f) ? '• ' : ''}${label(v)}`, `pol:s:${f}:${v}`)),
+      // Full auto goes through a confirm page first.
+      options.map(v => button(`${v === current(p, f) ? '• ' : ''}${label(v)}`, v === 'bypassPermissions' && v !== current(p, f) ? 'pol:b' : `pol:s:${f}:${v}`)),
       [button('« Back', f === 'permissionMode' ? 'pol:p' : 'pol:m')],
     ] },
   }
@@ -215,9 +222,26 @@ export function resetPolicy(access: Access, key: string): void {
 export function applyPolicyEdit(access: Access, key: string, field: string, value: string): unknown {
   const allowed = (EDITABLE as Record<string, readonly string[]>)[field]
   if (!allowed?.includes(value)) throw new Error(`${field}=${value} can't be set from Telegram`)
+  // Group keys are negative chat ids: anyone there can put text in front of the agent.
+  if (value === 'bypassPermissions' && key.startsWith('-')) throw new Error('Full auto is only for DMs')
   const policy = ((access.chats ??= {})[key] ??= {}).policy ??= {}
   const record = policy as Record<string, unknown>
   if (field === 'model' && value === 'default') delete record.model
   else record[field] = field === 'schedulerAllowed' ? value === 'true' : value
   return record[field]
+}
+
+/** Confirm page before Full auto. */
+export function bypassConfirmView(): PolicyView {
+  return {
+    text: [
+      '⚠️ Full auto', '',
+      'Every tool runs without asking you: shell commands, file edits, installs, web and MCP tools.',
+      'Hard scope limits still apply. Anyone who can write to this DM as you can make it act.',
+    ].join('\n'),
+    keyboard: { inline_keyboard: [
+      [button('⚡ Turn on full auto', 'pol:s:permissionMode:bypassPermissions')],
+      [button('« Back', 'pol:f:permissionMode')],
+    ] },
+  }
 }

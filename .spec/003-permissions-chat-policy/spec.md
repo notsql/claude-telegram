@@ -37,7 +37,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
 - **FR8**: Defaults by chat type:
   - Owner DM: `permissionMode: default`, broad tools, `memoryScope: global`, `historyScope: all`, `autoLearn: auto`.
   - Groups and topics: only the owner can trigger turns (FR12), shared memory (`memoryScope: global`), read-only tools pre-approved (`Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch` and the Telegram tools); anything else, and any file path outside the chat's cwd, asks an approver instead of being blocked, `historyScope: chat`, `autoLearn: propose`, `schedulerAllowed: false`.
-- **FR9**: `bypassPermissions` can only be set from the terminal skill, never from Telegram.
+- **FR9**: `bypassPermissions` ("Full auto") can be set from Telegram `/settings` in a DM only, after a confirm page; never in groups or topics. `PreToolUse` hard scope limits still apply. (Changed 2026-10-12 at the owner's request; previously terminal-only.)
 - **FR10**: Every policy change and every approval decision is appended to `audit.log` (JSONL).
 - **FR11**: Policy, memory and history scopes are enforced **in code** (tool filtering and query filters), not only through prompt instructions.
 - **FR14**: **Reads never prompt** (owner decision 2026-10-07). Read-only calls are allowed by the hook without a prompt and audited as `auto`: Read, Glob, Grep, WebFetch, WebSearch; MCP tools whose names are reads (get, list, search, read, fetch…) with no write verb; and Bash commands where every part is a known reader (`ls`, `cat`, `git status`…) or has a read verb as its subcommand (`kubectl get`, `gh pr list`, `npm search`, `--help`). Splitting respects quotes and looks through `for`/`if` blocks and simple variables (`T=~/bin/tool; $T history`); `$(…)` is allowed when its command is read-only, and `python3 -c` when the code imports only safe modules (json, sys, re…) and touches no files, processes or other modules. Redirection, substitution, backgrounding or a write verb anywhere still prompts.
@@ -56,7 +56,7 @@ A headless agent with shell and file access needs a human in the loop for risky 
 - **AC3** (FR3): A non-approver group member taps Allow and nothing happens. A toast appears.
 - **AC4** (FR4): An ignored prompt expires and the tool is denied.
 - **AC5** (FR8, FR11): In a default group, a request to edit a file or read outside the chat's cwd shows an approval prompt and runs only if allowed, and `history_search` returns only that chat's history.
-- **AC6** (FR9): Telegram `/policy` does not offer `bypassPermissions`.
+- **AC6** (FR9): Telegram `/settings` offers Full auto only in DMs, behind a confirm page, and rejects it for group keys.
 - **AC7** (FR12): In a default group, a non-owner mentioning the bot gets no model turn. The text still appears in the context of the owner's next turn.
 
 ## Open questions
