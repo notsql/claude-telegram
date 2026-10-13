@@ -25,7 +25,7 @@ function setup() {
   const callbacks: [RegExp, (ctx: any) => Promise<unknown>][] = []
   const bot = { callbackQuery: (re: RegExp, fn: any) => callbacks.push([re, fn]) } as any
   const live: string[] = []
-  const ui = registerWatchCommands(bot, { stateDir, db, live: { start: s => void live.push(`start:${s.id}`), stop: id => void live.push(`stop:${id}`) } })
+  const ui = registerWatchCommands(bot, { stateDir, db, live: { start: s => void live.push(`start:${s.id}`), stop: id => void live.push(`stop:${id}`) }, which: bin => (bin === 'gh' ? '/opt/homebrew/bin/gh' : null) })
   const replies: { text: string; extra: any }[] = []
   const edits: { text: string; extra: any }[] = []
   const ctx = (from = 42, type = 'private', data?: string) => ({
@@ -42,20 +42,20 @@ function setup() {
     c.match = data.match(re)
     await fn(c)
   }
-  return { stateDir, db, ui, replies, edits, ctx, tap, live }
+  return { stateDir, db, ui, replies, edits, ctx, tap, live, callbacks }
 }
 
-test('/sources lists status, last item and errors, with Pause/Resume that write sources.json', async () => {
+test('Settings → Sources lists status, last item and errors, with Pause/Resume that act live', async () => {
   const s = setup()
   saveSources(s.stateDir, [src('wa', { lastItemAt: Date.now() - 5 * 60_000 }), src('gh', { status: 'error', errors: 2 }), src('mail', { enabled: false, status: 'paused' })])
-  await s.ui.sources.handler(s.ctx() as any, '')
-  const r = s.replies[0]!
+  await s.tap('src:m')
+  const r = s.edits[0]!
   expect(r.text).toContain('✅ WA (wa, stream): last item 5m ago')
   expect(r.text).toContain('⚠️ GH (gh, stream): no items yet, 2 errors')
   expect(r.text).toContain('⏸ MAIL')
   expect(r.extra.parse_mode).toBeUndefined()
   const cbs = r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)
-  expect(cbs).toEqual(['src:pause:wa', 'src:pause:gh', 'src:resume:mail', 'ui:close'])
+  expect(cbs).toEqual(['src:pause:wa', 'src:pause:gh', 'src:resume:mail', 'src:add:whatsapp', 'src:add:telegram-account', 'src:add:github', 'src:add:calendar', 'pol:m', 'ui:close'])
 
   await s.tap('src:pause:wa')
   await s.tap('src:resume:mail')
@@ -63,16 +63,27 @@ test('/sources lists status, last item and errors, with Pause/Resume that write 
   expect(byId.wa).toMatchObject({ enabled: false, status: 'paused' })
   expect(byId.mail).toMatchObject({ enabled: true, status: 'ok' })
   expect(s.live).toEqual(['stop:wa', 'start:mail'])
-  expect(s.edits.at(-1)!.text).toContain('Resumed.')
 })
 
-test('/sources and /inbox are owner-DM only', async () => {
+test('Settings → Sources ➕ adds an installed built-in and starts it; a missing CLI is not added', async () => {
   const s = setup()
-  await s.ui.sources.handler(s.ctx(7) as any, '')
+  await s.tap('src:add:github')
+  expect(loadSources(s.stateDir).map(x => [x.id, (x.config.command as string[])[0]])).toEqual([['github', '/opt/homebrew/bin/gh']])
+  expect(s.live).toEqual(['start:github'])
+  expect(s.edits.at(-1)!.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.callback_data)).not.toContain('src:add:github')
+  await s.tap('src:add:whatsapp')
+  expect(loadSources(s.stateDir).map(x => x.id)).toEqual(['github'])
+})
+
+test('Sources and /inbox are owner-DM only', async () => {
+  const s = setup()
   await s.ui.inbox.handler(s.ctx(42, 'group') as any, '')
   expect(s.replies).toEqual([])
-  expect(s.ui.sources.menu).toEqual(['private'])
   expect(s.ui.inbox.menu).toEqual(['private'])
+  const [re, fn] = s.callbacks.find(([re]) => re.test('src:add:github'))!
+  const c = s.ctx(7, 'private', 'src:add:github'); c.match = 'src:add:github'.match(re)
+  await fn(c)
+  expect(loadSources(s.stateDir)).toEqual([])
 })
 
 test('/inbox shows un-done urgent/action items and open loops as plain text with inb: Done/Snooze', async () => {

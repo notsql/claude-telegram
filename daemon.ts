@@ -602,14 +602,14 @@ const sessionsUi = registerSessions(bot, {
   compact: key => turns.enqueue(key, { prompt: '/compact', text: '/compact' }),
 })
 const usageCommand = registerUsage(bot)
-const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh() })
+const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
 if (watch?.health) registerHealthButtons(bot, watch.health)
 const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
-const watchUi = watch && registerWatchCommands(bot, { stateDir: STATE_DIR, db: watch.db, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) } })
+const watchUi = watch && registerWatchCommands(bot, { stateDir: STATE_DIR, db: watch.db, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) }, which: bin => Bun.which(bin) })
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)
@@ -631,7 +631,7 @@ const commands: Command[] = [
   settingsCommand,
   cronUi.command,
   capsUi.command,
-  ...(watchUi ? [watchUi.sources, watchUi.inbox] : []),
+  ...(watchUi ? [watchUi.inbox] : []),
 ]
 const builtins = registry(commands)
 // 008 FR6: the / menu holds the built-ins only; skills live under /skills (FR12).

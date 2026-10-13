@@ -20,7 +20,7 @@ import { installedPlugins } from '../../skills/plugins.ts'
 import { AGENT_CALLBACK, agentView } from '../agentUi.ts'
 import { withClose } from '../close.ts'
 import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, prettyName, skillSwitchesView, toggleMcpServer, togglePlugin, toggleSkill } from '../extensionsUi.ts'
-import { alwaysRuleAt, applyPolicyEdit, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from '../policyUi.ts'
+import { alwaysRuleAt, applyPolicyEdit, bypassConfirmView, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from '../policyUi.ts'
 import { STORE_CALLBACK, categoriesView, confirmView, listView, pluginView, resultView } from '../storeUi.ts'
 import { answer, isOwner, keyOf, ownerOnly } from './ui.ts'
 
@@ -31,17 +31,21 @@ export type SettingsDeps = {
   audit: ReturnType<typeof createAudit>
   /** The `/` menus depend on settings; refresh them after a change. */
   refreshMenu: () => void
+  /** 013: show 📡 Sources in the owner DM when watching is on. */
+  sources: boolean
 }
 
-export function registerSettings(bot: Bot, { discovery, audit, refreshMenu }: SettingsDeps): Command {
+export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sources }: SettingsDeps): Command {
   bot.callbackQuery(POLICY_CALLBACK, async ctx => {
     const msg = ctx.callbackQuery.message
     if (!isOwner(ctx) || !msg) return ownerOnly(ctx)
     const here = keyOf(msg)
     const key = policyKey(here)
-    const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y', string?, string?]
+    const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y' | 'b', string?, string?]
     const show = (r: View) => ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
     const user = String(ctx.from.id)
+    const dm = msg.chat.type === 'private'
+    const home = () => policyView(key, policyOf(here), { sources: sources && dm })
     switch (action) {
       case 's': {
         const access = loadAccess()
@@ -54,7 +58,7 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu }: Se
           return answer(ctx, (err as Error).message)
         }
         void answer(ctx, `${label(a!)}: ${label(b!)}`)
-        return void await show(a === 'permissionMode' ? permissionsView(policyOf(here)) : policyView(key, policyOf(here)))
+        return void await show(a === 'permissionMode' ? permissionsView(policyOf(here)) : home())
       }
       case 'x': {
         const access = loadAccess()
@@ -73,17 +77,18 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu }: Se
         audit({ event: 'policy', key, user, field: '*', value: 'default' })
         refreshMenu()
         void answer(ctx, '↺ Settings reset')
-        return void await show(policyView(key, policyOf(here)))
+        return void await show(home())
       }
     }
     await answer(ctx)
     const p = policyOf(here)
-    if (action === 'm') return void await show(policyView(key, p))
+    if (action === 'm') return void await show(home())
+    if (action === 'b') return void await show(dm ? bypassConfirmView() : fieldView('permissionMode', p, { dm }))
     if (action === 'p') return void await show(permissionsView(p))
     if (action === 'c') return void await show(rulesView(p, Number(a), Number(b ?? 0)))
     if (action === 'r') return void await show(ruleView(p, Number(a), Number(b)))
     if (action === 'z') return void await show(resetView())
-    if (a && a in EDITABLE) await show(fieldView(a as EditableField, p))
+    if (a && a in EDITABLE) await show(fieldView(a as EditableField, p, { dm }))
   })
 
   // Set on the session key, so a forum topic can run as its own agent (009 US3).
@@ -191,7 +196,7 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu }: Se
   return { name: 'settings', description: "This chat's settings and permissions", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
     if (!isOwner(ctx)) return
     const here = sessionKey(ctx.msg!)
-    const r = policyView(policyKey(here), policyOf(here))
+    const r = policyView(policyKey(here), policyOf(here), { sources: sources && ctx.chat?.type === 'private' })
     await ctx.reply(r.text, { reply_markup: withClose(r.keyboard) })
   } }
 }
