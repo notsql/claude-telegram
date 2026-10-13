@@ -3,7 +3,7 @@ import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import * as access from '../access.ts'
-import { loadSources, saveSources, type Source } from '../watch/registry.ts'
+import { loadSources, loadTarget, saveSources, type Source } from '../watch/registry.ts'
 
 // Another test mocks access.ts module-wide, so pin the owner the same way.
 mock.module('../access.ts', () => ({ ...access, loadAccess: () => ({ ...access.defaultAccess(), allowFrom: ['42'] }) }))
@@ -23,12 +23,12 @@ function setup() {
     from: { id: from }, chat: { id: from, type },
     answerCallbackQuery: async () => {},
     editMessageText: async (text: string, extra: any) => void edits.push({ text, extra }),
-    callbackQuery: data && { data },
+    callbackQuery: data && { data, message: { message_id: 1, chat: type === 'private' ? { id: from, type } : { id: -100, type, title: 'Family' } } },
     match: undefined as any,
   })
-  const tap = async (data: string) => {
+  const tap = async (data: string, type = 'private') => {
     const [re, fn] = callbacks.find(([re]) => re.test(data))!
-    const c = ctx(42, 'private', data)
+    const c = ctx(42, type, data)
     c.match = data.match(re)
     await fn(c)
   }
@@ -43,8 +43,8 @@ test('Settings → Sources lists sources as buttons; a source opens its page wit
   await s.tap('src:m')
   const r = s.edits[0]!
   expect(r.extra.parse_mode).toBeUndefined()
-  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '➕ Add source', '« Back', '✕ Close'])
-  expect(cbs(r)).toEqual(['src:s:wa', 'src:s:gh', 'src:s:mail', 'src:a', 'pol:m', 'ui:close'])
+  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '➕ Add source', '📍 Send updates here', '« Back', '✕ Close'])
+  expect(cbs(r)).toEqual(['src:s:wa', 'src:s:gh', 'src:s:mail', 'src:a', 'src:here', 'pol:m', 'ui:close'])
 
   await s.tap('src:s:wa')
   expect(s.edits.at(-1)!.text).toBe('✅ WA\n\nWatching (stream)\nLast item 5m ago')
@@ -69,7 +69,7 @@ test('➕ Add source lists built-ins not added yet; picking an installed one add
   await s.tap('src:add:github')
   expect(loadSources(s.stateDir).map(x => [x.id, (x.config.command as string[])[0]])).toEqual([['github', '/opt/homebrew/bin/gh']])
   expect(s.live).toEqual(['start:github'])
-  expect(cbs(s.edits.at(-1)!)).toEqual(['src:s:github', 'src:a', 'pol:m', 'ui:close'])
+  expect(cbs(s.edits.at(-1)!)).toEqual(['src:s:github', 'src:a', 'src:here', 'pol:m', 'ui:close'])
   await s.tap('src:a')
   expect(cbs(s.edits.at(-1)!)).not.toContain('src:add:github')
   await s.tap('src:add:whatsapp')
@@ -84,4 +84,17 @@ test('Sources is owner only, and works in a group', async () => {
     await fn(c)
   }
   expect(loadSources(s.stateDir).map(x => x.id)).toEqual(['github'])
+})
+
+test('📍 Send updates here saves the chat as the delivery target', async () => {
+  const s = setup()
+  await s.tap('src:m', 'supergroup')
+  expect(s.edits.at(-1)!.text).toContain('sent to your DM')
+  await s.tap('src:here', 'supergroup')
+  expect(loadTarget(s.stateDir)).toEqual({ key: '-100', title: 'Family' })
+  expect(s.edits.at(-1)!.text).toContain('sent to this chat')
+  expect(cbs(s.edits.at(-1)!)).not.toContain('src:here')
+  await s.tap('src:m')
+  expect(s.edits.at(-1)!.text).toContain('sent to Family')
+  expect(cbs(s.edits.at(-1)!)).toContain('src:here')
 })

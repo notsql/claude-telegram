@@ -5,30 +5,36 @@
 
 import type { Bot } from 'grammy'
 import type { InlineKeyboardButton } from 'grammy/types'
-import { loadSources, saveSources, setEnabled, type Source } from '../../watch/registry.ts'
+import { loadSources, loadTarget, saveSources, saveTarget, setEnabled, type Source } from '../../watch/registry.ts'
 import { BUILTINS, propose } from '../../watch/onboard.ts'
 import { withClose } from '../close.ts'
-import { answer, isOwner, ownerOnly } from './ui.ts'
+import { answer, isOwner, keyOf, ownerOnly } from './ui.ts'
 
 const ago = (t: number, now: number) => {
   const m = Math.round((now - t) / 60_000)
   return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`
 }
 
-export const SOURCES_CALLBACK = /^src:(m|s|a|pause|resume|add)(?::([a-z0-9][a-z0-9_-]*))?$/
+export const SOURCES_CALLBACK = /^src:(m|s|a|here|pause|resume|add)(?::([a-z0-9][a-z0-9_-]*))?$/
 
 type View = { text: string; keyboard: { inline_keyboard: InlineKeyboardButton[][] } }
 const icon = (s: Source) => (!s.enabled ? '⏸' : s.status === 'error' ? '⚠️' : '✅')
 const back = (data: string): InlineKeyboardButton[] => [{ text: '« Back', callback_data: data }]
 
-/** The 📡 Sources settings page: one button per source, then ➕ Add source. */
-export function sourcesView(stateDir: string): View {
+/**
+ * The 📡 Sources settings page: one button per source, ➕ Add source, and
+ * 📍 Send updates here unless `here` (this chat's key) is already the target.
+ */
+export function sourcesView(stateDir: string, here: string): View {
   const sources = loadSources(stateDir)
+  const target = loadTarget(stateDir)
+  const where = !target ? 'your DM' : target.key === here ? 'this chat' : target.title
   return {
-    text: `📡 Sources\n\n${sources.length ? 'Tap a source to see it or pause it.' : 'None yet.'}\n\nWatched for pings and digests.`,
+    text: `📡 Sources\n\n${sources.length ? 'Tap a source to see it or pause it.' : 'None yet.'}\n\nWhat needs you is summarised and sent to ${where}.`,
     keyboard: { inline_keyboard: [
       ...sources.map(s => [{ text: `${icon(s)} ${s.title}`, callback_data: `src:s:${s.id}` }]),
       [{ text: '➕ Add source', callback_data: 'src:a' }],
+      ...(target?.key === here ? [] : [[{ text: '📍 Send updates here', callback_data: 'src:here' }]]),
       back('pol:m'),
     ] },
   }
@@ -72,7 +78,10 @@ export function registerSources(bot: Bot, o: {
 }) {
   bot.callbackQuery(SOURCES_CALLBACK, async ctx => {
     if (!isOwner(ctx)) return ownerOnly(ctx)
-    const [, action, id] = ctx.match as unknown as [string, 'm' | 's' | 'a' | 'pause' | 'resume' | 'add', string?]
+    const [, action, id] = ctx.match as unknown as [string, 'm' | 's' | 'a' | 'here' | 'pause' | 'resume' | 'add', string?]
+    const msg = ctx.callbackQuery.message
+    if (!msg) return answer(ctx)
+    const here = keyOf(msg)
     const show = (v: View) => ctx.editMessageText(v.text, { reply_markup: withClose(v.keyboard) }).catch(() => {})
     try {
       if (action === 'pause' || action === 'resume') {
@@ -94,12 +103,17 @@ export function registerSources(bot: Bot, o: {
           o.live.start(r.source)
         }
         void answer(ctx, `➕ Added ${b.title}`)
-        return void await show(sourcesView(o.stateDir))
+        return void await show(sourcesView(o.stateDir, here))
+      }
+      if (action === 'here') {
+        saveTarget(o.stateDir, { key: here, title: msg.chat.type === 'private' ? 'your DM' : (msg.chat.title ?? 'a group') })
+        void answer(ctx, '📍 Updates will come here')
+        return void await show(sourcesView(o.stateDir, here))
       }
     } catch (e) {
       return answer(ctx, e instanceof Error ? e.message : String(e))
     }
-    const v = action === 's' ? sourceView(o.stateDir, id!) : action === 'a' ? addView(o.stateDir) : sourcesView(o.stateDir)
+    const v = action === 's' ? sourceView(o.stateDir, id!) : action === 'a' ? addView(o.stateDir) : sourcesView(o.stateDir, here)
     if (!v) return answer(ctx, 'That source is gone.')
     void answer(ctx)
     await show(v)

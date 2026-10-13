@@ -11,12 +11,13 @@
 
 import type { Database } from 'bun:sqlite'
 
-export type DigestApi = { sendMessage(chatId: string, text: string): Promise<unknown> }
+export type DigestApi = { sendMessage(chatId: string, text: string, extra?: { message_thread_id?: number }): Promise<unknown> }
 
 export type DigestOpts = {
   db: Database
   api: DigestApi
-  owner: string
+  /** The delivery target (deliver.ts). */
+  to: { chatId: string; threadId?: number }
   title: string
   loopAfterMs?: number
   now?: () => number
@@ -97,7 +98,7 @@ export async function runDigest(o: DigestOpts): Promise<boolean> {
   ).all() as LoopRow[]
   const text = composeDigest(o.title, items, loops)
   if (!text) return false
-  await o.api.sendMessage(o.owner, text)
+  await o.api.sendMessage(o.to.chatId, text, o.to.threadId ? { message_thread_id: o.to.threadId } : undefined)
   const mark = o.db.query(`UPDATE items SET status = 'digested' WHERE id = ? AND status = 'new'`)
   o.db.transaction(() => { for (const r of items) mark.run(r.id) })()
   return true

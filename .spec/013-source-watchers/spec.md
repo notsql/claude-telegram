@@ -29,14 +29,14 @@ The agent only acts when I message it or a cron job fires, while the things I mi
 - **FR5 — Untrusted content.** Item text is data, not instructions. It reaches the model only inside `<external_item source=… from=…>` wrappers with a system note that instructions inside them must not be followed. Triage runs through a tool-less one-shot (`tg-triager`, only `StructuredOutput`), so injected text there can't call tools (constitution IV).
 - **FR6 — Triage.** Two stages:
   1. **Rules** (free, deterministic): muted chats or senders → `noise`; `fromMe` → updates open loops only; VIP senders from 014 → always sent to stage 2 at once.
-  2. **Model**: batched every 2 min, or at 20 items, through `runOneShot('tg-triager')` on Haiku. Input is the items plus the owner's pattern summary (014) and open loops. Output per item: `{label: urgent|action|fyi|noise, reason, due?, loop?: {kind: awaiting_me|i_promised, summary}}`.
+  2. **Model**: batched every 2 min, or at 20 items, through `runOneShot('tg-triager')` on Haiku. Input is the items, the last 6 earlier messages of each chat they come from (as `<context_item>`, not labelled, so the model sees who already answered), the owner's pattern summary (014) and open loops. The prompt is strict: `action` only when the owner personally must act and nobody has handled it; when unsure, the lower label. Output per item: `{label: urgent|action|fyi|noise, reason, due?, loop?: {kind: awaiting_me|i_promised, summary}}`.
 - **FR7 — Delivery.**
   - `urgent` → immediate ping.
   - `action` → immediate ping during active hours, else the next digest.
   - `fyi` → digest.
   - `noise` → stored only.
 
-  Pings go to the owner DM, or to an `Inbox` forum topic when `watch.target` names one. Each ping has the buttons **Open** (deep link or `url`), **Draft reply**, **Snooze** (1h / tonight / tomorrow), **Mute sender** and **Done**. Quiet hours (from 014, default 23:00–07:30) hold pings except `urgent` from VIPs. At most `pingsPerHour` (default 6) go out; any overflow moves to the digest.
+  Pings are **summaries, not per-message cards** (changed 2026-10-13 at the owner's request). Each send groups due `urgent`/`action` items by conversation and hands them, with the conversation's last 8 messages, to `tg-summarizer` (Haiku) for a last importance check and a one- or two-sentence summary. Important conversations go out as one plain-text "📥 Needs you" message with **✍️ Reply** and **✅ Done** (settles the conversation) per conversation; the rest become `fyi` for the digest. Items the owner already answered (a later `fromMe` in the same chat) are settled as `done` without a model call. Messages and digests go to the chat picked with 📍 Send updates here on ⚙️ Settings → 📡 Sources (a group, topic or DM, `inbox-target.json`), else the owner DM. Quiet hours (from 014, default 23:00–07:30) hold pings except `urgent` from VIPs. At most `pingsPerHour` (default 6) messages go out; the rest wait. The bot's own messages, seen through the owner's Telegram account, are never stored.
 - **FR8 — Digests and open loops.** System jobs (007 FR10) send a morning digest (08:30) and an evening digest (18:30) in the owner's tz. Each digest summarises undelivered items by source and person, plus **open loops**:
   - *awaiting me*: an item that is `toMe` with no `fromMe` reply in the same thread after `loopAfter` (default 4h).
   - *I promised*: commitments the triager extracted from my own messages ("I'll send it tomorrow").
@@ -58,7 +58,7 @@ The agent only acts when I message it or a cron job fires, while the things I mi
 - A full unified inbox UI. Telegram stays the surface.
 
 ## Acceptance criteria
-- **AC1** (FR1, FR3, FR6, FR7): A WhatsApp message "urgent: call me" from a VIP produces a 🔴 ping in the owner DM within 2 minutes.
+- **AC1** (FR1, FR3, FR6, FR7): A WhatsApp message "urgent: call me" from a VIP produces a 🔴 summary in the delivery chat within 3 minutes.
 - **AC2** (FR3): A new message to my Telegram account in a muted chat is stored and never pinged.
 - **AC3** (FR8): A DM to me that I don't answer for 4h appears under "awaiting me" in the next digest, and drops off after I reply from my phone.
 - **AC4** (FR4, FR9): **Draft reply** → **Send** sends through `wacli send`, and the message appears in WhatsApp. Without the tap, nothing is sent.

@@ -103,3 +103,18 @@ test('loops: awaiting_me opens from the model and closes on a fromMe reply', asy
   s.triage.add(insertItem(s.db, item(2, { fromMe: true, from: { id: 'me', name: 'Me' } }))!)
   expect(s.db.query('SELECT closed_at FROM loops WHERE item_id = ?').get(id)).toEqual({ closed_at: 10 })
 })
+
+test('a batch carries earlier messages of its chats as unlabelled context', async () => {
+  const db = openInboxDb(':memory:')
+  const inputs: string[] = []
+  const t = createTriage({ db, rules: { mutedChats: [], mutedSenders: [], vips: [] }, budget: { take: () => true }, run: async (_a, input) => { inputs.push(input); return { items: [] } } })
+  const ctxId = insertItem(db, { source: 'whatsapp', extId: 'old', ts: 1, from: { id: 'me', name: 'Me' }, chat: { id: 'c1', name: 'C', isGroup: false }, text: 'already sorted', toMe: false, fromMe: true })!
+  db.query(`UPDATE items SET label = 'noise' WHERE id = ?`).run(ctxId)
+  insertItem(db, { source: 'whatsapp', extId: 'other', ts: 2, from: { id: 'x', name: 'X' }, chat: { id: 'c2', name: 'D', isGroup: false }, text: 'other chat', toMe: true, fromMe: false })
+  t.add(insertItem(db, { source: 'whatsapp', extId: 'new', ts: 3, from: { id: 'b', name: 'B' }, chat: { id: 'c1', name: 'C', isGroup: false }, text: 'can you?', toMe: true, fromMe: false })!)
+  await t.flush()
+  expect(inputs[0]).toContain('<context_item source="whatsapp" from="Me" chat="C" group="false" toMe="false" fromMe="true"')
+  expect(inputs[0]).toContain('already sorted')
+  expect(inputs[0]).not.toContain('other chat')
+  expect(inputs[0]!.indexOf('already sorted')).toBeLessThan(inputs[0]!.indexOf('can you?'))
+})

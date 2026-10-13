@@ -25,7 +25,7 @@ function setup() {
     db.query('UPDATE items SET label = ? WHERE id = ?').run(label, id)
     return id
   }
-  const run = () => runDigest({ db, api, owner: '42', title: 'Evening digest', now: () => t })
+  const run = () => runDigest({ db, api, to: { chatId: '42' }, title: 'Evening digest', now: () => t })
   const status = (id: number) => (db.query('SELECT status FROM items WHERE id = ?').get(id) as { status: string }).status
   return { db, sent, add, run, status, set: (ms: number) => { t = ms }, fail: (v: boolean) => { fail = v } }
 }

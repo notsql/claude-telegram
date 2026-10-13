@@ -18,3 +18,5 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
 - [x] **T1308** `source_add` onboarding through 012, plus health notices with Fix/Pause (FR9, FR10).
   *Verify:* AC6, AC7.
 - [x] **T1309** ⚙️ Settings → 📡 Sources fallback page (008). (`/inbox` dropped 2026-10-13.)
+- [ ] **T1310** Summary delivery: chat context in triage, stricter `tg-triager`, `tg-summarizer` importance check and one "📥 Needs you" message per send, 📍 Send updates here, and the bot's own messages dropped (FR6, FR7).
+  *Verify:* AC1 in a group chosen with 📍; a family-chat logistics question that someone else answered sends nothing.

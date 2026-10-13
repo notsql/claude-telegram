@@ -27,7 +27,7 @@ import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
-import { loadSources, recordItem, setEnabled, type Source } from './watch/registry.ts'
+import { loadSources, loadTarget, recordItem, setEnabled, type Source } from './watch/registry.ts'
 import { createHealth, registerHealthButtons } from './watch/health.ts'
 import { adapterFor, createSupervisor } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
@@ -371,6 +371,12 @@ const approvals = createApprovals({
 })
 // 008 FR5: a skill command's <channel> wrapper, handed to its turn as hook context.
 const skillContext = new Map<string, string>()
+// 013 FR7: inbox summaries and digests go to the chat picked on the Sources page, else the owner DM.
+const BOT_ID = TOKEN.split(':')[0]
+function inboxTarget(owner: string): { chatId: string; threadId?: number } {
+  const t = loadTarget(STATE_DIR)
+  return t ? parseKey(t.key) : { chatId: owner }
+}
 // 013 FR1, FR12: source watchers, only with TELEGRAM_WATCH=1. Items land in inbox.db,
 // go through triage, and urgent/action items ping the owner (first allowFrom).
 // Mutes and VIPs are in-memory until 014 makes them memory.
@@ -379,7 +385,7 @@ const watch = config.watch ? (() => {
   const rules: TriageRules = { mutedChats: [], mutedSenders: [], vips: [] }
   const triage = createTriage({ db, rules, log, run: runOneShot, budget: { take: () => budget.take() } })
   const owner = loadAccess().allowFrom[0]
-  const deliver = owner ? createDeliver({ db, api: bot.api, owner, vips: rules.vips, log, mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
+  const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
     // Draft reply: a turn in the owner DM that calls draft_reply (T1307).
     draft: r => turns.enqueue(owner, {
       prompt: renderInbound(draftPrompt(r), { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),
@@ -388,6 +394,8 @@ const watch = config.watch ? (() => {
   }) : undefined
   if (!owner) log('watch: no owner in allowFrom; pings disabled')
   const insert = (source: Source, item: Item) => {
+    // The owner's Telegram account also sees this bot's own messages; don't triage them.
+    if (item.from.id === `user:${BOT_ID}`) return
     const id = insertItem(db, item)
     if (id === null) return
     recordItem(STATE_DIR, source.id, Date.now())
@@ -723,7 +731,7 @@ async function fireSystemJob(id: SystemJobId): Promise<void> {
   // 013 FR8: deterministic, no turn.
   if (id === 'digest-morning' || id === 'digest-evening') {
     const owner = loadAccess().allowFrom[0]
-    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, owner, title: id === 'digest-morning' ? 'Morning digest' : 'Evening digest' })
+    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: id === 'digest-morning' ? 'Morning digest' : 'Evening digest' })
     return
   }
   // 004 FR8: run as tg-curator (009).
