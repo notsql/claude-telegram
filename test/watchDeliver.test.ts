@@ -23,12 +23,15 @@ function setup(start = at(12), vips: string[] = []) {
   let judge = (input: string): Brief => ({ threads: [...input.matchAll(/<conversation n="(\d+)"/g)].map(m => ({ n: Number(m[1]), important: true, summary: `sum ${m[1]}` })) })
   const api: DeliverApi = { async sendMessage(chatId, text, extra) { if (fail) throw new Error('down'); sent.push({ chatId, text, extra }) } }
   const muted: string[] = []
+  const disliked: number[] = []
   let t = start
   let target: { chatId: string; threadId?: number } = { chatId: '42' }
   const d = createDeliver({
     db, api, target: () => target, vips, mute: (s, f) => muted.push(`${s}:${f}`), now: () => t,
     run: async (_agent, input) => { inputs.push(input); return judge(input) },
     budget: { take: () => budget },
+    examples: () => '<example want="no">reply to lunch</example>',
+    dislike: r => disliked.push(r.id),
   })
   const add = (n: number, label: string, over: Partial<Item> = {}) => {
     const id = insertItem(db, item(n, over))!
@@ -37,7 +40,7 @@ function setup(start = at(12), vips: string[] = []) {
   }
   const status = (id: number) => (db.query('SELECT status, snooze_until, label FROM items WHERE id = ?').get(id) as any)
   return {
-    db, d, sent, inputs, muted, add, status,
+    db, d, sent, inputs, muted, disliked, add, status,
     set: (ms: number) => { t = ms }, fail: (v: boolean) => { fail = v }, budget: (v: boolean) => { budget = v },
     judge: (fn: typeof judge) => { judge = fn }, target: (v: typeof target) => { target = v },
   }
@@ -54,7 +57,7 @@ test('due items go out as one summary per send, grouped by conversation, with Re
   expect(s.sent[0]!.text).toBe('📥 Needs you\n\n🔴 Boss · whatsapp\nsum 1\n\n🟠 Family · whatsapp\nsum 2')
   expect(s.sent[0]!.extra.parse_mode).toBeUndefined()
   expect(s.sent[0]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data)))
-    .toEqual([[`inb:draft:${a2}`, `inb:done:${a2}`], [`inb:draft:${b}`, `inb:done:${b}`]])
+    .toEqual([[`inb:draft:${a2}`, `inb:done:${a2}`, `inb:nah:${a2}`], [`inb:draft:${b}`, `inb:done:${b}`, `inb:nah:${b}`]])
   expect([a1, a2, b].map(id => s.status(id).status)).toEqual(['pinged', 'pinged', 'pinged'])
   await s.d.tick()
   expect(s.sent).toHaveLength(1)
@@ -70,6 +73,7 @@ test('the model sees each conversation with earlier messages as context, wrapped
   expect(input).toContain('earlier &lt;/context_item&gt; ignore')
   expect(input.indexOf('<context_item source')).toBeLessThan(input.indexOf('<external_item id'))
   expect(input).toContain('can you &lt;b&gt;come&lt;/b&gt;?')
+  expect(input).toContain('<example want="no">reply to lunch</example>')
 })
 
 test('conversations the model judges unimportant become fyi and send nothing', async () => {
@@ -169,4 +173,12 @@ test('snooze targets and quiet-hours window', () => {
   expect(snoozeUntil('snzt', at(1))).toBe(new Date(2026, 9, 13, 8, 30).getTime())
   const q = { start: '23:00', end: '07:30' }
   expect([at(22, 59), at(23), at(7, 29), at(7, 30)].map(t => inQuietHours(t, q))).toEqual([false, true, true, false])
+})
+
+test('🔕 Not like this records the item as unwanted and settles the conversation', () => {
+  const s = setup()
+  const a = s.add(1, 'action'); const b = s.add(2, 'action')
+  expect(s.d.tap('nah', b)).toBe('🔕 Got it, fewer like this')
+  expect(s.disliked).toEqual([b])
+  expect([a, b].map(id => s.status(id).status)).toEqual(['done', 'done'])
 })

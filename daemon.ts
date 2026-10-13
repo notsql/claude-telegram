@@ -92,6 +92,7 @@ import { registerAgents } from './telegram/handlers/agents.ts'
 import { registerCapabilities } from './telegram/handlers/capabilities.ts'
 import { registerSources } from './telegram/handlers/sources.ts'
 import { findBin } from './watch/onboard.ts'
+import { addExample, examplesBlock, loadExamples } from './watch/prefs.ts'
 import { createCapabilityRequests } from './capabilities/request.ts'
 import { createCapabilityTools } from './capabilities/tools.ts'
 import { runArgv } from './capabilities/install.ts'
@@ -383,9 +384,11 @@ function inboxTarget(owner: string): { chatId: string; threadId?: number } {
 const watch = config.watch ? (() => {
   const db = inboxDb!
   const rules: TriageRules = { mutedChats: [], mutedSenders: [], vips: [] }
-  const triage = createTriage({ db, rules, log, run: runOneShot, budget: { take: () => budget.take() } })
+  const examples = () => examplesBlock(loadExamples(STATE_DIR))
+  const triage = createTriage({ db, rules, log, run: runOneShot, budget: { take: () => budget.take() }, examples })
   const owner = loadAccess().allowFrom[0]
-  const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
+  const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, examples,
+    dislike: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: false, at: Date.now() }), mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
     // Draft reply: a turn in the owner DM that calls draft_reply (T1307).
     draft: r => turns.enqueue(owner, {
       prompt: renderInbound(draftPrompt(r), { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),
@@ -618,7 +621,7 @@ if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
 if (watch?.health) registerHealthButtons(bot, watch.health)
 const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
-if (watch) registerSources(bot, { stateDir: STATE_DIR, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) }, which: findBin })
+if (watch) registerSources(bot, { stateDir: STATE_DIR, db: watch.db, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) }, which: findBin })
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)

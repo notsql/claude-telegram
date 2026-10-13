@@ -20,3 +20,5 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
 - [x] **T1309** ⚙️ Settings → 📡 Sources fallback page (008). (`/inbox` dropped 2026-10-13.)
 - [ ] **T1310** Summary delivery: chat context in triage, stricter `tg-triager`, `tg-summarizer` importance check and one "📥 Needs you" message per send, 📍 Send updates here, and the bot's own messages dropped (FR6, FR7).
   *Verify:* AC1 in a group chosen with 📍; a family-chat logistics question that someone else answered sends nothing.
+- [ ] **T1311** Feedback: task-focused prompts, 🔕 Not like this, 🎯 Tune page, examples in both Haiku passes (FR13).
+  *Verify:* after marking "want go?"-style chat questions 🔕, similar ones stop being sent while a "pay the bill by Friday" message still is.
