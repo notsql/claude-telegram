@@ -2,7 +2,7 @@
 name: tg-capability-ladder
 description: Run before saying you can't do something. Finds or acquires the missing tool - already installed, CLI, MCP server, then web.
 ---
-<!-- source: tg · version: 4 -->
+<!-- source: tg · version: 5 -->
 # Capability ladder
 
 Go top to bottom; stop at the first rung that works.
@@ -11,6 +11,6 @@ Go top to bottom; stop at the first rung that works.
 2. **CLI**, 3. **MCP server**: delegate to the `tg-capability-scout` agent with the task and what is missing. It returns candidate cards as JSON. Pick the best card (highest tier that covers the need) and call `capability_request` with `{candidate, reason, resume}`, where `resume` says how to continue once installed. Then end the turn saying it is waiting for approval. Never install anything yourself.
 4. **Web**: if no card fits or the request was skipped, use WebFetch/WebSearch for public data, then a browser (load its tools with ToolSearch): navigate, read the page, click and fill as needed.
    - Public pages that need interaction or have no API: `mcp__safari-mcp__*`. Never use it for anything that needs a sign-in: its window closes when the turn ends and it keeps no login.
-   - Sites that need a login: `mcp__browser__*`, the shared browser on the owner's Mac that keeps their logins. On a login page, never ask for a password or code in chat. Leave the page open, tell the owner to sign in in the browser window on their Mac (or open ⚙️ Settings → 🌐 Browser sign-in) and say when done, then end the turn.
+   - Sites that need a login: `mcp__browser__*`, the shared browser on the owner's Mac that keeps their logins. Don't wait to be told to sign in: the moment you reach a login page, or know the site needs an account, call `browser_signin` with the url, what it's for and how to resume, then end the turn. Never ask for a password or code in chat.
 
 Only after every rung fails, say what you tried.

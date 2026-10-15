@@ -9,3 +9,5 @@ Depends on: 001 (runner), 008 (commands), 012 (ladder skill).
   *Verify:* skill test; AC3.
 - [x] **T1504** Move `/signin` into ⚙️ Settings → 🌐 Browser sign-in, asking for the site as a reply; works in DMs and groups (FR3).
   *Verify:* unit tests for the view and settings button; AC1 from Telegram.
+- [ ] **T1505** `browser_signin` tool with the in-chat ✅ Signed in card and follow-up turn; ladder calls it unprompted on a login page; one-time onboarding offer (FR4, FR6).
+  *Verify:* unit tests for the tool and resume; AC3 and AC5 live.

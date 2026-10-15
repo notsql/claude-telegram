@@ -26,6 +26,7 @@ import { INBOX_DIR } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startBrowser } from './browser/server.ts'
 import { registerSignin } from './browser/signin.ts'
+import { createHandoffs } from './browser/handoff.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
@@ -366,9 +367,19 @@ const watchTools = inboxDb && createWatchTools({
   added: () => digestUi?.offer().catch(e => log(`digest setup: ${e}`)),
   digestChanged: () => digestCrons?.reload(),
 })
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools })
-const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const browser = config.browser ? startBrowser({ dir: join(STATE_DIR, 'browser'), log }) : undefined
+// 015 FR4: the agent asks for a sign-in in the chat it's working in; Signed in continues there.
+const handoffs = browser && createHandoffs({
+  api: bot.api,
+  open: url => browser.open(url),
+  generation: key => sessions.generation(key),
+  run: (key, text) => turns.enqueue(key, {
+    prompt: renderInbound(text, { origin: 'browser', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
+    text,
+  }),
+})
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools, browser: handoffs })
+const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
   audit,
@@ -629,7 +640,7 @@ const sessionsUi = registerSessions(bot, {
 })
 const usageCommand = registerUsage(bot)
 const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch, signin: !!browser, stateDir: STATE_DIR })
-const signinUi = browser && registerSignin(bot, { open: url => browser.open(url), log })
+const signinUi = browser && handoffs && registerSignin(bot, { open: url => browser.open(url), log, handoffs, updatesTo: () => updatesTo() || undefined, dir: join(STATE_DIR, 'browser') })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
@@ -790,6 +801,7 @@ if (systemJobs.caughtUp.length) log(`scheduler: catching up system jobs ${system
 const digestCrons = watch ? startDigestCrons({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone, prefs: () => prefsOf(STATE_DIR), run: () => turns.enqueue(SYS_PREFIX + 'digest', { prompt: '', text: '' }) }) : undefined
 // An install that already has sources gets the setup once.
 if (watch && (() => { try { return loadSources(STATE_DIR).length } catch { return 0 } })()) void digestUi?.offer().catch(e => log(`digest setup: ${e}`))
+void signinUi?.offer().catch(e => log(`browser onboarding: ${e}`))
 
 let shuttingDown = false
 function shutdown(): void {

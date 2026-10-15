@@ -4,7 +4,9 @@
 ```
 browser/
   server.ts    spawn/respawn the Playwright MCP server, argv, port; a held MCP connection and open(url)
-  signin.ts    ⚙️ Settings → 🌐 Browser sign-in page: URL normalising, owner gate, site reply
+  signin.ts    ⚙️ Settings → 🌐 Browser sign-in page: URL normalising, owner gate, site reply,
+               ✅ Signed in / Skip buttons, the one-time onboarding offer
+  handoff.ts   browser_signin tool on the daemon MCP server, pending handoffs, follow-up turn
 agent/runner.ts                         renderMcpConfig adds `browser` when a port is given
 assets/skills/tg-capability-ladder/     web rung: login sites → mcp__browser__*, sign-in handoff
 ```
