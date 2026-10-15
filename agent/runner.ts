@@ -11,11 +11,14 @@ import { parseStreamJson, type InitEvent, type ResultEvent, type StreamEvent } f
 import { TELEGRAM_INSTRUCTIONS } from './prompt.ts'
 import { createInitGuard } from './initGuard.ts'
 import { createUsageLimitWatcher } from './auth.ts'
+import { browserUrl } from '../browser/server.ts'
 
 export type RunTurnOpts = {
   /** Rendered hook settings file (`hooks/settings.ts`). */
   settingsFile: string
   mcpPort: number
+  /** The shared browser's MCP port (015 FR2); no `browser` server when unset. */
+  browserPort?: number
   /** Bearer tokens for the MCP and hook endpoints, passed to the child only through env. */
   mcpToken: string
   hookToken: string
@@ -60,12 +63,15 @@ export function interruptChild(child: Killable, termMs = 5000, killMs = 2000): v
   void child.exited.finally(() => { clearTimeout(term); clearTimeout(kill) })
 }
 
-function renderMcpConfig(port: number, key: string) {
-  return { mcpServers: { tg: {
-    type: 'http',
-    url: `http://127.0.0.1:${port}/mcp?key=${encodeURIComponent(key)}`,
-    headers: { Authorization: 'Bearer ${TG_MCP_TOKEN}' },
-  } } }
+function renderMcpConfig(port: number, key: string, browserPort?: number) {
+  return { mcpServers: {
+    tg: {
+      type: 'http',
+      url: `http://127.0.0.1:${port}/mcp?key=${encodeURIComponent(key)}`,
+      headers: { Authorization: 'Bearer ${TG_MCP_TOKEN}' },
+    },
+    ...(browserPort ? { browser: { type: 'http', url: browserUrl(browserPort) } } : {}),
+  } }
 }
 
 /**
@@ -81,7 +87,7 @@ export function turnArgv(key: string, prompt: string, opts: RunTurnOpts): string
     // 009 FR5: subagent text in the stream (T901: present without it in 2.1.292).
     '--forward-subagent-text',
     '--settings', opts.settings ? mergeSettings(opts.settingsFile, opts.settings) : opts.settingsFile,
-    '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key)),
+    '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key, opts.browserPort)),
     '--append-system-prompt', TELEGRAM_INSTRUCTIONS,
     ...opts.policyArgs,
     '--max-turns', String(opts.maxTurns),

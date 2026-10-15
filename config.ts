@@ -36,6 +36,8 @@ export type Config = {
   cwd: string
   /** Source watchers (013 FR12); on only when `TELEGRAM_WATCH=1`. */
   watch: boolean
+  /** The shared sign-in browser (015 FR5); on only when `TELEGRAM_BROWSER=1`. */
+  browser: boolean
 }
 
 function positiveInt(env: Record<string, string | undefined>, name: string, fallback: number): number {
@@ -55,6 +57,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     maxConcurrentSessions,
     cwd: env.TELEGRAM_WORKSPACE || join(STATE_DIR, 'workspace'),
     watch: env.TELEGRAM_WATCH === '1',
+    browser: env.TELEGRAM_BROWSER === '1',
   }
 }
 

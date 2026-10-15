@@ -24,6 +24,7 @@ import { isTrustedCwd, policyArgs, policySettings } from './policy/args.ts'
 import type { Policy } from './policy/schema.ts'
 import { INBOX_DIR } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
+import { startBrowser } from './browser/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
@@ -366,6 +367,7 @@ const watchTools = inboxDb && createWatchTools({
 })
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
+const browser = config.browser ? startBrowser({ dir: join(STATE_DIR, 'browser'), log }) : undefined
 const approvals = createApprovals({
   api: bot.api,
   audit,
@@ -518,6 +520,7 @@ function turnOpts(policy: Policy, signal: AbortSignal, onEvent: (ev: StreamEvent
   return {
     settingsFile: SETTINGS_FILE,
     mcpPort: mcpServer.port,
+    browserPort: browser?.port,
     mcpToken,
     hookToken,
     cwd: discovery.cwdOf(policy),
@@ -804,6 +807,7 @@ function shutdown(): void {
   watch?.triage.stop()
   watch?.deliver?.stop()
   watch?.health?.stop()
+  browser?.stop()
   void Promise.all([Promise.resolve(bot.stop()).catch(() => {}), turns.idle()]).finally(() => {
     mcpServer.stop()
     hookServer.stop()
