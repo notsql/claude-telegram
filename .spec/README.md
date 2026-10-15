@@ -24,6 +24,7 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 | [011](./011-single-binary/spec.md) | Single `tgc` binary with service subcommands | P2 | 001, 004, 005, 009 |
 | [012](./012-capability-acquisition/spec.md) | Capability acquisition: auto-solve ladder (installed → CLI → MCP → web) | P6 | 003, 006, 009 |
 | [013](./013-source-watchers/spec.md) | Source watchers: live inbox across WhatsApp, Telegram account, email, GitHub, … with pings and digests | P6 | 001, 003, 004, 007, 012 |
+| [015](./015-browser-signin/spec.md) | Browser sign-in: a shared, persistent browser the owner signs in to with `/signin` | P6 | 001, 008, 012 |
 | [014](./014-pattern-learning/spec.md) | Pattern learning: habits, VIPs, mutes, routines → memory and proposals | P7 | 004–007, 013 |
 | [010](./010-agent-teams/spec.md) | Agent teams | **Deferred**: teams need an interactive session, which `-p` can't provide | 009 |
 
