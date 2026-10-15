@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { browserArgv, browserUrl } from '../browser/server'
 import { signinUrl } from '../browser/signin'
 import { turnArgv } from '../agent/runner'
@@ -38,4 +40,11 @@ describe('/signin (015 T1502)', () => {
     for (const bad of ['', '   ', 'file:///etc/passwd', 'javascript://x', 'two words', 'https://'])
       expect(signinUrl(bad)).toBeNull()
   })
+})
+
+test('ladder: login sites use the shared browser and hand the sign-in to the owner (015 T1503)', () => {
+  const skill = readFileSync(join(import.meta.dir, '..', 'assets', 'skills', 'tg-capability-ladder', 'SKILL.md'), 'utf8')
+  expect(skill).toContain('mcp__browser__')
+  expect(skill).toContain('/signin')
+  expect(skill).toMatch(/never ask for a password/i)
 })
