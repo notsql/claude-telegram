@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { browserArgv, browserUrl } from '../browser/server'
-import { signinUrl } from '../browser/signin'
+import { signinCommand, signinUrl } from '../browser/signin'
 import { turnArgv } from '../agent/runner'
 
 describe('shared browser (015 T1501)', () => {
@@ -34,6 +34,11 @@ describe('/signin (015 T1502)', () => {
     expect(signinUrl('portal.spgroup.com.sg')).toBe('https://portal.spgroup.com.sg/')
     expect(signinUrl(' https://example.com/login?x=1 ')).toBe('https://example.com/login?x=1')
     expect(signinUrl('http://intranet.local')).toBe('http://intranet.local/')
+  })
+
+  test('listed in DMs and groups alike; gated by owner, not chat type', () => {
+    const c = signinCommand(async () => {}, () => {})
+    expect(c.menu).toEqual(['private', 'group'])
   })
 
   test('rejects empty input, other schemes and text with spaces', () => {

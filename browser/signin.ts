@@ -1,9 +1,9 @@
 /**
  * `/signin <url>` (015 FR3): opens a site in the shared browser so the owner
- * can sign in there themselves. The profile keeps the login for the agent.
+ * can sign in there themselves, from a DM or any group or topic. The profile keeps the login for the agent.
  */
 
-import { dmCommandGate } from '../access.ts'
+import { isOwner } from '../telegram/handlers/ui.ts'
 import type { Command } from '../commands/registry.ts'
 
 /** An http(s) URL from the command text, adding `https://` when there's no scheme; null if it isn't one. */
@@ -24,10 +24,10 @@ export function signinCommand(openTab: (url: string) => Promise<void>, log: (lin
   return {
     name: 'signin',
     description: "Sign in to a site in the agent's browser",
-    menu: ['private'],
-    requiresApprover: true,
+    menu: ['private', 'group'],
     handler: async (ctx, args) => {
-      if (!dmCommandGate(ctx)) return
+      // The window opens on the owner's Mac, so only the owner, from any chat.
+      if (!isOwner(ctx)) return
       const url = signinUrl(args)
       if (!url) return ctx.reply(SIGNIN_USAGE)
       try {

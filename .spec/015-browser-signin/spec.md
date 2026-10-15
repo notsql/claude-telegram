@@ -16,7 +16,7 @@ So "check my bill on the SP portal" can only work if the owner pastes a password
 ## Functional requirements
 - **FR1 — One shared browser.** The daemon runs one Playwright MCP server (`@playwright/mcp`, WebKit engine, headed) over HTTP on 127.0.0.1, with a persistent profile in `STATE_DIR/browser/profile` and one browser context shared by every client. It runs through the daemon's own Bun (`BUN_BE_BUN=1`), so it needs no Node on launchd's PATH. It installs WebKit on first start, and restarts after a crash.
 - **FR2 — Every turn gets it.** The turn's `--mcp-config` adds a `browser` server next to `tg`, so its tools appear as `mcp__browser__*`. `safari-mcp` stays configured for public pages.
-- **FR3 — `/signin <url>`.** An owner-only DM command. It opens the URL (`https://` is added when there's no scheme) in a new tab of the shared browser and replies with what to do. With no URL it shows usage.
+- **FR3 — `/signin <url>`.** An owner-only command, in DMs and in groups and topics alike. It opens the URL (`https://` is added when there's no scheme) in a new tab of the shared browser and replies with what to do. With no URL it shows usage.
 - **FR4 — The agent asks for a sign-in.** The ladder skill's web rung says: for sites that need a login, use `mcp__browser__*`. On a login page, never ask for credentials in chat. Leave the page open, tell the owner to sign in in the browser window on their Mac (or send `/signin <url>`), and end the turn.
 - **FR5 — Flag.** On only when `TELEGRAM_BROWSER=1` (constitution VII).
 

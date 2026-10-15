@@ -45,8 +45,8 @@ export function registerCapabilities(bot: Bot, requests: CapabilityRequests, res
   })
 
   // US5: the ledger, as a fallback to the notices.
-  const command: Command = { name: 'caps', description: 'Acquired tools and how to remove them', menu: ['private'], handler: async ctx => {
-    if (!isOwner(ctx) || ctx.chat?.type !== 'private') return
+  const command: Command = { name: 'caps', description: 'Acquired tools and how to remove them', menu: ['private', 'group'], handler: async ctx => {
+    if (!isOwner(ctx)) return
     const v = notices.list()
     await ctx.reply(v.text, v.keyboard ? { reply_markup: withClose(v.keyboard) } : {})
   } }
