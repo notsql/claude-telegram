@@ -3,7 +3,7 @@
 ## Modules
 ```
 browser/
-  server.ts    spawn/respawn the Playwright MCP server, argv, port; openTab(url) as an MCP client
+  server.ts    spawn/respawn the Playwright MCP server, argv, port; a held MCP connection and open(url)
   signin.ts    ⚙️ Settings → 🌐 Browser sign-in page: URL normalising, owner gate, site reply
 agent/runner.ts                         renderMcpConfig adds `browser` when a port is given
 assets/skills/tg-capability-ladder/     web rung: login sites → mcp__browser__*, sign-in handoff
@@ -23,9 +23,10 @@ cwd: STATE_DIR/browser
 - The port is picked free at start (listen on 0, close, reuse the number).
 - The version is pinned, so an upstream release can't change the tools under the agent.
 - Session cookies live as long as the server process; persistent cookies survive restarts (checked live on 2026-10-15).
+- The server closes the browser, window and all, when its last client disconnects, and a tab a client opened goes when that client does (checked live on 2026-10-15). So the daemon holds one MCP connection open while the server runs, and the sign-in page loads the site in the browser's one window with `browser_navigate` rather than a new tab: one window, which stays open. `--viewport-size 960x720` keeps it small.
 
 ## Browser sign-in page
-`openTab(url)` connects with the MCP SDK's `StreamableHTTPClientTransport` and calls `browser_tabs {action: "new", url}`, so it doesn't take over a tab the agent is using.
+`open(url)` calls `browser_navigate` on the daemon's held connection (MCP SDK `StreamableHTTPClientTransport`), in the browser's one window.
 
 ## Risks
 - **Sites that block automated browsers** (e.g. Google sign-in) may refuse the login. That's out of scope; the agent reports it.

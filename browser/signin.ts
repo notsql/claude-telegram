@@ -35,7 +35,7 @@ export function signinView(): View {
   }
 }
 
-export function registerSignin(bot: Bot, o: { openTab: (url: string) => Promise<void>; log: (line: string) => void }) {
+export function registerSignin(bot: Bot, o: { open: (url: string) => Promise<void>; log: (line: string) => void }) {
   const sites = createReplyPrompts<true>(bot.api)
   bot.callbackQuery(SIGNIN_CALLBACK, async ctx => {
     const msg = ctx.callbackQuery.message
@@ -57,7 +57,7 @@ export function registerSignin(bot: Bot, o: { openTab: (url: string) => Promise<
     }
     sites.done(ctx)
     try {
-      await o.openTab(url)
+      await o.open(url)
     } catch (err) {
       o.log(`signin: ${err}`)
       await ctx.reply(`Couldn't open the browser: ${err instanceof Error ? err.message : err}`)

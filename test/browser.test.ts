@@ -17,6 +17,7 @@ describe('shared browser (015 T1501)', () => {
     expect(flag('--browser')).toBe('webkit')
     expect(flag('--user-data-dir')).toBe('/state/browser/profile')
     expect(argv).toContain('--shared-browser-context')
+    expect(flag('--viewport-size')).toBe('960x720')
     expect(argv).not.toContain('--headless')
     expect(argv).not.toContain('--isolated')
   })

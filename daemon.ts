@@ -629,7 +629,7 @@ const sessionsUi = registerSessions(bot, {
 })
 const usageCommand = registerUsage(bot)
 const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch, signin: !!browser, stateDir: STATE_DIR })
-const signinUi = browser && registerSignin(bot, { openTab: url => browser.openTab(url), log })
+const signinUi = browser && registerSignin(bot, { open: url => browser.open(url), log })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
