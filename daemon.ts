@@ -33,6 +33,8 @@ import { runSweep } from './watch/sweep.ts'
 import { adapterFor, createSupervisor, type RunPoller } from './watch/supervisor.ts'
 import { createIngestRoute } from './watch/ingest.ts'
 import { runDigest } from './watch/digest.ts'
+import { digestTitle, prefsOf, startDigestCrons } from './watch/digestPrefs.ts'
+import { registerDigest } from './telegram/handlers/digest.ts'
 import { createWatchTools, doPrompt, draftPrompt, registerDraftButtons } from './watch/tools.ts'
 import { bunSendSpawn } from './watch/send.ts'
 import { createTriage, type TriageRules } from './watch/triage.ts'
@@ -357,6 +359,9 @@ const watchTools = inboxDb && createWatchTools({
   isOwnerDm: key => { const t = parseKey(key); return t.threadId == null && loadAccess().allowFrom.includes(t.chatId) },
   // T1308: add/pause/resume/remove reach the running supervisor (created below).
   live: { start: s => watch?.supervisor.startSource(s), stop: id => watch?.supervisor.stopSource(id) },
+  // 013 FR16: the first source added offers the digest setup; settings changes reschedule it.
+  added: () => digestUi?.offer().catch(e => log(`digest setup: ${e}`)),
+  digestChanged: () => digestCrons?.reload(),
 })
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
@@ -548,7 +553,7 @@ const turns = createTurnQueue<Inbound>({
   concurrency: config.maxConcurrentSessions,
   // 007 FR9: scheduled runs share the slots, keyed `job:<id>` so one job never overlaps itself.
   run: (key, batch) => (key.startsWith(JOB_PREFIX) ? fireJob(key.slice(JOB_PREFIX.length))
-    : key.startsWith(SYS_PREFIX) ? fireSystemJob(key.slice(SYS_PREFIX.length) as SystemJobId)
+    : key.startsWith(SYS_PREFIX) ? fireSystemJob(key.slice(SYS_PREFIX.length) as SystemJobId | 'digest')
     : runBatch(key, batch))
     .catch(err => { log(`turn failed: ${err}`) }),
   onQueued: (key, item) => {
@@ -633,7 +638,10 @@ const sourcesUi = watch && registerSources(bot, { stateDir: STATE_DIR, db: watch
     const owner = loadAccess().allowFrom[0]
     if (owner) turns.enqueue(owner, { prompt: renderInbound(prompt, { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }), text })
   },
+  added: () => digestUi?.offer().catch(e => log(`digest setup: ${e}`)),
 })
+// 013 FR16: 🗞 Digest pages and the one-time setup message.
+const digestUi = watch && registerDigest(bot, { stateDir: STATE_DIR, owner: () => loadAccess().allowFrom[0], reload: () => digestCrons?.reload() })
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)
@@ -673,7 +681,7 @@ const inbound = registerInbound(bot, {
   commandsFile: COMMANDS_FILE,
   skillsHere: key => discovery.skillsHere(key),
   builtins,
-  replies: [memoryUi.addReply, cronUi.addReply, skillsUi.addReply, ...draftReply ? [draftReply] : [], ...sourcesUi ? [sourcesUi.addReply] : []],
+  replies: [memoryUi.addReply, cronUi.addReply, skillsUi.addReply, ...draftReply ? [draftReply] : [], ...sourcesUi ? [sourcesUi.addReply] : [], ...digestUi ? [digestUi.noteReply] : []],
   beforeGate: skillsUi.editReply,
   textApproval,
 })
@@ -741,12 +749,12 @@ async function ownerTurn(what: string, title: string, text: string, policy?: Par
   log(`${what}: ${outcome.refused?.join('; ') ?? (outcome.result?.is_error ? 'error' : 'done')}`)
 }
 
-async function fireSystemJob(id: SystemJobId): Promise<void> {
+async function fireSystemJob(id: SystemJobId | 'digest'): Promise<void> {
   if (turnAbort.signal.aborted) return
-  // 013 FR8: a one-shot summary, no turn.
-  if (id === 'digest-morning' || id === 'digest-evening') {
+  // 013 FR8: a one-shot summary, no turn; FR16: at the owner's times, with their choices.
+  if (id === 'digest') {
     const owner = loadAccess().allowFrom[0]
-    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: id === 'digest-morning' ? 'Morning digest' : 'Evening digest', run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, log })
+    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: digestTitle(new Date().getHours()), run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, prefs: prefsOf(STATE_DIR), log })
     return
   }
   // 013 FR14: findings become `action` items; delivery sends them to the inbox target.
@@ -773,6 +781,10 @@ const systemJobs = startSystemJobs({
   run: id => turns.enqueue(SYS_PREFIX + id, { prompt: '', text: '' }),
 })
 if (systemJobs.caughtUp.length) log(`scheduler: catching up system jobs ${systemJobs.caughtUp.join(', ')}`)
+// 013 FR16: digest times come from digest-prefs.json and are rebuilt on change.
+const digestCrons = watch ? startDigestCrons({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone, prefs: () => prefsOf(STATE_DIR), run: () => turns.enqueue(SYS_PREFIX + 'digest', { prompt: '', text: '' }) }) : undefined
+// An install that already has sources gets the setup once.
+if (watch && (() => { try { return loadSources(STATE_DIR).length } catch { return 0 } })()) void digestUi?.offer().catch(e => log(`digest setup: ${e}`))
 
 let shuttingDown = false
 function shutdown(): void {
@@ -786,6 +798,7 @@ function shutdown(): void {
   turnAbort.abort()
   scheduler.stop()
   systemJobs.stop()
+  digestCrons?.stop()
   stopIndexer()
   watch?.supervisor.stop()
   watch?.triage.stop()

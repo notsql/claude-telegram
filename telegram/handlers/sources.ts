@@ -9,6 +9,7 @@ import type { InlineKeyboardButton } from 'grammy/types'
 import { loadSources, loadTarget, saveSources, saveTarget, setEnabled, type Source } from '../../watch/registry.ts'
 import { BUILTINS, propose } from '../../watch/onboard.ts'
 import { addExample, loadExamples } from '../../watch/prefs.ts'
+import { prefsOf, whenText } from '../../watch/digestPrefs.ts'
 import { withClose } from '../close.ts'
 import { answer, createReplyPrompts, isOwner, keyOf, ownerOnly } from './ui.ts'
 
@@ -25,7 +26,8 @@ const back = (data: string): InlineKeyboardButton[] => [{ text: '« Back', callb
 
 /**
  * The 📡 Sources settings page: one button per source, + Add source, and
- * 📍 Send updates here unless `here` (this chat's key) is already the target.
+ * 📍 Send updates here unless `here` (this chat's key) is already the target,
+ * and 🗞 Digest with its times (FR16).
  * 🎯 Tune shows real messages, so it is offered in a DM only.
  */
 export function sourcesView(stateDir: string, here: string, dm = false): View {
@@ -38,6 +40,7 @@ export function sourcesView(stateDir: string, here: string, dm = false): View {
       ...sources.map(s => [{ text: `${icon(s)} ${s.title}`, callback_data: `src:s:${s.id}` }]),
       [{ text: '+ Add source', callback_data: 'src:a' }],
       ...(target?.key === here ? [] : [[{ text: '📍 Send updates here', callback_data: 'src:here' }]]),
+      [{ text: `🗞 Digest: ${whenText(prefsOf(stateDir))}`, callback_data: 'dg:m' }],
       ...(dm ? [[{ text: `🎯 Tune what gets flagged (${loadExamples(stateDir).length})`, callback_data: 'src:t' }]] : []),
       back('pol:m'),
     ] },
@@ -114,6 +117,8 @@ export function registerSources(bot: Bot, o: {
   owner: () => string | undefined
   /** Starts an owner-DM turn that sets a source up with source_add (and 012 installs). */
   setup: (prompt: string, text: string) => void
+  /** After a source is added: offers the digest setup (FR16). */
+  added?: () => unknown
 }) {
   // ✏️ Something else: the reply describing the source, keyed to the owner DM.
   const others = createReplyPrompts<true>(bot.api)
@@ -148,6 +153,7 @@ export function registerSources(bot: Bot, o: {
         if (!sources.some(s => s.id === r.source.id)) {
           saveSources(o.stateDir, [...sources, r.source])
           o.live.start(r.source)
+          void o.added?.()
         }
         void answer(ctx, `+ Added ${b.title}`)
         return void await show(sourcesView(o.stateDir, here, dm))

@@ -49,8 +49,8 @@ test('Settings → Sources lists sources as buttons; a source opens its page wit
   await s.tap('src:m')
   const r = s.edits[0]!
   expect(r.extra.parse_mode).toBeUndefined()
-  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '+ Add source', '📍 Send updates here', '🎯 Tune what gets flagged (0)', '« Back', '✕ Close'])
-  expect(cbs(r)).toEqual(['src:s:wa', 'src:s:gh', 'src:s:mail', 'src:a', 'src:here', 'src:t', 'pol:m', 'ui:close'])
+  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '+ Add source', '📍 Send updates here', '🗞 Digest: 08:30 and 18:30, every day', '🎯 Tune what gets flagged (0)', '« Back', '✕ Close'])
+  expect(cbs(r)).toEqual(['src:s:wa', 'src:s:gh', 'src:s:mail', 'src:a', 'src:here', 'dg:m', 'src:t', 'pol:m', 'ui:close'])
 
   await s.tap('src:s:wa')
   expect(s.edits.at(-1)!.text).toBe('✅ WA\n\nWatching (stream)\nLast item 5m ago')
@@ -77,7 +77,7 @@ test('+ Add source: an installed built-in is added and started; one needing a to
   await s.tap('src:add:github')
   expect(loadSources(s.stateDir).map(x => [x.id, (x.config.command as string[])[0]])).toEqual([['github', '/opt/homebrew/bin/gh']])
   expect(s.live).toEqual(['start:github'])
-  expect(cbs(s.edits.at(-1)!)).toEqual(['src:s:github', 'src:a', 'src:here', 'src:t', 'pol:m', 'ui:close'])
+  expect(cbs(s.edits.at(-1)!)).toEqual(['src:s:github', 'src:a', 'src:here', 'dg:m', 'src:t', 'pol:m', 'ui:close'])
   await s.tap('src:a')
   expect(cbs(s.edits.at(-1)!)).not.toContain('src:add:github')
   await s.tap('src:add:whatsapp')

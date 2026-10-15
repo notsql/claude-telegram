@@ -30,3 +30,5 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* unit tests; tapping 🤖 Do it on "pay the bill by Friday" starts a DM turn, and a task due in 2h gets one ⏰ Due soon message.
 - [x] **T1315** Dated digest: the summarizer judges staleness from message dates against now, and each conversation is its own dated message with buttons (FR8).
   *Verify:* unit tests; a two-day-old party invite is dropped and "pay the bill by Friday" arrives as its own message dated by the message.
+- [ ] **T1316** Digest onboarding and settings: `digest-prefs.json`, rescheduling digest crons from it, 🗞 Digest pages (When, What) under 📡 Sources, the one-time 🗞 Set up your digest message, filters and note in `runDigest`, and `digest_settings` (FR16).
+  *Verify:* unit tests; after adding a source, the setup message arrives; choosing 🌙 Evening only + Weekdays and turning 📰 FYI off makes the next digest arrive only at 18:30 on a weekday with no FYI items.

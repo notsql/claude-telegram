@@ -3,6 +3,7 @@ import { openInboxDb, insertItem, type Item } from '../watch/store.ts'
 import { runDigest, type DigestApi } from '../watch/digest.ts'
 import type { BriefSchema } from '../watch/deliver.ts'
 import type { z } from 'zod'
+import { DEFAULT_PREFS, type DigestPrefs } from '../watch/digestPrefs.ts'
 
 const H = 3_600_000
 const T0 = new Date(2026, 9, 12, 8, 0).getTime()
@@ -34,8 +35,8 @@ function setup() {
     db.query('UPDATE items SET label = ? WHERE id = ?').run(label, id)
     return id
   }
-  const run = () => runDigest({
-    db, api, to: { chatId: '42' }, title: 'Evening digest', now: () => t,
+  const run = (prefs?: DigestPrefs) => runDigest({
+    db, api, to: { chatId: '42' }, title: 'Evening digest', now: () => t, prefs,
     run: async (_agent, input) => { inputs.push(input); if (modelDown) throw new Error('model down'); return judge(input) },
     budget: { take: () => budget },
     examples: () => '<example want="no">newsletter</example>',
@@ -163,4 +164,25 @@ test('the model is told the current time and message dates; each conversation is
   await s.run()
   expect(s.sent.at(-1)!.text).toBe('🟠 Cy · whatsapp · Mon 12 Oct at 08:00\nsum 3')
   expect(s.status(cy)).toBe('digested')
+})
+
+test('FR16: prefs leave out FYI, a skipped source and promises, settle what they drop, and pass the note', async () => {
+  const s = setup()
+  const fyi = s.add(1, 'fyi', { text: 'newsletter', chat: { id: 'c1', name: 'News', isGroup: false } })
+  const act = s.add(2, 'action', { text: 'pay the bill by Friday', chat: { id: 'c2', name: 'Bank', isGroup: false } })
+  const gh = s.add(3, 'action', { source: 'github', text: 'review the PR', chat: { id: 'c3', name: 'repo', isGroup: false } })
+  const mine = s.add(4, null, { fromMe: true, toMe: false, text: 'I will send it' })
+  s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (?, 'i_promised', 'send it', ?)`).run(mine, T0)
+  expect(await s.run({ ...DEFAULT_PREFS, fyi: false, promised: false, skip: ['github'], note: 'always include bills' })).toBe(true)
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 Ana · whatsapp · Mon 12 Oct at 08:00\nsum 1'])
+  expect(s.inputs[0]).toContain("The owner's own instructions for this roundup, which outrank the rules above:\nalways include bills")
+  expect(s.inputs[0]!.match(/<external_item /g)).toHaveLength(1)
+  expect([s.status(fyi), s.status(act), s.status(gh)]).toEqual(['digested', 'digested', 'digested'])
+})
+
+test('FR16: with every section off nothing is sent and no model call is made', async () => {
+  const s = setup()
+  s.add(1, 'action')
+  expect(await s.run({ ...DEFAULT_PREFS, waiting: false, fyi: false, promised: false })).toBe(false)
+  expect(s.inputs).toHaveLength(0)
 })

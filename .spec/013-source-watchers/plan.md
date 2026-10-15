@@ -10,7 +10,8 @@ watch/
   store.ts        inbox.db: items, FTS5, loops, deliveries; dedupe (source, extId)
   triage.ts       rules stage + batched runOneShot('tg-triager') stage
   deliver.ts      ping cards, quiet hours, pingsPerHour, snooze timers
-  digest.ts       morning/evening system jobs, open-loop sweep
+  digest.ts       digest run, open-loop sweep
+  digestPrefs.ts  digest-prefs.json (times, days, sections, sources, note) and the digest crons (FR16)
   tools.ts        inbox_* source_* draft_reply on the daemon MCP server
   send.ts         per-source send templates (wacli send, tgcli send, …) run only from Send callbacks
 assets/agents/tg-triager.md      StructuredOutput only, model: haiku
@@ -53,7 +54,7 @@ Checked against the installed sources for T1302 (tgcli v0.11.0, wacli 0.20.0): `
 ## Reuse
 - Long-running child supervision follows the stale-PID and restart patterns in `daemon.ts`.
 - `runOneShot` gains `tg-triager` in its agent union.
-- System jobs extend `SYSTEM_JOBS` in `scheduler/system.ts` with `digest-morning` and `digest-evening`.
+- Digest crons come from `digest-prefs.json` (FR16), not `SYSTEM_JOBS`, and fire through the same `sys:` queue key as system jobs.
 - Ping buttons use the `callback_query:data` router, and send approval uses 003.
 - `source_add` for a source with no connector hands off to `capability_request` (012).
 

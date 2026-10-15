@@ -10,7 +10,7 @@ test('both weekly jobs are registered in the given tz; the first start runs noth
   const f = file()
   const ran: string[] = []
   const sys = startSystemJobs({ stateFile: f, tz: 'Asia/Singapore', run: id => ran.push(id), now: () => 1_000 })
-  expect(SYSTEM_JOBS.map(j => j.id)).toEqual(['memory-consolidation', 'skill-pruning', 'digest-morning', 'digest-evening', 'attention-sweep'])
+  expect(SYSTEM_JOBS.map(j => j.id)).toEqual(['memory-consolidation', 'skill-pruning', 'attention-sweep'])
   const next = sys.nextRun('memory-consolidation')!
   expect(next.toLocaleString('en-GB', { timeZone: 'Asia/Singapore', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })).toBe('Sun 03:00')
   expect(sys.nextRun('skill-pruning')!.getTime() - next.getTime()).toBe(30 * 60 * 1000)
@@ -29,14 +29,12 @@ test('a job missed for over a week runs once on start and is stamped', () => {
   expect(JSON.parse(readFileSync(f, 'utf8'))['memory-consolidation']).toBe(WEEK_MS + 5)
 })
 
-test('digest jobs run daily at 08:30 and 18:30 only when watch is on', () => {
+test('the attention sweep runs at 08:00 and 13:00 only when watch is on', () => {
   const off = startSystemJobs({ stateFile: file(), tz: 'UTC', run: () => {}, now: () => 1_000 })
-  expect(off.nextRun('digest-morning')).toBeNull()
+  expect(off.nextRun('attention-sweep')).toBeNull()
   off.stop()
   const on = startSystemJobs({ stateFile: file(), tz: 'Asia/Singapore', watch: true, run: () => {}, now: () => 1_000 })
   const hm = (d: Date | null) => d!.toLocaleString('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-  expect(hm(on.nextRun('digest-morning'))).toBe('08:30')
-  expect(hm(on.nextRun('digest-evening'))).toBe('18:30')
   expect(['08:00', '13:00']).toContain(hm(on.nextRun('attention-sweep')))
   on.stop()
 })

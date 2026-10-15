@@ -14,10 +14,8 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 export const SYSTEM_JOBS = [
   { id: 'memory-consolidation', title: 'Weekly memory consolidation', expr: '0 3 * * 0' },
   { id: 'skill-pruning', title: 'Weekly skill pruning', expr: '30 3 * * 0' },
-  // 013 FR8: only when source watchers are on.
-  { id: 'digest-morning', title: 'Morning digest', expr: '30 8 * * *', watch: true },
-  { id: 'digest-evening', title: 'Evening digest', expr: '30 18 * * *', watch: true },
-  // 013 FR14: before the morning digest, and once after lunch.
+  // 013 FR14: only when source watchers are on; before the default morning digest, and once after lunch.
+  // Digests run at the owner's chosen times (watch/digestPrefs.ts).
   { id: 'attention-sweep', title: 'Attention sweep', expr: '0 8,13 * * *', watch: true },
 ] as const
 
@@ -27,7 +25,7 @@ export type SystemJobOpts = {
   /** `{ [id]: lastRunMs }`. */
   stateFile: string
   tz: string
-  /** 013 FR12: registers the `watch` jobs (digests, sweep) only when true. */
+  /** 013 FR12: registers the `watch` jobs (the sweep) only when true. */
   watch?: boolean
   run: (id: SystemJobId) => unknown
   now?: () => number
