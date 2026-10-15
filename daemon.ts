@@ -25,6 +25,7 @@ import type { Policy } from './policy/schema.ts'
 import { INBOX_DIR } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startBrowser } from './browser/server.ts'
+import { signinCommand } from './browser/signin.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
@@ -665,6 +666,7 @@ const commands: Command[] = [
   settingsCommand,
   cronUi.command,
   capsUi.command,
+  ...(browser ? [signinCommand(url => browser.openTab(url), log)] : []),
 ]
 const builtins = registry(commands)
 // 008 FR6: the / menu holds the built-ins only; skills live under /skills (FR12).
