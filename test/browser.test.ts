@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { browserArgv, browserUrl } from '../browser/server'
-import { signinCommand, signinUrl } from '../browser/signin'
+import { SIGNIN_CALLBACK, signinUrl, signinView } from '../browser/signin'
+import { policyView } from '../telegram/policyUi'
 import { turnArgv } from '../agent/runner'
 
 describe('shared browser (015 T1501)', () => {
@@ -29,16 +30,20 @@ describe('shared browser (015 T1501)', () => {
   })
 })
 
-describe('/signin (015 T1502)', () => {
+describe('🌐 Browser sign-in (015 T1502, T1504)', () => {
   test('adds https:// to a bare host and keeps http(s) URLs', () => {
     expect(signinUrl('portal.spgroup.com.sg')).toBe('https://portal.spgroup.com.sg/')
     expect(signinUrl(' https://example.com/login?x=1 ')).toBe('https://example.com/login?x=1')
     expect(signinUrl('http://intranet.local')).toBe('http://intranet.local/')
   })
 
-  test('listed in DMs and groups alike; gated by owner, not chat type', () => {
-    const c = signinCommand(async () => {}, () => {})
-    expect(c.menu).toEqual(['private', 'group'])
+  test('a ⚙️ Settings page, shown only when the browser runs; its buttons round-trip', () => {
+    const data = (o: { signin?: boolean }) => policyView('5', {}, o).keyboard.inline_keyboard.flat().map(b => 'callback_data' in b ? b.callback_data : '')
+    expect(data({ signin: true })).toContain('web:m')
+    expect(data({})).not.toContain('web:m')
+    const page = signinView().keyboard.inline_keyboard.flat().map(b => 'callback_data' in b ? b.callback_data! : '')
+    expect(page).toEqual(['web:a', 'pol:m'])
+    for (const d of page.filter(d => d.startsWith('web:'))) expect(SIGNIN_CALLBACK.test(d)).toBe(true)
   })
 
   test('rejects empty input, other schemes and text with spaces', () => {
@@ -50,6 +55,6 @@ describe('/signin (015 T1502)', () => {
 test('ladder: login sites use the shared browser and hand the sign-in to the owner (015 T1503)', () => {
   const skill = readFileSync(join(import.meta.dir, '..', 'assets', 'skills', 'tg-capability-ladder', 'SKILL.md'), 'utf8')
   expect(skill).toContain('mcp__browser__')
-  expect(skill).toContain('/signin')
+  expect(skill).toContain('🌐 Browser sign-in')
   expect(skill).toMatch(/never ask for a password/i)
 })

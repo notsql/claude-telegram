@@ -4,7 +4,7 @@
 ```
 browser/
   server.ts    spawn/respawn the Playwright MCP server, argv, port; openTab(url) as an MCP client
-  signin.ts    /signin command: URL normalising, owner gate, reply text
+  signin.ts    ⚙️ Settings → 🌐 Browser sign-in page: URL normalising, owner gate, site reply
 agent/runner.ts                         renderMcpConfig adds `browser` when a port is given
 assets/skills/tg-capability-ladder/     web rung: login sites → mcp__browser__*, sign-in handoff
 ```
@@ -24,7 +24,7 @@ cwd: STATE_DIR/browser
 - The version is pinned, so an upstream release can't change the tools under the agent.
 - Session cookies live as long as the server process; persistent cookies survive restarts (checked live on 2026-10-15).
 
-## /signin
+## Browser sign-in page
 `openTab(url)` connects with the MCP SDK's `StreamableHTTPClientTransport` and calls `browser_tabs {action: "new", url}`, so it doesn't take over a tab the agent is using.
 
 ## Risks

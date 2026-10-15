@@ -7,3 +7,5 @@ Depends on: 001 (runner), 008 (commands), 012 (ladder skill).
   *Verify:* unit tests for URL handling; AC1 from Telegram.
 - [x] **T1503** Ladder skill web rung: login sites use `mcp__browser__*` with the sign-in handoff (FR4).
   *Verify:* skill test; AC3.
+- [x] **T1504** Move `/signin` into ⚙️ Settings → 🌐 Browser sign-in, asking for the site as a reply; works in DMs and groups (FR3).
+  *Verify:* unit tests for the view and settings button; AC1 from Telegram.

@@ -1,7 +1,8 @@
 /**
  * /settings (003 T309, 008 FR15): owner-only settings for this chat, with
  * pages for each setting and 🔐 Permissions; 🤖 Agent (008 FR20, 009 FR3);
- * 🧩 Skills, plugins & MCP switches (008 FR19); 🛒 Browse plugins (008 FR21).
+ * 🧩 Skills, plugins & MCP switches (008 FR19); 🛒 Browse plugins (008 FR21);
+ * 🌐 Browser sign-in (015 FR3).
  */
 
 import type { Bot } from 'grammy'
@@ -34,11 +35,13 @@ export type SettingsDeps = {
   refreshMenu: () => void
   /** 013: show 📡 Sources when watching is on. */
   sources: boolean
+  /** 015: show 🌐 Browser sign-in when the shared browser runs. */
+  signin: boolean
   /** FR23: where the bot-wide 📍 Updates chat is kept. */
   stateDir: string
 }
 
-export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sources, stateDir }: SettingsDeps): Command {
+export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sources, signin, stateDir }: SettingsDeps): Command {
   const updates = (here: string, dm: boolean): UpdatesHere => ({ where: updatesWhere(stateDir, here), isHere: (loadUpdatesTarget(stateDir)?.key ?? loadAccess().allowFrom[0]) === here, dm })
   bot.callbackQuery(POLICY_CALLBACK, async ctx => {
     const msg = ctx.callbackQuery.message
@@ -49,7 +52,7 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sour
     const dm = msg.chat.type === 'private'
     const show = (r: View) => ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
     const user = String(ctx.from.id)
-    const home = () => policyView(key, policyOf(here), { sources, updates: updates(here, dm) })
+    const home = () => policyView(key, policyOf(here), { sources, signin, updates: updates(here, dm) })
     switch (action) {
       case 'u': {
         // FR23: a DM is only ever the owner's own, so it means "back to my DM".
@@ -208,7 +211,7 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sour
   return { name: 'settings', description: "This chat's settings and permissions", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
     if (!isOwner(ctx)) return
     const here = sessionKey(ctx.msg!)
-    const r = policyView(policyKey(here), policyOf(here), { sources, updates: updates(here, ctx.chat?.type === 'private') })
+    const r = policyView(policyKey(here), policyOf(here), { sources, signin, updates: updates(here, ctx.chat?.type === 'private') })
     await ctx.reply(r.text, { reply_markup: withClose(r.keyboard) })
   } }
 }

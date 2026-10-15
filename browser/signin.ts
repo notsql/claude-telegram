@@ -1,12 +1,15 @@
 /**
- * `/signin <url>` (015 FR3): opens a site in the shared browser so the owner
- * can sign in there themselves, from a DM or any group or topic. The profile keeps the login for the agent.
+ * ⚙️ Settings → 🌐 Browser sign-in (015 FR3): opens a site in the shared
+ * browser so the owner can sign in there themselves, from a DM or any group
+ * or topic. The profile keeps the login for the agent.
  */
 
-import { isOwner } from '../telegram/handlers/ui.ts'
-import type { Command } from '../commands/registry.ts'
+import type { Bot, Context } from 'grammy'
+import type { InlineKeyboardButton } from 'grammy/types'
+import { withClose } from '../telegram/close.ts'
+import { answer, createReplyPrompts, isOwner, keyOf, ownerOnly } from '../telegram/handlers/ui.ts'
 
-/** An http(s) URL from the command text, adding `https://` when there's no scheme; null if it isn't one. */
+/** An http(s) URL from the reply text, adding `https://` when there's no scheme; null if it isn't one. */
 export function signinUrl(arg: string): string | null {
   const raw = arg.trim()
   if (!raw || /\s/.test(raw)) return null
@@ -18,25 +21,51 @@ export function signinUrl(arg: string): string | null {
   }
 }
 
-export const SIGNIN_USAGE = 'Send /signin <site>, e.g. /signin portal.spgroup.com.sg. It opens in the agent\'s browser on your Mac, where you sign in yourself.'
+export const SIGNIN_CALLBACK = /^web:(m|a)$/
 
-export function signinCommand(openTab: (url: string) => Promise<void>, log: (line: string) => void): Command {
+type View = { text: string; keyboard: { inline_keyboard: InlineKeyboardButton[][] } }
+
+export function signinView(): View {
   return {
-    name: 'signin',
-    description: "Sign in to a site in the agent's browser",
-    menu: ['private', 'group'],
-    handler: async (ctx, args) => {
-      // The window opens on the owner's Mac, so only the owner, from any chat.
-      if (!isOwner(ctx)) return
-      const url = signinUrl(args)
-      if (!url) return ctx.reply(SIGNIN_USAGE)
-      try {
-        await openTab(url)
-      } catch (err) {
-        log(`signin: ${err}`)
-        return ctx.reply(`Couldn't open the browser: ${err instanceof Error ? err.message : err}`)
-      }
-      return ctx.reply(`Opened ${url} in the agent's browser on your Mac. Sign in there; the agent stays signed in afterwards, even after restarts.`)
-    },
+    text: "🌐 Browser sign-in\n\nThe agent's browser runs on your Mac and keeps your logins. Open a site there and sign in yourself, 2FA included. The agent stays signed in afterwards, even after restarts, and never needs your password.",
+    keyboard: { inline_keyboard: [
+      [{ text: '🔑 Sign in to a site', callback_data: 'web:a' }],
+      [{ text: '« Back', callback_data: 'pol:m' }],
+    ] },
   }
+}
+
+export function registerSignin(bot: Bot, o: { openTab: (url: string) => Promise<void>; log: (line: string) => void }) {
+  const sites = createReplyPrompts<true>(bot.api)
+  bot.callbackQuery(SIGNIN_CALLBACK, async ctx => {
+    const msg = ctx.callbackQuery.message
+    // The window opens on the owner's Mac, so only the owner, from any chat.
+    if (!isOwner(ctx) || !msg) return ownerOnly(ctx)
+    void answer(ctx)
+    if (ctx.match![1] === 'a') return sites.ask(keyOf(msg), '🔑 Which site? Reply to this message with its address.', 'e.g. portal.spgroup.com.sg', true)
+    const v = signinView()
+    await ctx.editMessageText(v.text, { reply_markup: withClose(v.keyboard) }).catch(() => {})
+  })
+
+  /** The owner's reply naming a site; true if it was one. */
+  async function siteReply(ctx: Context): Promise<boolean> {
+    if (!sites.peek(ctx) || !isOwner(ctx)) return false
+    const url = signinUrl(ctx.message?.text ?? '')
+    if (!url) {
+      await ctx.reply("That doesn't look like a web address. Reply to the question again with one, e.g. portal.spgroup.com.sg.")
+      return true
+    }
+    sites.done(ctx)
+    try {
+      await o.openTab(url)
+    } catch (err) {
+      o.log(`signin: ${err}`)
+      await ctx.reply(`Couldn't open the browser: ${err instanceof Error ? err.message : err}`)
+      return true
+    }
+    await ctx.reply(`Opened ${url} in the agent's browser on your Mac. Sign in there; the agent stays signed in afterwards.`)
+    return true
+  }
+
+  return { siteReply }
 }

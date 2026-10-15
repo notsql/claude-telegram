@@ -25,7 +25,7 @@ import type { Policy } from './policy/schema.ts'
 import { INBOX_DIR } from './telegram/attachments.ts'
 import { startMcpServer } from './mcp/server.ts'
 import { startBrowser } from './browser/server.ts'
-import { signinCommand } from './browser/signin.ts'
+import { registerSignin } from './browser/signin.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
@@ -628,7 +628,8 @@ const sessionsUi = registerSessions(bot, {
   compact: key => turns.enqueue(key, { prompt: '/compact', text: '/compact' }),
 })
 const usageCommand = registerUsage(bot)
-const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch, stateDir: STATE_DIR })
+const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch, signin: !!browser, stateDir: STATE_DIR })
+const signinUi = browser && registerSignin(bot, { openTab: url => browser.openTab(url), log })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
@@ -666,7 +667,6 @@ const commands: Command[] = [
   settingsCommand,
   cronUi.command,
   capsUi.command,
-  ...(browser ? [signinCommand(url => browser.openTab(url), log)] : []),
 ]
 const builtins = registry(commands)
 // 008 FR6: the / menu holds the built-ins only; skills live under /skills (FR12).
@@ -685,7 +685,7 @@ const inbound = registerInbound(bot, {
   commandsFile: COMMANDS_FILE,
   skillsHere: key => discovery.skillsHere(key),
   builtins,
-  replies: [memoryUi.addReply, cronUi.addReply, skillsUi.addReply, ...draftReply ? [draftReply] : [], ...sourcesUi ? [sourcesUi.addReply] : [], ...digestUi ? [digestUi.noteReply] : []],
+  replies: [memoryUi.addReply, cronUi.addReply, skillsUi.addReply, ...draftReply ? [draftReply] : [], ...sourcesUi ? [sourcesUi.addReply] : [], ...digestUi ? [digestUi.noteReply] : [], ...signinUi ? [signinUi.siteReply] : []],
   beforeGate: skillsUi.editReply,
   textApproval,
 })

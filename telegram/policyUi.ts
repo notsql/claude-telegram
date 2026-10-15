@@ -112,13 +112,14 @@ const SETTINGS = (Object.keys(EDITABLE) as EditableField[]).filter(f => f !== 'p
 export type UpdatesHere = { where: string; isHere: boolean; dm: boolean }
 
 /** The main page: each setting with what it does, as buttons, then Permissions, 📍 Updates chat and Reset. */
-export function policyView(key: string, p: Policy, o: { sources?: boolean; updates?: UpdatesHere } = {}): PolicyView {
+export function policyView(key: string, p: Policy, o: { sources?: boolean; signin?: boolean; updates?: UpdatesHere } = {}): PolicyView {
   const lines = [`⚙️ Settings for ${key}`, '']
   for (const f of SETTINGS) lines.push(`${label(f)}: ${value(p, f)}`, `${ABOUT[f].what}`, '')
   lines.push(`🔐 Permissions: ${value(p, 'permissionMode')} mode. Which tools run without asking.`)
   lines.push('🧩 Skills, plugins & MCP: which ones are on in this chat.')
   lines.push(`🤖 Agent: ${p.agent ?? 'Default assistant'}. Who answers here.`)
   if (o.sources) lines.push('📡 Sources: inboxes watched for pings and digests.')
+  if (o.signin) lines.push("🌐 Browser sign-in: sign in to sites in the agent's browser, so it can use them for you.")
   if (o.updates) lines.push(`📍 Automatic messages (digests, inbox summaries, notices and suggestions) go to ${o.updates.where}. This one is for the whole bot.`)
   if (p.cwd) lines.push(`Working directory: ${p.cwd}`)
   lines.push('', 'Tap a setting to change it.')
@@ -130,6 +131,7 @@ export function policyView(key: string, p: Policy, o: { sources?: boolean; updat
       [button('🧩 Skills, plugins & MCP', 'ext:m')],
       [button(`🤖 Agent: ${p.agent ?? 'Default'}`, 'agn:m')],
       ...(o.sources ? [[button('📡 Sources', 'src:m')]] : []),
+      ...(o.signin ? [[button('🌐 Browser sign-in', 'web:m')]] : []),
       ...(!o.updates ? [] : !o.updates.isHere ? [[button('📍 Send automatic messages here', 'pol:u')]] : o.updates.dm ? [] : [[button('↩️ Send automatic messages to my DM', 'pol:u:dm')]]),
       [button('↺ Reset to defaults', 'pol:z')],
     ] },
