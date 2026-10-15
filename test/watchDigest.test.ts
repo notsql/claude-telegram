@@ -19,13 +19,13 @@ function setup() {
   const db = openInboxDb(':memory:')
   const sent: { chatId: string; text: string; extra: any }[] = []
   const inputs: string[] = []
-  let fail = false
+  let fail: boolean | string = false
   let budget = true
   // Default model: every conversation is important, summarised by its number.
   let judge = (input: string): Brief => ({ threads: [...input.matchAll(/<conversation n="(\d+)"/g)].map(m => ({ n: Number(m[1]), important: true, summary: `sum ${m[1]}` })) })
   let modelDown = false
   const api: DigestApi = { async sendMessage(chatId, text, extra) {
-    if (fail) throw new Error('down')
+    if (fail === true || (typeof fail === 'string' && text.includes(fail))) throw new Error('down')
     sent.push({ chatId, text, extra })
   } }
   let t = T0
@@ -43,7 +43,7 @@ function setup() {
   const status = (id: number) => (db.query('SELECT status FROM items WHERE id = ?').get(id) as { status: string }).status
   return {
     db, sent, inputs, add, run, status,
-    set: (ms: number) => { t = ms }, fail: (v: boolean) => { fail = v }, budget: (v: boolean) => { budget = v },
+    set: (ms: number) => { t = ms }, fail: (v: boolean | string) => { fail = v }, budget: (v: boolean) => { budget = v },
     judge: (fn: typeof judge) => { judge = fn }, modelDown: (v: boolean) => { modelDown = v },
   }
 }
@@ -56,12 +56,12 @@ test('AC3: an unanswered DM appears after 4h with Reply, Done and Not like this,
   expect(s.inputs).toHaveLength(0)
   s.set(T0 + 4 * H)
   expect(await s.run()).toBe(true)
-  expect(s.sent[0]!.text).toBe('📋 Evening digest\n\n🔴 Ana · whatsapp\nsum 1')
-  expect(s.sent[0]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data)))
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🔴 Ana · whatsapp · Mon 12 Oct at 08:00\nsum 1'])
+  expect(s.sent[1]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data)))
     .toEqual([[`inb:do:${id}`, `inb:draft:${id}`], [`inb:done:${id}`, `inb:nah:${id}`]])
   // A second digest still shows it while unanswered.
   await s.run()
-  expect(s.sent[1]!.text).toContain('Ana · whatsapp')
+  expect(s.sent[3]!.text).toContain('Ana · whatsapp')
   // I reply from my phone in the same chat.
   s.add(2, null, { fromMe: true, toMe: false, ts: T0 + 5 * H, text: 'sure' })
   s.set(T0 + 10 * H)
@@ -94,9 +94,8 @@ test('only conversations the model keeps are sent; the rest are digested quietly
   expect(s.inputs[0]).toContain('newsletter &lt;b&gt;deals&lt;/b&gt;')
   expect(s.inputs[0]).toContain('<example want="no">newsletter</example>')
   expect(s.inputs[0]).not.toContain('Dee')
-  expect(s.sent).toHaveLength(1)
-  expect(s.sent[0]!.text).toBe('📋 Evening digest\n\n🟠 repo · whatsapp\nReview the PR for Bob today.')
-  expect(s.sent[0]!.extra.parse_mode).toBeUndefined()
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 repo · whatsapp · Mon 12 Oct at 08:00\nReview the PR for Bob today.'])
+  expect(s.sent.every(m => m.extra.parse_mode === undefined)).toBe(true)
   expect([news, task].map(s.status)).toEqual(['digested', 'digested'])
   expect([pinged, noise, mine].map(s.status)).toEqual(['pinged', 'new', 'new'])
   // Nothing new since the last digest: no model call, no message.
@@ -140,6 +139,28 @@ test('i_promised loops are listed without a model call, in the forum topic when 
   s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (?, 'i_promised', 'send the deck tomorrow', ?)`).run(id, T0)
   await s.run()
   expect(s.inputs).toHaveLength(0)
-  expect(s.sent[0]!.text).toBe('📋 Evening digest\n\nI promised (1)\n  • whatsapp · send the deck tomorrow')
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', 'I promised (1)\n  • whatsapp · send the deck tomorrow'])
   expect(s.sent[0]!.extra).toEqual({})
+})
+
+test('the model is told the current time and message dates; each conversation is its own dated message', async () => {
+  const s = setup()
+  const old = s.add(1, 'fyi', { toMe: false, ts: T0 - 48 * H, text: 'party on Saturday?' })
+  const bob = s.add(2, 'action', { toMe: false, ts: T0 - H, from: { id: 'bob', name: 'Bob' }, chat: { id: 'c2', name: 'Bob', isGroup: false }, text: 'pay the bill by Friday' })
+  const cy = s.add(3, 'action', { toMe: false, from: { id: 'cy', name: 'Cy' }, chat: { id: 'c3', name: 'Cy', isGroup: false } })
+  s.set(T0 + H)
+  s.judge(() => ({ threads: [{ n: 1, important: false, summary: '' }, { n: 2, important: true, summary: 'Pay the bill by Fri 16 Oct.' }, { n: 3, important: true, summary: 'sum 3' }] }))
+  // Cy's message fails to send: Bob's stays digested, Cy's waits for the next digest.
+  s.fail('Cy')
+  await expect(s.run()).rejects.toThrow('down')
+  expect(s.inputs[0]).toContain(`It is now ${new Date(T0 + H).toString()}`)
+  expect(s.inputs[0]).toContain(`ts="${new Date(T0 - 48 * H).toISOString()}"`)
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 Bob · whatsapp · Mon 12 Oct at 07:00\nPay the bill by Fri 16 Oct.'])
+  expect(s.sent[1]!.extra.reply_markup.inline_keyboard.flat().map((x: any) => x.callback_data)).toContain(`inb:do:${bob}`)
+  expect([old, bob, cy].map(s.status)).toEqual(['digested', 'digested', 'new'])
+  s.fail(false)
+  s.judge(() => ({ threads: [{ n: 1, important: true, summary: 'sum 3' }] }))
+  await s.run()
+  expect(s.sent.at(-1)!.text).toBe('🟠 Cy · whatsapp · Mon 12 Oct at 08:00\nsum 3')
+  expect(s.status(cy)).toBe('digested')
 })
