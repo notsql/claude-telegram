@@ -27,7 +27,8 @@ import { startMcpServer } from './mcp/server.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
-import { loadSources, loadTarget, recordItem, setEnabled, type Source } from './watch/registry.ts'
+import { loadSources, recordItem, setEnabled, type Source } from './watch/registry.ts'
+import { updatesKey } from './telegram/updates.ts'
 import { createHealth, registerHealthButtons } from './watch/health.ts'
 import { runSweep } from './watch/sweep.ts'
 import { adapterFor, createSupervisor, type RunPoller } from './watch/supervisor.ts'
@@ -331,7 +332,7 @@ const capabilityRequests = createCapabilityRequests({
   install: argv => runArgv(argv),
   generation: key => sessions.generation(key),
   onInstalled: (origin, req, entry) => {
-    void capabilityNotices.notify(loadAccess().allowFrom[0]!, entry)
+    void capabilityNotices.notify(updatesKey(STATE_DIR, loadAccess().allowFrom[0]!), entry)
     return resumer.installed(origin, req.candidate.name, req.resume, req.candidate.auth)
   },
 })
@@ -378,12 +379,10 @@ const approvals = createApprovals({
 })
 // 008 FR5: a skill command's <channel> wrapper, handed to its turn as hook context.
 const skillContext = new Map<string, string>()
-// 013 FR7: inbox summaries and digests go to the chat picked on the Sources page, else the owner DM.
+// 008 FR23: automatic messages go to the 📍 Updates chat picked on ⚙️ Settings, else the owner DM.
 const BOT_ID = TOKEN.split(':')[0]
-function inboxTarget(owner: string): { chatId: string; threadId?: number } {
-  const t = loadTarget(STATE_DIR)
-  return t ? parseKey(t.key) : { chatId: owner }
-}
+const inboxTarget = (owner: string): { chatId: string; threadId?: number } => parseKey(updatesKey(STATE_DIR, owner))
+const updatesTo = () => { const owner = loadAccess().allowFrom[0]; return owner && updatesKey(STATE_DIR, owner) }
 // 013 FR1, FR12: source watchers, only with TELEGRAM_WATCH=1. Items land in inbox.db,
 // go through triage, and urgent/action items ping the owner (first allowFrom).
 // Mutes and VIPs are in-memory until 014 makes them memory.
@@ -625,7 +624,7 @@ const sessionsUi = registerSessions(bot, {
   compact: key => turns.enqueue(key, { prompt: '/compact', text: '/compact' }),
 })
 const usageCommand = registerUsage(bot)
-const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch })
+const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch, stateDir: STATE_DIR })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
@@ -641,7 +640,7 @@ const sourcesUi = watch && registerSources(bot, { stateDir: STATE_DIR, db: watch
   added: () => digestUi?.offer().catch(e => log(`digest setup: ${e}`)),
 })
 // 013 FR16: 🗞 Digest pages and the one-time setup message.
-const digestUi = watch && registerDigest(bot, { stateDir: STATE_DIR, owner: () => loadAccess().allowFrom[0], reload: () => digestCrons?.reload() })
+const digestUi = watch && registerDigest(bot, { stateDir: STATE_DIR, to: () => updatesTo() || undefined, reload: () => digestCrons?.reload() })
 // The approval buttons catch all other callback data, so they go last.
 const textApproval = registerApprovals(bot, approvals, (ctx, emoji) => {
   if (ctx.chat && ctx.message) setReaction(String(ctx.chat.id), ctx.message.message_id, emoji)
@@ -767,8 +766,9 @@ async function fireSystemJob(id: SystemJobId | 'digest'): Promise<void> {
   }
   // 004 FR8: run as tg-curator (009).
   if (id === 'memory-consolidation') return ownerTurn('memory consolidation', 'Weekly memory consolidation', CONSOLIDATE_PROMPT, { agent: 'tg-curator' })
-  skillsUi.proposeArchives()
-  agentsUi.proposeArchives()
+  skillsUi.proposeArchives(owner => updatesKey(STATE_DIR, owner))
+  const to = updatesTo()
+  if (to) agentsUi.proposeArchives(to)
   // 009 FR12: skill-creator evals, only when that plugin is installed and something has enough runs.
   const targets = evalTargets(agentUsage.all(), skillUsage.all())
   if (skillCreatorInstalled(claudeDir()) && (targets.agents.length || targets.skills.length)) await ownerTurn('evals', 'Weekly evals', evalPrompt(targets))

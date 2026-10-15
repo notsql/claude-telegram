@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
-import { readJson, writeJson } from '../util/files.ts'
+import { writeJson } from '../util/files.ts'
 
 const SourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/),
@@ -71,10 +71,3 @@ export function removeSource(stateDir: string, id: string): void {
 
 export const recordError =(stateDir: string, id: string) =>
   updateSource(stateDir, id, s => ({ ...s, errors: s.errors + 1, status: s.enabled ? 'error' : s.status }))
-
-/** Where inbox summaries and digests go (a session key and the chat's title); unset means the owner DM. */
-export type DeliveryTarget = { key: string; title: string }
-
-const targetPath = (stateDir: string) => join(stateDir, 'inbox-target.json')
-export const loadTarget = (stateDir: string) => readJson<DeliveryTarget>(targetPath(stateDir))
-export const saveTarget = (stateDir: string, t: DeliveryTarget) => writeJson(targetPath(stateDir), t)

@@ -52,3 +52,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/skillCommands.test.ts` passes.
 - [x] **T828** 🛒 Browse plugins works in groups and topics too, still owner only (FR21).
   *Verify:* `test/pluginStore.test.ts` passes.
+- [x] **T829** 📍 Updates chat on ⚙️ Settings: one bot-wide target for automatic messages, replacing 📍 on 📡 Sources (FR23).
+  *Verify:* `test/policyUi.test.ts`, `test/sourcesPage.test.ts` and `test/digestPage.test.ts` pass.

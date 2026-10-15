@@ -20,7 +20,7 @@ function setup() {
   const sent: { chatId: string; text: string; extra: any }[] = []
   const bot = { callbackQuery: (re: RegExp, fn: any) => callbacks.push([re, fn]), api: { sendMessage: async (chatId: string, text: string, extra: any) => { sent.push({ chatId, text, extra }); return { chat: { id: Number(chatId) }, message_id: 60 } } } } as any
   let reloads = 0
-  const ui = registerDigest(bot, { stateDir, owner: () => '42', reload: () => void reloads++ })
+  const ui = registerDigest(bot, { stateDir, to: () => '-100:7', reload: () => void reloads++ })
   const edits: { text: string; extra: any }[] = []
   const tap = async (data: string) => {
     const [re, fn] = callbacks.find(([re]) => re.test(data))!
@@ -36,12 +36,13 @@ function setup() {
 
 const texts = (e: { extra: any }) => e.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)
 
-test('the setup message goes to the owner DM once and saves the defaults', async () => {
+test('the setup message goes to the 📍 Updates chat once and saves the defaults', async () => {
   const s = setup()
   await s.ui.offer()
   await s.ui.offer()
   expect(s.sent).toHaveLength(1)
-  expect(s.sent[0]!.chatId).toBe('42')
+  expect(s.sent[0]!.chatId).toBe('-100')
+  expect(s.sent[0]!.extra.message_thread_id).toBe(7)
   expect(s.sent[0]!.text).toBe(`${SETUP_INTRO}\n\nNow: 08:30 and 18:30, every day`)
   expect(texts(s.sent[0]!)).toEqual(['● ☀️🌙 Morning and evening', '☀️ Morning only', '🌙 Evening only', '🔕 No digest', '🕐 Custom times…', '● 📅 Every day', '💼 Weekdays only', 'Next: what to include »', '✕ Close'])
   expect(loadDigestPrefs(s.stateDir)).toEqual(DEFAULT_PREFS)

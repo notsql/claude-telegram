@@ -1,8 +1,8 @@
 /**
  * ⚙️ Settings → 📡 Sources → 🗞 Digest (013 FR16): when the digest comes and
  * what is in it. The same When → What pages are the one-time 🗞 Set up your
- * digest message, sent to the owner DM when the first source is added. Owner
- * only; source titles are untrusted, so no parse_mode.
+ * digest message, sent to the 📍 Updates chat (008 FR23) when the first source
+ * is added. Owner only; source titles are untrusted, so no parse_mode.
  */
 
 import type { Bot, Context } from 'grammy'
@@ -10,7 +10,7 @@ import type { InlineKeyboardButton } from 'grammy/types'
 import { DEFAULT_PREFS, loadDigestPrefs, MAX_TIMES, prefsOf, saveDigestPrefs, whenText, type DigestPrefs } from '../../watch/digestPrefs.ts'
 import { loadSources } from '../../watch/registry.ts'
 import { withClose } from '../close.ts'
-import { answer, createReplyPrompts, isOwner, keyOf, ownerOnly } from './ui.ts'
+import { answer, createReplyPrompts, isOwner, keyOf, ownerOnly, sendTo } from './ui.ts'
 
 export const DIGEST_CALLBACK = /^dg:(m|f|p|d|t|x|h|a|c|w|s|n)(?::([a-z0-9][a-z0-9_-]*))?$/
 
@@ -117,8 +117,8 @@ export function digestView(stateDir: string, p: DigestPrefs): View {
 
 export function registerDigest(bot: Bot, o: {
   stateDir: string
-  /** The owner DM's key. */
-  owner: () => string | undefined
+  /** Where automatic messages go (the 📍 Updates chat), or undefined with no owner. */
+  to: () => string | undefined
   /** Rebuilds the digest crons after a change of times. */
   reload: () => void
 }) {
@@ -198,13 +198,13 @@ export function registerDigest(bot: Bot, o: {
     return true
   }
 
-  /** Sends 🗞 Set up your digest to the owner DM once: only while no prefs are saved, and saving the defaults. */
+  /** Sends 🗞 Set up your digest to the 📍 Updates chat once: only while no prefs are saved, and saving the defaults. */
   async function offer(): Promise<void> {
-    const owner = o.owner()
-    if (!owner || loadDigestPrefs(o.stateDir)) return
+    const to = o.to()
+    if (!to || loadDigestPrefs(o.stateDir)) return
     saveDigestPrefs(o.stateDir, DEFAULT_PREFS)
     const v = whenView(DEFAULT_PREFS, SETUP_INTRO)
-    await bot.api.sendMessage(owner, v.text, { reply_markup: withClose(v.keyboard) })
+    await sendTo(bot.api, to, v.text, { reply_markup: withClose(v.keyboard) })
   }
 
   return { noteReply, offer }

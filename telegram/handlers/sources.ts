@@ -6,7 +6,8 @@
 import type { Database } from 'bun:sqlite'
 import type { Bot, Context } from 'grammy'
 import type { InlineKeyboardButton } from 'grammy/types'
-import { loadSources, loadTarget, saveSources, saveTarget, setEnabled, type Source } from '../../watch/registry.ts'
+import { loadSources, saveSources, setEnabled, type Source } from '../../watch/registry.ts'
+import { updatesWhere } from '../updates.ts'
 import { BUILTINS, propose } from '../../watch/onboard.ts'
 import { addExample, loadExamples } from '../../watch/prefs.ts'
 import { prefsOf, whenText } from '../../watch/digestPrefs.ts'
@@ -18,28 +19,25 @@ const ago = (t: number, now: number) => {
   return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`
 }
 
-export const SOURCES_CALLBACK = /^src:(m|s|a|o|t|here|pause|resume|add)(?::([a-z0-9][a-z0-9_-]*))?$/
+export const SOURCES_CALLBACK = /^src:(m|s|a|o|t|pause|resume|add)(?::([a-z0-9][a-z0-9_-]*))?$/
 
 type View = { text: string; keyboard: { inline_keyboard: InlineKeyboardButton[][] } }
 const icon = (s: Source) => (!s.enabled ? '⏸' : s.status === 'error' ? '⚠️' : '✅')
 const back = (data: string): InlineKeyboardButton[] => [{ text: '« Back', callback_data: data }]
 
 /**
- * The 📡 Sources settings page: one button per source, + Add source, and
- * 📍 Send updates here unless `here` (this chat's key) is already the target,
- * and 🗞 Digest with its times (FR16).
+ * The 📡 Sources settings page: one button per source, + Add source and
+ * 🗞 Digest with its times (FR16). Where it all goes is the bot-wide
+ * 📍 Updates chat on ⚙️ Settings (008 FR23); `here` is this chat's key.
  * 🎯 Tune shows real messages, so it is offered in a DM only.
  */
 export function sourcesView(stateDir: string, here: string, dm = false): View {
   const sources = loadSources(stateDir)
-  const target = loadTarget(stateDir)
-  const where = !target ? 'your DM' : target.key === here ? 'this chat' : target.title
   return {
-    text: `📡 Sources\n\n${sources.length ? 'Tap a source to see it or pause it.' : 'None yet.'}\n\nWhat needs you is summarised and sent to ${where}.`,
+    text: `📡 Sources\n\n${sources.length ? 'Tap a source to see it or pause it.' : 'None yet.'}\n\nWhat needs you is summarised and sent to ${updatesWhere(stateDir, here)} (📍 on ⚙️ Settings).`,
     keyboard: { inline_keyboard: [
       ...sources.map(s => [{ text: `${icon(s)} ${s.title}`, callback_data: `src:s:${s.id}` }]),
       [{ text: '+ Add source', callback_data: 'src:a' }],
-      ...(target?.key === here ? [] : [[{ text: '📍 Send updates here', callback_data: 'src:here' }]]),
       [{ text: `🗞 Digest: ${whenText(prefsOf(stateDir))}`, callback_data: 'dg:m' }],
       ...(dm ? [[{ text: `🎯 Tune what gets flagged (${loadExamples(stateDir).length})`, callback_data: 'src:t' }]] : []),
       back('pol:m'),
@@ -126,7 +124,7 @@ export function registerSources(bot: Bot, o: {
   const skipped = new Set<number>()
   bot.callbackQuery(SOURCES_CALLBACK, async ctx => {
     if (!isOwner(ctx)) return ownerOnly(ctx)
-    const [, action, id] = ctx.match as unknown as [string, 'm' | 's' | 'a' | 'o' | 't' | 'here' | 'pause' | 'resume' | 'add', string?]
+    const [, action, id] = ctx.match as unknown as [string, 'm' | 's' | 'a' | 'o' | 't' | 'pause' | 'resume' | 'add', string?]
     const msg = ctx.callbackQuery.message
     if (!msg) return answer(ctx)
     const here = keyOf(msg)
@@ -174,11 +172,6 @@ export function registerSources(bot: Bot, o: {
         }
         void answer(ctx)
         return void await show(tuneView(o.stateDir, nextCandidate(o.db, [...loadExamples(o.stateDir).map(e => e.itemId), ...skipped])))
-      }
-      if (action === 'here') {
-        saveTarget(o.stateDir, { key: here, title: msg.chat.type === 'private' ? 'your DM' : (msg.chat.title ?? 'a group') })
-        void answer(ctx, '📍 Updates will come here')
-        return void await show(sourcesView(o.stateDir, here, dm))
       }
     } catch (e) {
       return answer(ctx, e instanceof Error ? e.message : String(e))

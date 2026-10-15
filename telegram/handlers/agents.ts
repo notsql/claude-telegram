@@ -5,7 +5,6 @@
 
 import type { Bot } from 'grammy'
 import { join } from 'path'
-import { loadAccess } from '../../access.ts'
 import type { createAgentApplier } from '../../agents/apply.ts'
 import { archiveAgent, staleAgents } from '../../agents/prune.ts'
 import type { createAgentUsage } from '../../agents/usage.ts'
@@ -33,12 +32,10 @@ export function registerAgents(bot: Bot, { applier, usage }: AgentsDeps) {
   const askArchive = registerArchivePrompts<{ dir: string; name: string }>(bot, 'agt', 'Agent', a => archiveAgent(a.dir, a.name))
 
   return {
-    /** Weekly: unused learned agents, offered to the first owner, kept under the 12-agent description budget. */
-    proposeArchives(): void {
-      const owner = loadAccess().allowFrom[0]
-      if (!owner) return
+    /** Weekly: unused learned agents, offered in session key `to` (the 📍 Updates chat), kept under the 12-agent description budget. */
+    proposeArchives(to: string): void {
       const dir = join(claudeDir(), 'agents')
-      for (const name of staleAgents(dir, usage.all()).slice(0, MAX_ARCHIVE_PROMPTS)) askArchive(owner, { dir, name }, STALE_DAYS)
+      for (const name of staleAgents(dir, usage.all()).slice(0, MAX_ARCHIVE_PROMPTS)) askArchive(to, { dir, name }, STALE_DAYS)
     },
   }
 }

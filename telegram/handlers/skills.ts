@@ -158,10 +158,10 @@ export function registerSkills(bot: Bot, deps: SkillsDeps) {
     return true
   }
 
-  /** Weekly: stale learned skills in each owner's DM store, offered for archiving. */
-  function proposeArchives(): void {
+  /** Weekly: stale learned skills in each owner's DM store, offered for archiving in session key `to(owner)` (the 📍 Updates chat). */
+  function proposeArchives(to: (owner: string) => string): void {
     for (const owner of loadAccess().allowFrom) {
-      for (const name of staleSkills(storeFor(owner), usage).slice(0, MAX_ARCHIVE_PROMPTS)) askArchive(owner, { key: owner, name }, STALE_DAYS)
+      for (const name of staleSkills(storeFor(owner), usage).slice(0, MAX_ARCHIVE_PROMPTS)) askArchive(to(owner), { key: owner, name }, STALE_DAYS)
     }
   }
 

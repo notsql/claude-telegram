@@ -5,7 +5,7 @@
 
 import type { Bot } from 'grammy'
 import { randomBytes } from 'crypto'
-import { answer, ownerOnly, isOwner } from './ui.ts'
+import { answer, ownerOnly, isOwner, sendTo } from './ui.ts'
 
 /** Archive prompts per weekly run, per kind. */
 export const MAX_ARCHIVE_PROMPTS = 5
@@ -28,14 +28,15 @@ export function registerArchivePrompts<T extends { name: string }>(bot: Bot, pre
     await ctx.editMessageText(label).catch(() => {})
   })
 
-  return (owner: string, item: T, days: number) => {
+  /** Posts the prompt to session key `to` (the 📍 Updates chat). */
+  return (to: string, item: T, days: number) => {
     const id = randomBytes(6).toString('hex')
     asks.set(id, item)
-    void bot.api.sendMessage(owner, `📦 ${noun} ${item.name} hasn't been used in ${days} days. Archive it?`, {
+    void sendTo(bot.api, to, `📦 ${noun} ${item.name} hasn't been used in ${days} days. Archive it?`, {
       reply_markup: { inline_keyboard: [[
         { text: '📦 Archive', callback_data: `${prefix}:arch:${id}` },
         { text: 'Keep', callback_data: `${prefix}:keep:${id}` },
       ]] },
-    }).catch(() => {})
+    })
   }
 }

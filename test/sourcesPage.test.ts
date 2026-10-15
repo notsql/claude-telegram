@@ -3,7 +3,8 @@ import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import * as access from '../access.ts'
-import { loadSources, loadTarget, saveSources, type Source } from '../watch/registry.ts'
+import { loadSources, saveSources, type Source } from '../watch/registry.ts'
+import { saveUpdatesTarget } from '../telegram/updates.ts'
 import { insertItem, openInboxDb, type Item } from '../watch/store.ts'
 import { loadExamples } from '../watch/prefs.ts'
 
@@ -49,8 +50,8 @@ test('Settings → Sources lists sources as buttons; a source opens its page wit
   await s.tap('src:m')
   const r = s.edits[0]!
   expect(r.extra.parse_mode).toBeUndefined()
-  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '+ Add source', '📍 Send updates here', '🗞 Digest: 08:30 and 18:30, every day', '🎯 Tune what gets flagged (0)', '« Back', '✕ Close'])
-  expect(cbs(r)).toEqual(['src:s:wa', 'src:s:gh', 'src:s:mail', 'src:a', 'src:here', 'dg:m', 'src:t', 'pol:m', 'ui:close'])
+  expect(r.extra.reply_markup.inline_keyboard.flat().map((b: any) => b.text)).toEqual(['✅ WA', '⚠️ GH', '⏸ MAIL', '+ Add source', '🗞 Digest: 08:30 and 18:30, every day', '🎯 Tune what gets flagged (0)', '« Back', '✕ Close'])
+  expect(cbs(r)).toEqual(['src:s:wa', 'src:s:gh', 'src:s:mail', 'src:a', 'dg:m', 'src:t', 'pol:m', 'ui:close'])
 
   await s.tap('src:s:wa')
   expect(s.edits.at(-1)!.text).toBe('✅ WA\n\nWatching (stream)\nLast item 5m ago')
@@ -77,7 +78,7 @@ test('+ Add source: an installed built-in is added and started; one needing a to
   await s.tap('src:add:github')
   expect(loadSources(s.stateDir).map(x => [x.id, (x.config.command as string[])[0]])).toEqual([['github', '/opt/homebrew/bin/gh']])
   expect(s.live).toEqual(['start:github'])
-  expect(cbs(s.edits.at(-1)!)).toEqual(['src:s:github', 'src:a', 'src:here', 'dg:m', 'src:t', 'pol:m', 'ui:close'])
+  expect(cbs(s.edits.at(-1)!)).toEqual(['src:s:github', 'src:a', 'dg:m', 'src:t', 'pol:m', 'ui:close'])
   await s.tap('src:a')
   expect(cbs(s.edits.at(-1)!)).not.toContain('src:add:github')
   await s.tap('src:add:whatsapp')
@@ -108,18 +109,16 @@ test('Sources is owner only, and works in a group', async () => {
   expect(loadSources(s.stateDir).map(x => x.id)).toEqual(['github'])
 })
 
-test('📍 Send updates here saves the chat as the delivery target', async () => {
+test('the Sources page says where updates go, set bot-wide from ⚙️ Settings', async () => {
   const s = setup()
   await s.tap('src:m', 'supergroup')
-  expect(s.edits.at(-1)!.text).toContain('sent to your DM')
-  await s.tap('src:here', 'supergroup')
-  expect(loadTarget(s.stateDir)).toEqual({ key: '-100', title: 'Family' })
-  expect(s.edits.at(-1)!.text).toContain('sent to this chat')
-  expect(cbs(s.edits.at(-1)!)).not.toContain('src:here')
+  expect(s.edits.at(-1)!.text).toContain('sent to your DM (📍 on ⚙️ Settings)')
   expect(cbs(s.edits.at(-1)!)).not.toContain('src:t')
+  saveUpdatesTarget(s.stateDir, { key: '-100', title: 'Family' })
+  await s.tap('src:m', 'supergroup')
+  expect(s.edits.at(-1)!.text).toContain('sent to this chat')
   await s.tap('src:m')
   expect(s.edits.at(-1)!.text).toContain('sent to Family')
-  expect(cbs(s.edits.at(-1)!)).toContain('src:here')
 })
 
 test('🎯 Tune rates real messages one at a time, flagged first, and saves the verdicts (DM only)', async () => {

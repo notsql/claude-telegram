@@ -27,7 +27,7 @@ export const EDITABLE = {
 
 export type EditableField = keyof typeof EDITABLE
 
-export const POLICY_CALLBACK = /^pol:(m|p|f|s|c|r|x|z|y|b)(?::(\w+))?(?::(\w+))?$/
+export const POLICY_CALLBACK = /^pol:(m|p|f|s|c|r|x|z|y|b|u)(?::(\w+))?(?::(\w+))?$/
 const PAGE = 8
 
 /** What each setting does, and what each value means, shown before you pick. */
@@ -108,14 +108,18 @@ const value = (p: Policy, f: EditableField) => label(current(p, f))
 const button = (text: string, data: string): InlineKeyboardButton => ({ text: text.slice(0, 64), callback_data: data })
 const SETTINGS = (Object.keys(EDITABLE) as EditableField[]).filter(f => f !== 'permissionMode')
 
-/** The main page: each setting with what it does, as buttons, then Permissions and Reset. */
-export function policyView(key: string, p: Policy, o: { sources?: boolean } = {}): PolicyView {
+/** Bot-wide 📍 Updates chat (FR23) as seen from this chat. */
+export type UpdatesHere = { where: string; isHere: boolean; dm: boolean }
+
+/** The main page: each setting with what it does, as buttons, then Permissions, 📍 Updates chat and Reset. */
+export function policyView(key: string, p: Policy, o: { sources?: boolean; updates?: UpdatesHere } = {}): PolicyView {
   const lines = [`⚙️ Settings for ${key}`, '']
   for (const f of SETTINGS) lines.push(`${label(f)}: ${value(p, f)}`, `${ABOUT[f].what}`, '')
   lines.push(`🔐 Permissions: ${value(p, 'permissionMode')} mode. Which tools run without asking.`)
   lines.push('🧩 Skills, plugins & MCP: which ones are on in this chat.')
   lines.push(`🤖 Agent: ${p.agent ?? 'Default assistant'}. Who answers here.`)
   if (o.sources) lines.push('📡 Sources: inboxes watched for pings and digests.')
+  if (o.updates) lines.push(`📍 Automatic messages (digests, inbox summaries, notices and suggestions) go to ${o.updates.where}. This one is for the whole bot.`)
   if (p.cwd) lines.push(`Working directory: ${p.cwd}`)
   lines.push('', 'Tap a setting to change it.')
   return {
@@ -126,6 +130,7 @@ export function policyView(key: string, p: Policy, o: { sources?: boolean } = {}
       [button('🧩 Skills, plugins & MCP', 'ext:m')],
       [button(`🤖 Agent: ${p.agent ?? 'Default'}`, 'agn:m')],
       ...(o.sources ? [[button('📡 Sources', 'src:m')]] : []),
+      ...(!o.updates ? [] : !o.updates.isHere ? [[button('📍 Send automatic messages here', 'pol:u')]] : o.updates.dm ? [] : [[button('↩️ Send automatic messages to my DM', 'pol:u:dm')]]),
       [button('↺ Reset to defaults', 'pol:z')],
     ] },
   }

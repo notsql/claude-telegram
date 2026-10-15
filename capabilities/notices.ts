@@ -1,5 +1,5 @@
 /**
- * Ledger notices (012 FR10): "🧩 Installed imagemagick" in the owner DM with
+ * Ledger notices (012 FR10): "🧩 Installed imagemagick" in the 📍 Updates chat with
  * **Undo** (`cap:undo:<id>`), which runs the paired uninstall argv, marks the
  * entry `uninstalled` and archives its `use-<name>` skill (constitution V).
  * `/caps` (US5) lists the ledger with the same button on installed entries.
@@ -8,6 +8,7 @@
 
 import { randomBytes } from 'crypto'
 import type { Api } from 'grammy'
+import { parseKey } from '../sessions/key.ts'
 import type { InstallResult } from './install.ts'
 import { loadLedger, saveLedger, type Capability } from './ledger.ts'
 
@@ -36,8 +37,11 @@ export function createCapabilityNotices(deps: CapabilityNoticeDeps) {
   }
 
   return {
-    notify(chatId: string, c: Capability): Promise<unknown> {
-      return deps.api.sendMessage(chatId, `🧩 Installed ${c.name} (${c.kind}, ${c.tier}): ${c.install.join(' ')}`, {
+    /** Posts to session key `to` (the 📍 Updates chat). */
+    notify(to: string, c: Capability): Promise<unknown> {
+      const t = parseKey(to)
+      return deps.api.sendMessage(t.chatId, `🧩 Installed ${c.name} (${c.kind}, ${c.tier}): ${c.install.join(' ')}`, {
+        ...(t.threadId != null && { message_thread_id: t.threadId }),
         reply_markup: { inline_keyboard: [[button(c.id, '↩️ Undo')]] },
       }).catch(() => {})
     },

@@ -31,6 +31,16 @@ test('main page describes each setting, with buttons that explain their values',
   expect(buttons(fieldView('permissionMode', {})).at(-1)!.callback_data).toBe('pol:p')
 })
 
+test('FR23: 📍 offers to send automatic messages here, or back to the DM from the chosen group', () => {
+  const data = (u: Parameters<typeof policyView>[2]) => buttons(policyView('5', {}, u)).map(x => x.callback_data)
+  expect(data({ updates: { where: 'your DM', isHere: false, dm: false } })).toContain('pol:u')
+  expect(data({ updates: { where: 'this chat', isHere: true, dm: false } })).toContain('pol:u:dm')
+  const dm = data({ updates: { where: 'your DM', isHere: true, dm: true } })
+  expect(dm.some(d => d?.startsWith('pol:u'))).toBe(false)
+  expect(policyView('5', {}, { updates: { where: 'Family', isHere: false, dm: true } }).text).toContain('📍 Automatic messages (digests, inbox summaries, notices and suggestions) go to Family.')
+  expect(POLICY_CALLBACK.test('pol:u') && POLICY_CALLBACK.test('pol:u:dm')).toBe(true)
+})
+
 test('permissions traverse: kinds, then paged rules, then one rule; only Always rules can be removed', () => {
   const p = { allowedTools: Array.from({ length: 10 }, (_, i) => `T${i}`), disallowedTools: ['WebFetch'], alwaysAllow: ['Bash(npm test *)'] }
   const v = permissionsView(p)

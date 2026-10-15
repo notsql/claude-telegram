@@ -20,9 +20,10 @@ import { installedPlugins } from '../../skills/plugins.ts'
 import { AGENT_CALLBACK, agentView } from '../agentUi.ts'
 import { withClose } from '../close.ts'
 import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesView, prettyName, skillSwitchesView, toggleMcpServer, togglePlugin, toggleSkill } from '../extensionsUi.ts'
-import { alwaysRuleAt, applyPolicyEdit, bypassConfirmView, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, resetView, ruleLabel, rulesView, ruleView, type EditableField } from '../policyUi.ts'
+import { alwaysRuleAt, applyPolicyEdit, bypassConfirmView, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, type UpdatesHere, resetView, ruleLabel, rulesView, ruleView, type EditableField } from '../policyUi.ts'
 import { STORE_CALLBACK, categoriesView, confirmView, listView, pluginView, resultView } from '../storeUi.ts'
 import { answer, isOwner, keyOf, ownerOnly } from './ui.ts'
+import { clearUpdatesTarget, loadUpdatesTarget, saveUpdatesTarget, updatesWhere } from '../updates.ts'
 
 type View = { text: string; keyboard: InlineKeyboardMarkup }
 
@@ -33,19 +34,31 @@ export type SettingsDeps = {
   refreshMenu: () => void
   /** 013: show 📡 Sources when watching is on. */
   sources: boolean
+  /** FR23: where the bot-wide 📍 Updates chat is kept. */
+  stateDir: string
 }
 
-export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sources }: SettingsDeps): Command {
+export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sources, stateDir }: SettingsDeps): Command {
+  const updates = (here: string, dm: boolean): UpdatesHere => ({ where: updatesWhere(stateDir, here), isHere: (loadUpdatesTarget(stateDir)?.key ?? loadAccess().allowFrom[0]) === here, dm })
   bot.callbackQuery(POLICY_CALLBACK, async ctx => {
     const msg = ctx.callbackQuery.message
     if (!isOwner(ctx) || !msg) return ownerOnly(ctx)
     const here = keyOf(msg)
     const key = policyKey(here)
-    const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y' | 'b', string?, string?]
+    const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y' | 'b' | 'u', string?, string?]
+    const dm = msg.chat.type === 'private'
     const show = (r: View) => ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
     const user = String(ctx.from.id)
-    const home = () => policyView(key, policyOf(here), { sources })
+    const home = () => policyView(key, policyOf(here), { sources, updates: updates(here, dm) })
     switch (action) {
+      case 'u': {
+        // FR23: a DM is only ever the owner's own, so it means "back to my DM".
+        if (a === 'dm' || dm) clearUpdatesTarget(stateDir)
+        else saveUpdatesTarget(stateDir, { key: here, title: 'title' in msg.chat && msg.chat.title ? msg.chat.title : 'a group' })
+        audit({ event: 'policy', key: '*', user, field: 'updatesChat', value: a === 'dm' || dm ? 'dm' : here })
+        void answer(ctx, a === 'dm' || dm ? '📍 Automatic messages go to your DM' : '📍 Automatic messages come here')
+        return void await show(home())
+      }
       case 's': {
         const access = loadAccess()
         try {
@@ -195,7 +208,7 @@ export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sour
   return { name: 'settings', description: "This chat's settings and permissions", menu: ['private', 'group'], requiresApprover: true, handler: async ctx => {
     if (!isOwner(ctx)) return
     const here = sessionKey(ctx.msg!)
-    const r = policyView(policyKey(here), policyOf(here), { sources })
+    const r = policyView(policyKey(here), policyOf(here), { sources, updates: updates(here, ctx.chat?.type === 'private') })
     await ctx.reply(r.text, { reply_markup: withClose(r.keyboard) })
   } }
 }
