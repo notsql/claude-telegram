@@ -4,6 +4,9 @@
  *   {"account"?: string, "peer": {id, type: user|chat|channel|unknown, name?, username?},
  *    "message": {id, date (unix s), out, from?: peerRef, text?, media?, reply_to?}}
  * `peer` is the chat; `message.from` is the sender, often absent in private chats.
+ * `reply_to` is a quote, not a thread, so it is not kept: a chat is one conversation.
+ * DM peers often arrive without a name; `tgcliChats` maps ids to names from
+ * `tgcli chats list --output json` (`{data: {chats: [{peer}]}}`).
  */
 
 import type { Item } from '../store.ts'
@@ -15,6 +18,12 @@ type WatchEvent = {
 }
 
 const peerName = (p: PeerRef) => p.name || (p.username ? `@${p.username}` : String(p.id))
+
+/** Chat id (`type:id`, as in items) → name, from `tgcli chats list --output json`. */
+export function tgcliChats(stdout: string): Map<string, string> {
+  const chats = (JSON.parse(stdout) as { data?: { chats?: { peer: PeerRef }[] } }).data?.chats ?? []
+  return new Map(chats.filter(c => c.peer?.name).map(c => [`${c.peer.type}:${c.peer.id}`, c.peer.name!]))
+}
 
 export function tgcliItem(source: string, line: unknown): Item | null {
   const ev = line as WatchEvent
@@ -36,6 +45,5 @@ export function tgcliItem(source: string, line: unknown): Item | null {
     url: peer.username ? `https://t.me/${peer.username}/${m.id}` : undefined,
     toMe: isDm && !m.out,
     fromMe: m.out,
-    threadId: m.reply_to ? String(m.reply_to) : undefined,
   }
 }

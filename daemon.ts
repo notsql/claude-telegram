@@ -14,7 +14,7 @@ import { apiThrottler } from '@grammyjs/transformer-throttler'
 import { readFileSync, mkdirSync, rmSync } from 'fs'
 import { killStale, writePidFile } from './util/proc.ts'
 import { randomBytes } from 'crypto'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { STATE_DIR, initAccess, setBotUsername, loadAccess, dmCommandGate, checkApprovals, saveAccess } from './access.ts'
 import { createApprovals } from './policy/approvals.ts'
 import { addAlwaysAllow, policyKey, policyOf } from './policy/resolve.ts'
@@ -29,7 +29,8 @@ import { registerSignin } from './browser/signin.ts'
 import { createHandoffs } from './browser/handoff.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
-import { inboxPath, insertItem, openInboxDb, type Item } from './watch/store.ts'
+import { inboxPath, insertItem, nameChat, openInboxDb, type Item } from './watch/store.ts'
+import { tgcliChats } from './watch/adapters/tgcli.ts'
 import { loadSources, recordItem, setEnabled, type Source } from './watch/registry.ts'
 import { updatesKey } from './telegram/updates.ts'
 import { createHealth, registerHealthButtons } from './watch/health.ts'
@@ -428,12 +429,39 @@ const watch = config.watch ? (() => {
     recordItem(STATE_DIR, source.id, Date.now())
     triage.add(id)
   }
+  // T1317: Telegram account chats often arrive with only an id. Names come from
+  // `tgcli chats list`, at start and again (at most every 10 min) on an unknown
+  // id; each refresh also names the rows already stored under a bare id.
+  const tgNames = new Map<string, Map<string, string>>()
+  const tgAsked = new Map<string, number>()
+  const isTgcli = (s: Source) => basename(String((s.config as { command?: string[] }).command?.[0])) === 'tgcli'
+  const bareId = (id: string) => id.slice(id.indexOf(':') + 1)
+  const refreshNames = async (source: Source) => {
+    tgAsked.set(source.id, Date.now())
+    try {
+      const p = Bun.spawn([String((source.config as { command: string[] }).command[0]), 'chats', 'list', '--output', 'json', '--limit', '1000'], { stdout: 'pipe', stderr: 'ignore' })
+      const names = tgcliChats(await new Response(p.stdout).text())
+      tgNames.set(source.id, names)
+      db.transaction(() => { for (const [id, name] of names) nameChat(db, source.id, id, bareId(id), name) })()
+    } catch (err) {
+      log(`watch ${source.id}: chat names: ${err}`)
+    }
+  }
   const store = (source: Source, payload: unknown) => {
     const item = adapterFor(source)?.map(source.id, payload)
-    if (item) insert(source, item)
+    if (!item) return
+    if (isTgcli(source)) {
+      const names = tgNames.get(source.id)
+      const name = (id: string, n: string) => n === bareId(id) ? names?.get(id) ?? n : n
+      item.chat.name = name(item.chat.id, item.chat.name)
+      item.from.name = name(item.from.id, item.from.name)
+      if (item.chat.name === bareId(item.chat.id) && Date.now() - (tgAsked.get(source.id) ?? 0) > 600_000) void refreshNames(source)
+    }
+    insert(source, item)
   }
   let sources: Source[] = []
   try { sources = loadSources(STATE_DIR) } catch (err) { log(`watch: sources.json unreadable: ${err}`) }
+  for (const s of sources) if (s.enabled && isTgcli(s)) void refreshNames(s)
   const runPoller: RunPoller = (input, schema, tools) => budget.take()
     ? runOneShot('tg-poller', input, schema, tools)
     : Promise.reject(new Error('daily turn budget spent'))

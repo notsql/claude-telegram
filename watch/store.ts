@@ -32,6 +32,8 @@ const MIGRATIONS = [
      summary TEXT NOT NULL, due INTEGER, opened_at INTEGER NOT NULL, closed_at INTEGER);`,
   // 013 FR15: when a deadline nudge went out for the loop.
   `ALTER TABLE loops ADD COLUMN nudged_at INTEGER;`,
+  // 013 FR8 (T1317): chat quote ids were stored as threads; only GitHub has real ones.
+  `UPDATE items SET thread_id = NULL WHERE chat_id NOT LIKE 'repo:%';`,
 ]
 
 /** FR2 normalised item. */
@@ -64,6 +66,12 @@ export function openInboxDb(path: string): Database {
     })()
   }
   return db
+}
+
+/** Gives a chat stored under its bare id its name, for the chat and for senders that are that chat. */
+export function nameChat(db: Database, source: string, chatId: string, bareId: string, name: string): void {
+  db.query('UPDATE items SET chat_name = ? WHERE source = ? AND chat_id = ? AND chat_name = ?').run(name, source, chatId, bareId)
+  db.query('UPDATE items SET from_name = ? WHERE source = ? AND from_id = ? AND from_name = ?').run(name, source, chatId, bareId)
 }
 
 /** Inserts `item`; returns its row id, or null when (source, extId) is already stored. */

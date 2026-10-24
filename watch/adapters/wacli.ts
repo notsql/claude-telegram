@@ -6,6 +6,7 @@
  *   {"Chat":"…@s.whatsapp.net|…@g.us","ID":"3EB0…","SenderJID":"…","Timestamp":"RFC3339 Z",
  *    "FromMe":false,"Text":"hi","PushName":"Alice","ChatName":"Alice","ReplyToID":"","Media":null|{Type,Caption,…}}
  * Payloads with no text and no media (reactions, unhandled types) are skipped.
+ * `ReplyToID` is a quote, not a thread, so it is not kept: a chat is one conversation.
  */
 
 import type { Item } from '../store.ts'
@@ -42,6 +43,5 @@ export function wacliItem(source: string, body: unknown): Item | null {
     text,
     toMe: !isGroup && !p.FromMe,
     fromMe: p.FromMe,
-    threadId: p.ReplyToID || undefined,
   }
 }

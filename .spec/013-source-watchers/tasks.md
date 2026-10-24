@@ -32,3 +32,5 @@ Depends on: 001 (runner, budget), 003 (approvals), 004 (memory), 007 (system job
   *Verify:* unit tests; a two-day-old party invite is dropped and "pay the bill by Friday" arrives as its own message dated by the message.
 - [ ] **T1316** Digest onboarding and settings: `digest-prefs.json`, rescheduling digest crons from it, 🗞 Digest pages (When, What) under 📡 Sources, the one-time 🗞 Set up your digest message, filters and note in `runDigest`, and `digest_settings` (FR16).
   *Verify:* unit tests; after adding a source, the setup message arrives; choosing 🌙 Evening only + Weekdays and turning 📰 FYI off makes the next digest arrive only at 18:30 on a weekday with no FYI items.
+- [x] **T1317** On your plate: stricter promise extraction, a summarizer pass that closes done promises and names the person, at most 5 with 🤖 Do it / ✅ Done, promise expiry, replies counted without a quote, Telegram chat names resolved, and no source in headers (FR8).
+  *Verify:* unit tests; the next digest's 🤝 On your plate has at most 5 named to-dos, none like "be back around 12", and a DM I answered without quoting doesn't come back as waiting on me.

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { openInboxDb, insertItem, type Item } from '../watch/store.ts'
 import { runDigest, type DigestApi } from '../watch/digest.ts'
 import type { BriefSchema } from '../watch/deliver.ts'
+import type { PlateSchema } from '../watch/digest.ts'
 import type { z } from 'zod'
 import { DEFAULT_PREFS, type DigestPrefs } from '../watch/digestPrefs.ts'
 
@@ -9,6 +10,7 @@ const H = 3_600_000
 const T0 = new Date(2026, 9, 12, 8, 0).getTime()
 
 type Brief = z.infer<typeof BriefSchema>
+type Plate = z.infer<typeof PlateSchema>
 
 const item = (n: number, over: Partial<Item> = {}): Item => ({
   source: 'whatsapp', extId: `m${n}`, ts: T0,
@@ -24,6 +26,8 @@ function setup() {
   let budget = true
   // Default model: every conversation is important, summarised by its number.
   let judge = (input: string): Brief => ({ threads: [...input.matchAll(/<conversation n="(\d+)"/g)].map(m => ({ n: Number(m[1]), important: true, summary: `sum ${m[1]}` })) })
+  // Default promise pass: every promise kept, as "todo <n>".
+  let plate = (input: string): Plate => ({ promises: [...input.matchAll(/<promise n="(\d+)"/g)].map(m => ({ n: Number(m[1]), keep: true, todo: `todo ${m[1]}` })) })
   let modelDown = false
   const api: DigestApi = { async sendMessage(chatId, text, extra) {
     if (fail === true || (typeof fail === 'string' && text.includes(fail))) throw new Error('down')
@@ -37,7 +41,7 @@ function setup() {
   }
   const run = (prefs?: DigestPrefs) => runDigest({
     db, api, to: { chatId: '42' }, title: 'Evening digest', now: () => t, prefs,
-    run: async (_agent, input) => { inputs.push(input); if (modelDown) throw new Error('model down'); return judge(input) },
+    run: (async (_agent: string, input: string) => { inputs.push(input); if (modelDown) throw new Error('model down'); return input.includes('<promise ') ? plate(input) : judge(input) }) as never,
     budget: { take: () => budget },
     examples: () => '<example want="no">newsletter</example>',
   })
@@ -45,7 +49,7 @@ function setup() {
   return {
     db, sent, inputs, add, run, status,
     set: (ms: number) => { t = ms }, fail: (v: boolean | string) => { fail = v }, budget: (v: boolean) => { budget = v },
-    judge: (fn: typeof judge) => { judge = fn }, modelDown: (v: boolean) => { modelDown = v },
+    judge: (fn: typeof judge) => { judge = fn }, plate: (fn: typeof plate) => { plate = fn }, modelDown: (v: boolean) => { modelDown = v },
   }
 }
 
@@ -57,12 +61,12 @@ test('AC3: an unanswered DM appears after 4h with Reply, Done and Not like this,
   expect(s.inputs).toHaveLength(0)
   s.set(T0 + 4 * H)
   expect(await s.run()).toBe(true)
-  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🔴 Ana · whatsapp · Mon 12 Oct at 08:00\nsum 1'])
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🔴 Ana · Mon 12 Oct at 08:00\nsum 1'])
   expect(s.sent[1]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data)))
     .toEqual([[`inb:do:${id}`, `inb:draft:${id}`], [`inb:done:${id}`, `inb:nah:${id}`]])
   // A second digest still shows it while unanswered.
   await s.run()
-  expect(s.sent[3]!.text).toContain('Ana · whatsapp')
+  expect(s.sent[3]!.text).toContain('Ana · ')
   // I reply from my phone in the same chat.
   s.add(2, null, { fromMe: true, toMe: false, ts: T0 + 5 * H, text: 'sure' })
   s.set(T0 + 10 * H)
@@ -77,7 +81,7 @@ test('a reply in another chat or before the message does not close the loop; Don
   s.add(2, null, { fromMe: true, toMe: false, ts: T0 + H, chat: { id: 'c2', name: 'Other', isGroup: false } })
   s.set(T0 + 5 * H)
   await s.run()
-  expect(s.sent.at(-1)!.text).toContain('Ana · whatsapp')
+  expect(s.sent.at(-1)!.text).toContain('Ana · ')
   s.db.query(`UPDATE items SET status = 'done' WHERE id = ?`).run(id)
   expect(await s.run()).toBe(false)
 })
@@ -95,7 +99,7 @@ test('only conversations the model keeps are sent; the rest are digested quietly
   expect(s.inputs[0]).toContain('newsletter &lt;b&gt;deals&lt;/b&gt;')
   expect(s.inputs[0]).toContain('<example want="no">newsletter</example>')
   expect(s.inputs[0]).not.toContain('Dee')
-  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 repo · whatsapp · Mon 12 Oct at 08:00\nReview the PR for Bob today.'])
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 repo · Mon 12 Oct at 08:00\nReview the PR for Bob today.'])
   expect(s.sent.every(m => m.extra.parse_mode === undefined)).toBe(true)
   expect([news, task].map(s.status)).toEqual(['digested', 'digested'])
   expect([pinged, noise, mine].map(s.status)).toEqual(['pinged', 'new', 'new'])
@@ -134,14 +138,68 @@ test('a failed send or model call, or a spent budget, holds everything for the n
   expect(s.status(id)).toBe('digested')
 })
 
-test('i_promised loops are listed without a model call, in the forum topic when there is one', async () => {
+test('On your plate: the model closes done or unreal promises and names the rest, with Do it and Done', async () => {
+  const s = setup()
+  const promise = (n: number, summary: string, over: Partial<Item> = {}) => {
+    const id = s.add(n, 'noise', { fromMe: true, toMe: false, from: { id: 'me', name: 'me' }, ...over })
+    s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (?, 'i_promised', ?, ?)`).run(id, summary, T0)
+    return id
+  }
+  const eta = promise(1, 'Told Mum you would be back around 12', { text: 'back ard 12' })
+  const deck = promise(2, 'Send her the deck', { text: 'will send the deck tmr', chat: { id: 'c2', name: 'Jaimin', isGroup: false } })
+  s.add(3, null, { ts: T0 + H, from: { id: 'j', name: 'Jaimin' }, chat: { id: 'c2', name: 'Jaimin', isGroup: false }, text: 'pls dont forget' })
+  s.plate(() => ({ promises: [{ n: 1, keep: false, todo: '' }, { n: 2, keep: true, todo: 'Send Jaimin the deck, by Tue 13 Oct.' }] }))
+  s.set(T0 + 2 * H)
+  expect(await s.run()).toBe(true)
+  // The promise is judged with the messages since, and the first pass's note.
+  expect(s.inputs[0]).toContain('pls dont forget')
+  expect(s.inputs[0]).toContain('noted="Send her the deck"')
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🤝 On your plate · Mon 12 Oct\n\n1. Send Jaimin the deck, by Tue 13 Oct.'])
+  expect(s.sent[1]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data))).toEqual([[`inb:do:${deck}`, `inb:done:${deck}`]])
+  const loops = s.db.query(`SELECT item_id, summary, closed_at FROM loops ORDER BY id`).all()
+  expect(loops).toEqual([
+    { item_id: eta, summary: 'Told Mum you would be back around 12', closed_at: T0 + 2 * H },
+    { item_id: deck, summary: 'Send Jaimin the deck, by Tue 13 Oct.', closed_at: null },
+  ])
+})
+
+test('On your plate shows at most 5 to-dos, soonest due first, and counts the rest as watched', async () => {
+  const s = setup()
+  for (let n = 1; n <= 8; n++) {
+    const id = s.add(n, 'noise', { fromMe: true, toMe: false, chat: { id: `c${n}`, name: `P${n}`, isGroup: false } })
+    s.db.query(`INSERT INTO loops (item_id, kind, summary, due, opened_at) VALUES (?, 'i_promised', ?, ?, ?)`).run(id, `p${n}`, n === 8 ? T0 + H : null, T0)
+  }
+  s.plate(input => ({ promises: [...input.matchAll(/<promise n="(\d+)" chat="(\w+)"/g)].map(m => ({ n: Number(m[1]), keep: true, todo: `do ${m[2]}` })) }))
+  await s.run()
+  const msg = s.sent.at(-1)!
+  expect(msg.text).toBe("🤝 On your plate · Mon 12 Oct\n\n1. do P8\n2. do P1\n3. do P2\n4. do P3\n5. do P4\n\n3 more I'm watching.")
+  expect(msg.extra.reply_markup.inline_keyboard).toHaveLength(5)
+})
+
+test('promises expire after 7 days, or 2 days past their due, without a model call', async () => {
+  const s = setup()
+  const a = s.add(1, 'noise', { fromMe: true, toMe: false })
+  const b = s.add(2, 'noise', { fromMe: true, toMe: false, chat: { id: 'c2', name: 'Bo', isGroup: false } })
+  s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (?, 'i_promised', 'a', ?)`).run(a, T0)
+  s.db.query(`INSERT INTO loops (item_id, kind, summary, due, opened_at) VALUES (?, 'i_promised', 'b', ?, ?)`).run(b, T0 + 24 * H, T0)
+  s.set(T0 + 3 * 24 * H)
+  await s.run()
+  expect(s.sent.at(-1)!.text).toBe('🤝 On your plate · Thu 15 Oct\n\n1. todo 1')
+  s.set(T0 + 7 * 24 * H)
+  expect(await s.run()).toBe(false)
+  expect(s.db.query('SELECT count(*) AS n FROM loops WHERE closed_at IS NULL').get()).toEqual({ n: 0 })
+})
+
+test('a failed promise pass or spent budget skips On your plate and keeps the promises open', async () => {
   const s = setup()
   const id = s.add(1, 'noise', { fromMe: true, toMe: false })
-  s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (?, 'i_promised', 'send the deck tomorrow', ?)`).run(id, T0)
-  await s.run()
-  expect(s.inputs).toHaveLength(0)
-  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', 'I promised (1)\n  • whatsapp · send the deck tomorrow'])
-  expect(s.sent[0]!.extra).toEqual({})
+  s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (?, 'i_promised', 'send it', ?)`).run(id, T0)
+  s.modelDown(true)
+  expect(await s.run()).toBe(false)
+  s.modelDown(false)
+  s.budget(false)
+  expect(await s.run()).toBe(false)
+  expect(s.db.query('SELECT closed_at FROM loops').get()).toEqual({ closed_at: null })
 })
 
 test('the model is told the current time and message dates; each conversation is its own dated message', async () => {
@@ -156,13 +214,13 @@ test('the model is told the current time and message dates; each conversation is
   await expect(s.run()).rejects.toThrow('down')
   expect(s.inputs[0]).toContain(`It is now ${new Date(T0 + H).toString()}`)
   expect(s.inputs[0]).toContain(`ts="${new Date(T0 - 48 * H).toISOString()}"`)
-  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 Bob · whatsapp · Mon 12 Oct at 07:00\nPay the bill by Fri 16 Oct.'])
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 Bob · Mon 12 Oct at 07:00\nPay the bill by Fri 16 Oct.'])
   expect(s.sent[1]!.extra.reply_markup.inline_keyboard.flat().map((x: any) => x.callback_data)).toContain(`inb:do:${bob}`)
   expect([old, bob, cy].map(s.status)).toEqual(['digested', 'digested', 'new'])
   s.fail(false)
   s.judge(() => ({ threads: [{ n: 1, important: true, summary: 'sum 3' }] }))
   await s.run()
-  expect(s.sent.at(-1)!.text).toBe('🟠 Cy · whatsapp · Mon 12 Oct at 08:00\nsum 3')
+  expect(s.sent.at(-1)!.text).toBe('🟠 Cy · Mon 12 Oct at 08:00\nsum 3')
   expect(s.status(cy)).toBe('digested')
 })
 
@@ -174,7 +232,7 @@ test('FR16: prefs leave out FYI, a skipped source and promises, settle what they
   const mine = s.add(4, null, { fromMe: true, toMe: false, text: 'I will send it' })
   s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (?, 'i_promised', 'send it', ?)`).run(mine, T0)
   expect(await s.run({ ...DEFAULT_PREFS, fyi: false, promised: false, skip: ['github'], note: 'always include bills' })).toBe(true)
-  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 Ana · whatsapp · Mon 12 Oct at 08:00\nsum 1'])
+  expect(s.sent.map(m => m.text)).toEqual(['📋 Evening digest', '🟠 Ana · Mon 12 Oct at 08:00\nsum 1'])
   expect(s.inputs[0]).toContain("The owner's own instructions for this roundup, which outrank the rules above:\nalways include bills")
   expect(s.inputs[0]!.match(/<external_item /g)).toHaveLength(1)
   expect([s.status(fyi), s.status(act), s.status(gh)]).toEqual(['digested', 'digested', 'digested'])

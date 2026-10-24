@@ -25,6 +25,7 @@ function setup(start = at(12), vips: string[] = []) {
   const muted: string[] = []
   const disliked: number[] = []
   const acted: number[] = []
+  const actedText: string[] = []
   let t = start
   let target: { chatId: string; threadId?: number } = { chatId: '42' }
   const d = createDeliver({
@@ -33,7 +34,7 @@ function setup(start = at(12), vips: string[] = []) {
     budget: { take: () => budget },
     examples: () => '<example want="no">reply to lunch</example>',
     dislike: r => disliked.push(r.id),
-    act: r => acted.push(r.id),
+    act: r => { acted.push(r.id); actedText.push(r.text) },
   })
   const add = (n: number, label: string, over: Partial<Item> = {}) => {
     const id = insertItem(db, item(n, over))!
@@ -42,7 +43,7 @@ function setup(start = at(12), vips: string[] = []) {
   }
   const status = (id: number) => (db.query('SELECT status, snooze_until, label FROM items WHERE id = ?').get(id) as any)
   return {
-    db, d, sent, inputs, muted, disliked, acted, add, status,
+    db, d, sent, inputs, muted, disliked, acted, actedText, add, status,
     set: (ms: number) => { t = ms }, fail: (v: boolean) => { fail = v }, budget: (v: boolean) => { budget = v },
     judge: (fn: typeof judge) => { judge = fn }, target: (v: typeof target) => { target = v },
   }
@@ -56,7 +57,7 @@ test('due items go out as one summary per send, grouped by conversation, with Re
   await s.d.tick()
   expect(s.sent).toHaveLength(1)
   expect(s.sent[0]!.chatId).toBe('42')
-  expect(s.sent[0]!.text).toBe('📥 Needs you\n\n🔴 Boss · whatsapp\nsum 1\n\n🟠 Family · whatsapp\nsum 2')
+  expect(s.sent[0]!.text).toBe('📥 Needs you\n\n🔴 Boss\nsum 1\n\n🟠 Family\nsum 2')
   expect(s.sent[0]!.extra.parse_mode).toBeUndefined()
   expect(s.sent[0]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data)))
     .toEqual([[`inb:do:${a2}`, `inb:draft:${a2}`], [`inb:done:${a2}`, `inb:nah:${a2}`], [`inb:do:${b}`, `inb:draft:${b}`], [`inb:done:${b}`, `inb:nah:${b}`]])
@@ -193,6 +194,14 @@ test('🤖 Do it starts a turn for the item and leaves it open', () => {
   expect(s.status(a).status).toBe('new')
 })
 
+test('🤖 Do it on a promise carries the to-do along with the owner\'s own message', () => {
+  const s = setup()
+  const a = s.add(1, 'noise', { fromMe: true, toMe: false, text: 'will send tmr' })
+  s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (?, 'i_promised', 'Send Jaimin the deck', 0)`).run(a)
+  s.d.tap('do', a)
+  expect(s.actedText).toEqual(['The owner promised: Send Jaimin the deck\nTheir message: will send tmr'])
+})
+
 test('FR15: a loop due within the lead time is nudged once; overdue reads as such; quiet hours hold it', async () => {
   const s = setup(at(12))
   s.judge(() => ({ threads: [] }))
@@ -202,7 +211,7 @@ test('FR15: a loop due within the lead time is nudged once; overdue reads as suc
   const far = s.add(3, 'fyi'); loop(far, at(12) + NUDGE_LEAD_MS + 1)
   await s.d.tick()
   expect(s.sent).toHaveLength(1)
-  expect(s.sent[0]!.text).toBe(`⏰ Due soon\n\n🔴 Overdue · Bills · whatsapp\ntask ${late}\n\n🟠 Due 14:00 · Chat · whatsapp\ntask ${soon}`)
+  expect(s.sent[0]!.text).toBe(`⏰ Due soon\n\n🔴 Overdue · Bills\ntask ${late}\n\n🟠 Due 14:00 · Chat\ntask ${soon}`)
   expect(s.sent[0]!.extra.reply_markup.inline_keyboard.map((r: any[]) => r.map(x => x.callback_data)))
     .toEqual([[`inb:do:${late}`, `inb:done:${late}`], [`inb:do:${soon}`, `inb:done:${soon}`]])
   await s.d.tick()

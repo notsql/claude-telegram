@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { tgcliItem } from '../watch/adapters/tgcli'
+import { tgcliChats, tgcliItem } from '../watch/adapters/tgcli'
 import { wacliItem } from '../watch/adapters/wacli'
 import { githubCommand, githubItems } from '../watch/adapters/github'
 
@@ -15,7 +15,7 @@ test('tgcli: DM maps to a toMe item keyed on chat + message id', () => {
   expect(tgcliItem('telegram-account', tgDm)).toEqual({
     source: 'telegram-account', extId: 'user:777:42', ts: 1760000000000,
     from: { id: 'user:777', name: 'Alex Tan' }, chat: { id: 'user:777', name: 'Alex Tan', isGroup: false },
-    text: 'can you send the deck?', url: 'https://t.me/alext/42', toMe: true, fromMe: false, threadId: undefined,
+    text: 'can you send the deck?', url: 'https://t.me/alext/42', toMe: true, fromMe: false,
   })
 })
 
@@ -25,7 +25,8 @@ test('tgcli: group media message uses message.from and a media placeholder', () 
   expect(item.chat).toEqual({ id: 'channel:1001', name: 'Team', isGroup: true })
   expect(item.text).toBe('[photo]')
   expect(item.toMe).toBe(false)
-  expect(item.threadId).toBe('7')
+  // A quote is not a thread: the whole chat is one conversation.
+  expect(item.threadId).toBeUndefined()
 })
 
 test('tgcli: outgoing is fromMe; malformed or empty lines are dropped', () => {
@@ -35,6 +36,15 @@ test('tgcli: outgoing is fromMe; malformed or empty lines are dropped', () => {
   expect(tgcliItem('tg', { ...tgDm, message: { id: 1, date: 1, out: false } })).toBeNull()
 })
 
+test('tgcli: chats list maps chat ids to names, skipping unnamed peers', () => {
+  const out = JSON.stringify({ schema: 1, data: { chats: [
+    { peer: { id: 916208524, type: 'user', name: 'Jaimin - Ellipsis', username: 'JaiminOng' } },
+    { peer: { id: 1001, type: 'channel', name: 'Team' } },
+    { peer: { id: 3, type: 'user' } },
+  ] } })
+  expect([...tgcliChats(out)]).toEqual([['user:916208524', 'Jaimin - Ellipsis'], ['channel:1001', 'Team']])
+})
+
 // wacli 0.20.0 docs/sync.md "Webhook payloads" (+ PushName/ReplyToID from wa.ParsedMessage).
 const waDm = { Chat: '15551234567@s.whatsapp.net', ID: '3EB0AA', SenderJID: '15551234567@s.whatsapp.net', Timestamp: '2026-07-25T10:00:00Z', FromMe: false, Text: 'hi', PushName: 'Alice', ChatName: 'Alice', Media: null }
 
@@ -42,7 +52,7 @@ test('wacli: DM message maps to a toMe item', () => {
   expect(wacliItem('whatsapp', waDm)).toEqual({
     source: 'whatsapp', extId: '15551234567@s.whatsapp.net:3EB0AA', ts: Date.parse('2026-07-25T10:00:00Z'),
     from: { id: '15551234567@s.whatsapp.net', name: 'Alice' }, chat: { id: '15551234567@s.whatsapp.net', name: 'Alice', isGroup: false },
-    text: 'hi', toMe: true, fromMe: false, threadId: undefined,
+    text: 'hi', toMe: true, fromMe: false,
   })
 })
 
@@ -50,7 +60,7 @@ test('wacli: group media caption, sender without push name, own message', () => 
   const g = wacliItem('whatsapp', { ...waDm, Chat: '120363000000000000@g.us', ChatName: 'Family', PushName: '', Text: '', Media: { Type: 'image', Caption: 'look' }, ReplyToID: 'X1' })!
   expect(g.chat).toEqual({ id: '120363000000000000@g.us', name: 'Family', isGroup: true })
   expect(g.from.name).toBe('15551234567')
-  expect([g.text, g.toMe, g.threadId]).toEqual(['look', false, 'X1'])
+  expect([g.text, g.toMe, g.threadId]).toEqual(['look', false, undefined])
   expect(wacliItem('whatsapp', { ...waDm, FromMe: true })!.fromMe).toBe(true)
 })
 
