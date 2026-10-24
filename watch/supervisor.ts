@@ -15,7 +15,8 @@
  * and parse stdout with a poll adapter, chosen by basename, that also advances
  * the source's cursor. `agent-poll` sources (`{connector, intervalSec?}`, default
  * 30 min) ask a one-shot `tg-poller` for items since the cursor using only that
- * connector's tools. A failed poll counts an error and waits for the next interval.
+ * connector's tools; a poller that finds them missing says so, which counts as
+ * a failure. A failed poll counts an error and waits for the next interval.
  */
 
 import { randomBytes } from 'crypto'
@@ -58,6 +59,8 @@ export const AgentPollSchema = z.object({
     due: z.string().optional(),
   })),
   cursor: z.string(),
+  /** Set when the connector's tools are missing or fail (not connected, signed out); the poll counts as failed. */
+  unavailable: z.string().optional(),
 })
 
 export type RunPoller = (input: string, schema: typeof AgentPollSchema, allowedTools: string[]) => Promise<z.infer<typeof AgentPollSchema>>
@@ -187,6 +190,7 @@ export function createSupervisor(opts: SupervisorOpts) {
       const connector = cfg.connector!
       const t = now()
       const out = await opts.runPoller!(agentPollInput(connector, cursor, t), AgentPollSchema, [connectorTools(connector)])
+      if (out.unavailable) throw new Error(`${connector} unavailable: ${out.unavailable}`)
       found = { items: agentPollItems(source.id, connector, out, t), cursor: out.cursor }
     }
     for (const item of found.items) opts.onItem?.(source, item)

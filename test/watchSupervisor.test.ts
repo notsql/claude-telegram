@@ -160,3 +160,20 @@ test('agent-poll: asks tg-poller with the connector tools and cursor; skipped wi
   await createSupervisor({ stateDir, sources, log: l => logs.push(l), onPayload: () => {} }).start(1)
   expect(logs).toEqual(['watch calendar: no connector or poller; skipped'])
 })
+
+test('agent-poll: a poller with no connector tools counts as a failed poll, keeping the cursor', async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'tg-watch-'))
+  const sources = [{ ...src('calendar', 'agent-poll', []), cursor: '2026-10-12T00:00:00Z', config: { connector: 'Google Calendar' } }]
+  saveSources(stateDir, sources)
+  const logs: string[] = []
+  let sup: ReturnType<typeof createSupervisor>
+  sup = createSupervisor({
+    stateDir, sources, log: l => logs.push(l), onPayload: () => {},
+    runPoller: async (_input, schema) => schema.parse({ items: [], cursor: '2026-10-12T00:00:00Z', unavailable: 'no Google Calendar tools' }),
+    sleep: async () => { sup.stop() },
+  })
+  await sup.start(1)
+  expect(logs).toEqual(['watch calendar: poll failed: Error: Google Calendar unavailable: no Google Calendar tools'])
+  expect(loadSources(stateDir)[0]).toMatchObject({ cursor: '2026-10-12T00:00:00Z', errors: 1, status: 'error' })
+})
+
