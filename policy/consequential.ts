@@ -28,7 +28,8 @@ const OFF_LIMITS: [RegExp, RegExp, string][] = [
 ]
 /** `rm`-like commands, judged by their path arguments. */
 const REMOVERS = new Set(['rm', 'rmdir', 'shred', 'srm', 'trash', 'unlink'])
-const LABEL: Record<ActionClass, string> = { send: 'Send', pay: 'Pay', sign: 'Sign', delete: 'Delete' }
+export const ACTION_LABEL: Record<ActionClass, string> = { send: 'Send', pay: 'Pay', sign: 'Sign', delete: 'Delete' }
+export const ACTION_ICON: Record<ActionClass, string> = { send: '✉️', pay: '💳', sign: '✍️', delete: '🗑' }
 
 export type ClassifyOpts = {
   cwd: string
@@ -45,13 +46,13 @@ export function classify(toolName: string, input: Record<string, unknown>, opts:
   const banned = offLimits(words)
   if (banned) return { offLimits: banned }
   const cls = classOf(words)
-  if (cls) return { class: cls, summary: `${LABEL[cls]} · ${mcp[1]} ${mcp[2]}${target(input)}` }
+  if (cls) return { class: cls, summary: `${ACTION_LABEL[cls]} · ${mcp[1]} ${mcp[2]}${target(input)}` }
 }
 
 function classifyCommand(command: string, opts: ClassifyOpts): Classification | undefined {
   // Unparseable commands (redirection, substitution) are judged on their bare words.
   const segments = splitCommand(command) ?? command.split(/[;&|\n]+/).map(s => s.trim().split(/\s+/).filter(Boolean))
-  const summary = (cls: ActionClass) => `${LABEL[cls]} · ${command.length > 80 ? command.slice(0, 79) + '…' : command}`
+  const summary = (cls: ActionClass) => `${ACTION_LABEL[cls]} · ${command.length > 80 ? command.slice(0, 79) + '…' : command}`
   for (const words of segments) {
     // Only the command and its subcommands count, never message text (`wacli send "transfer money?"`).
     const banned = offLimits(commandWords(words))

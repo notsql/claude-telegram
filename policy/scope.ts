@@ -11,7 +11,7 @@
 
 import { parseKey } from '../sessions/key.ts'
 import { expandPath, isInside } from './args.ts'
-import { classify, type ActionClass } from './consequential.ts'
+import { ACTION_ICON, classify } from './consequential.ts'
 import type { Policy } from './schema.ts'
 
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep']
@@ -39,7 +39,7 @@ export async function scopeDecision(payload: Record<string, unknown>, key: strin
     }
     // FR3: asked every time, ahead of Always rules and chat policy; unanswered is a deny.
     if (c) {
-      return (await opts.confirm(key, tool, input, `${ICON[c.class]} ${c.summary}`))
+      return (await opts.confirm(key, tool, input, `${ACTION_ICON[c.class]} ${c.summary}`))
         ? decide('allow', 'Approved on Telegram.')
         : deny(`The owner did not approve this ${c.class} action. Don't retry it; ask what they want instead.`)
     }
@@ -68,8 +68,6 @@ export async function scopeDecision(payload: Record<string, unknown>, key: strin
   }
   return {}
 }
-
-const ICON: Record<ActionClass, string> = { send: '✉️', pay: '💳', sign: '✍️', delete: '🗑' }
 
 const decide = (permissionDecision: 'allow' | 'deny', permissionDecisionReason: string) => ({
   hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision, permissionDecisionReason },

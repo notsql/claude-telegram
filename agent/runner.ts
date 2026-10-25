@@ -24,6 +24,8 @@ export type RunTurnOpts = {
   hookToken: string
   cwd: string
   maxTurns: number
+  /** Appended after the Telegram instructions, e.g. the 020 action rules. */
+  extraInstructions?: string
   /** Policy flags from `policy/args.ts`. */
   policyArgs: string[]
   /** Extra settings merged over the hook settings file (`policySettings`). */
@@ -88,7 +90,7 @@ export function turnArgv(key: string, prompt: string, opts: RunTurnOpts): string
     '--forward-subagent-text',
     '--settings', opts.settings ? mergeSettings(opts.settingsFile, opts.settings) : opts.settingsFile,
     '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key, opts.browserPort)),
-    '--append-system-prompt', TELEGRAM_INSTRUCTIONS,
+    '--append-system-prompt', opts.extraInstructions ? `${TELEGRAM_INSTRUCTIONS}\n\n${opts.extraInstructions}` : TELEGRAM_INSTRUCTIONS,
     ...opts.policyArgs,
     '--max-turns', String(opts.maxTurns),
   ]

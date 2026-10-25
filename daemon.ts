@@ -27,6 +27,8 @@ import { startMcpServer } from './mcp/server.ts'
 import { startBrowser } from './browser/server.ts'
 import { registerSignin } from './browser/signin.ts'
 import { createHandoffs } from './browser/handoff.ts'
+import { createActionConfirm } from './policy/actionConfirm.ts'
+import { ACTION_GUARD_INSTRUCTIONS } from './agent/prompt.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, nameChat, openInboxDb, type Item } from './watch/store.ts'
@@ -379,7 +381,9 @@ const handoffs = browser && createHandoffs({
     text,
   }),
 })
-const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools, browser: handoffs })
+const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools, browser: handoffs,
+  // `approvals` is set up just below; the tool only calls it during a turn.
+  actions: config.actionGuard ? createActionConfirm((...a) => approvals.confirm(...a)) : undefined })
 const audit = createAudit(join(STATE_DIR, 'audit.log'))
 const approvals = createApprovals({
   api: bot.api,
@@ -565,6 +569,7 @@ function turnOpts(policy: Policy, signal: AbortSignal, onEvent: (ev: StreamEvent
     hookToken,
     cwd: discovery.cwdOf(policy),
     maxTurns: policy.maxTurns ?? config.maxTurns,
+    ...(config.actionGuard && { extraInstructions: ACTION_GUARD_INSTRUCTIONS }),
     policyArgs: policyArgs(policy),
     settings: policySettings(policy),
     signal,
