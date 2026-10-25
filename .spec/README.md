@@ -26,6 +26,11 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 | [013](./013-source-watchers/spec.md) | Source watchers: live inbox across WhatsApp, Telegram account, email, GitHub, … with pings and digests | P6 | 001, 003, 004, 007, 012 |
 | [015](./015-browser-signin/spec.md) | Browser sign-in: a shared, persistent browser the owner signs in to from ⚙️ Settings → 🌐 Browser sign-in | P6 | 001, 008, 012 |
 | [014](./014-pattern-learning/spec.md) | Pattern learning: habits, VIPs, mutes, routines → memory and proposals | P7 | 004–007, 013 |
+| [020](./020-action-guard/spec.md) | Consequential-action guard: send / pay / sign / delete always need a tap; off-limits list | P8 | 003, 015 |
+| [016](./016-task-board/spec.md) | Task board & background work: tasks run on their own, report when done or blocked, pinned 🗂 board | P8 | 001, 003, 007, 008, 013 |
+| [017](./017-deliverables/spec.md) | Deliverables: files with versions, ✏️ Change, 🔁 Keep current, 📁 Files | P8 | 007, 008, 016 |
+| [018](./018-topic-channels/spec.md) | Topic channels: the agent opens a forum topic per recurring subject and routes updates there | P8 | 002, 004, 013 |
+| [019](./019-follow-through/spec.md) | Follow-through: drafts ready in the digest, ⏳ waiting on others, plain-word notification rules | P8 | 004, 013, 016 |
 | [010](./010-agent-teams/spec.md) | Agent teams | **Deferred**: teams need an interactive session, which `-p` can't provide | 009 |
 
 Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](https://code.claude.com/docs/en/headless), [hooks](https://code.claude.com/docs/en/hooks), [sub-agents](https://code.claude.com/docs/en/sub-agents), [skills](https://code.claude.com/docs/en/skills), [agent-teams](https://code.claude.com/docs/en/agent-teams).
@@ -47,6 +52,8 @@ Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](http
 | Scheduled automations | A daemon-owned `croner` scheduler, with results delivered to the originating chat or topic (007) |
 | Multi-platform messaging | Telegram DMs, groups and forum topics (002) are the surface. Other platforms are **watched** as sources (013), and sends to them always need the owner's tap. |
 | Proactive inbox / habits | Source watchers with triage, pings and digests (013); pattern mining into memory (014) |
+| Long-running work / deliverables | Background task sessions with a pinned board (016); versioned files with refresh jobs (017) |
+| Per-subject threads | Agent-opened forum topics in the owner's home group (018) |
 | Missing tools | Capability ladder with owner-approved installs of CLIs and MCP servers, then a web fallback (012) |
 | Tool approval | Claude Code's native permission rules first. The `PermissionRequest` http hook then shows inline Allow / Deny / Always buttons (`applyRule`), and `PreToolUse` enforces hard scope limits (003) |
 | Slash commands | Telegram bot menu (`setMyCommands`, scoped). These are a **fallback**; autonomy is the primary path (008) |
