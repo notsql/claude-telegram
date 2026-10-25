@@ -5,12 +5,13 @@
  * `{}`. Memory and history tools are denied when the policy turns them off
  * (also refused inside the tools). Telegram tools may message any allowlisted chat (owner decision
  * 2026-10-07); `assertAllowedChat` still refuses the rest. With the 020
- * guard on, off-limits actions are denied first, whatever the policy says.
+ * guard on, off-limits actions are denied first and send / pay / sign /
+ * delete calls always ask, whatever the policy says.
  */
 
 import { parseKey } from '../sessions/key.ts'
 import { expandPath, isInside } from './args.ts'
-import { classify } from './consequential.ts'
+import { classify, type ActionClass } from './consequential.ts'
 import type { Policy } from './schema.ts'
 
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep']
@@ -20,8 +21,8 @@ export type ScopeOpts = {
   policy: (key: string) => Policy
   /** Always readable, e.g. the inbox where inbound photos land. */
   extraDirs: string[]
-  /** Asks the key's approvers; true if allowed. */
-  confirm: (key: string, toolName: string, input: Record<string, unknown>) => Promise<boolean>
+  /** Asks the key's approvers; true if allowed. `title` heads a 020 action card. */
+  confirm: (key: string, toolName: string, input: Record<string, unknown>, title?: string) => Promise<boolean>
   /** 020: `TELEGRAM_ACTION_GUARD=1`. */
   actionGuard?: boolean
 }
@@ -35,6 +36,12 @@ export async function scopeDecision(payload: Record<string, unknown>, key: strin
     const c = classify(tool, input, { cwd: String(payload.cwd ?? '/') })
     if (c && 'offLimits' in c) {
       return deny(`Off-limits even with approval: ${c.offLimits}. Explain this to the owner and offer to prepare the steps for them to do themselves.`)
+    }
+    // FR3: asked every time, ahead of Always rules and chat policy; unanswered is a deny.
+    if (c) {
+      return (await opts.confirm(key, tool, input, `${ICON[c.class]} ${c.summary}`))
+        ? decide('allow', 'Approved on Telegram.')
+        : deny(`The owner did not approve this ${c.class} action. Don't retry it; ask what they want instead.`)
     }
   }
 
@@ -61,6 +68,8 @@ export async function scopeDecision(payload: Record<string, unknown>, key: strin
   }
   return {}
 }
+
+const ICON: Record<ActionClass, string> = { send: '✉️', pay: '💳', sign: '✍️', delete: '🗑' }
 
 const decide = (permissionDecision: 'allow' | 'deny', permissionDecisionReason: string) => ({
   hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision, permissionDecisionReason },

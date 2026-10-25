@@ -32,6 +32,8 @@ type Pending = {
   toolName: string
   input: Record<string, unknown>
   chatId: string
+  /** Replaces the 🔐 Permission line, e.g. a 020 action card. */
+  title?: string
   messageId?: number
   resolve: (d: Decision | 'expired') => void
   /** Telegram user id that answered. */
@@ -68,12 +70,12 @@ export function createApprovals({ api, timeoutSec, saveRule, sessionRule, audit 
   }
 
   /** Sends the prompt to the key's chat and waits for a decision or expiry. Audited. */
-  async function ask(key: string, toolName: string, input: Record<string, unknown>, always = true) {
+  async function ask(key: string, toolName: string, input: Record<string, unknown>, always = true, title?: string) {
     const target = parseKey(key)
     const id = newId()
     let by: string | undefined
     const decision = await new Promise<Decision | 'expired'>(resolve => {
-      const p: Pending = { key, toolName, input, chatId: target.chatId, resolve }
+      const p: Pending = { key, toolName, input, chatId: target.chatId, title, resolve }
       pending.set(id, p)
       const timer = setTimeout(() => {
         resolve('expired')
@@ -110,10 +112,10 @@ export function createApprovals({ api, timeoutSec, saveRule, sessionRule, audit 
 
   /**
    * A one-off prompt from the PreToolUse hook (`ask` there is a deny in -p).
-   * No Always: rules can't widen the scope check.
+   * No Always: rules can't widen the scope check or skip a 020 action card.
    */
-  async function confirm(key: string, toolName: string, input: Record<string, unknown>): Promise<boolean> {
-    const { decision, by } = await ask(key, toolName, input, false)
+  async function confirm(key: string, toolName: string, input: Record<string, unknown>, title?: string): Promise<boolean> {
+    const { decision, by } = await ask(key, toolName, input, false, title)
     audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }) })
     return decision === 'allow' || decision === 'always'
   }
@@ -144,7 +146,8 @@ export function createApprovals({ api, timeoutSec, saveRule, sessionRule, audit 
 }
 
 /** FR4: the tool plus what the call is for: Bash's own description, else its main argument. */
-function heading(p: Pick<Pending, 'toolName' | 'input'>): string {
+function heading(p: Pick<Pending, 'toolName' | 'input' | 'title'>): string {
+  if (p.title) return p.title
   const i = p.input
   const what = [i.description, i.file_path, i.notebook_path, i.url, i.query, i.pattern, i.prompt]
     .find((v): v is string => typeof v === 'string' && v.trim() !== '')

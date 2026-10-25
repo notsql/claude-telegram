@@ -78,7 +78,21 @@ describe('scopeDecision action guard', () => {
     expect(out.hookSpecificOutput.permissionDecision).toBe('deny')
     expect(out.hookSpecificOutput.permissionDecisionReason).toContain('moving money between accounts')
     expect(await guarded('mcp__bank__transfer_funds', { amount: 500 }, false)).toEqual({})
-    // Other classes fall through to the existing flow until T2002.
-    expect(await guarded('mcp__gmail__sendEmail', { to: 'a@b.c' }, true)).toEqual({})
+  })
+
+  test('send / pay / sign / delete always ask with an action card (020 AC1, AC3)', async () => {
+    const titles: string[] = []
+    const guarded = (tool_name: string, tool_input: object, ok: boolean) =>
+      scopeDecision({ tool_name, tool_input, cwd: '/work' }, '123', {
+        ...opts, actionGuard: true,
+        confirm: async (_k: string, _t: string, _i: object, title?: string) => { titles.push(title ?? ''); return ok },
+      }) as Promise<any>
+    expect((await guarded('mcp__gmail__sendEmail', { to: 'a@b.c' }, true)).hookSpecificOutput.permissionDecision).toBe('allow')
+    // Cancelled or timed out (confirm resolves false on expiry) is a deny.
+    expect((await guarded('Bash', { command: 'rm -rf ~/old' }, false)).hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(titles).toEqual(['✉️ Send · gmail sendEmail → a@b.c', '🗑 Delete · rm -rf ~/old'])
+    // Reads still pass without a card (AC6).
+    expect(await guarded('Bash', { command: 'ls ~' }, false)).toEqual({})
+    expect(titles).toHaveLength(2)
   })
 })

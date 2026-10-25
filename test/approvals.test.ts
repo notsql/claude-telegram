@@ -172,3 +172,14 @@ test('tool names read as words in the prompt', async () => {
   expect(toolLabel('mcp__tg__memory_write')).toBe('tg · Memory Write')
   expect(toolLabel('mcp__x__fetchURLContent')).toBe('x · Fetch URL Content')
 })
+
+test('an action card replaces the permission heading and has no Always (020 FR3)', async () => {
+  const { api, sent } = fakeApi()
+  const a = createApprovals({ api, timeoutSec: 60, saveRule: () => {} })
+  const res = a.confirm('5', 'mcp__gmail__sendEmail', { to: 'a@b.c' }, '✉️ Send · gmail sendEmail → a@b.c')
+  await tick()
+  expect(sent[0]!.text).toStartWith('✉️ Send · gmail sendEmail → a@b.c\n\nOr reply')
+  expect(JSON.stringify(sent[0]!.opts.reply_markup)).not.toContain('perm:always')
+  a.decide(idOf(sent[0]!.opts), 'deny')
+  expect(await res).toBe(false)
+})
