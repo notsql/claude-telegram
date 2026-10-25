@@ -4,11 +4,13 @@
  * trusted dirs and the inbox needs an approver's OK first. Anything else gets
  * `{}`. Memory and history tools are denied when the policy turns them off
  * (also refused inside the tools). Telegram tools may message any allowlisted chat (owner decision
- * 2026-10-07); `assertAllowedChat` still refuses the rest.
+ * 2026-10-07); `assertAllowedChat` still refuses the rest. With the 020
+ * guard on, off-limits actions are denied first, whatever the policy says.
  */
 
 import { parseKey } from '../sessions/key.ts'
 import { expandPath, isInside } from './args.ts'
+import { classify } from './consequential.ts'
 import type { Policy } from './schema.ts'
 
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep']
@@ -20,12 +22,21 @@ export type ScopeOpts = {
   extraDirs: string[]
   /** Asks the key's approvers; true if allowed. */
   confirm: (key: string, toolName: string, input: Record<string, unknown>) => Promise<boolean>
+  /** 020: `TELEGRAM_ACTION_GUARD=1`. */
+  actionGuard?: boolean
 }
 
 export async function scopeDecision(payload: Record<string, unknown>, key: string, opts: ScopeOpts) {
   const tool = String(payload.tool_name ?? '')
   const input = (payload.tool_input ?? {}) as Record<string, unknown>
   const { chatId } = parseKey(key)
+
+  if (opts.actionGuard) {
+    const c = classify(tool, input, { cwd: String(payload.cwd ?? '/') })
+    if (c && 'offLimits' in c) {
+      return deny(`Off-limits even with approval: ${c.offLimits}. Explain this to the owner and offer to prepare the steps for them to do themselves.`)
+    }
+  }
 
   const name = tool.replace(/^mcp__tg__/, '')
   if (name !== tool) {

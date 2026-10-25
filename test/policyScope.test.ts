@@ -69,3 +69,16 @@ test('policyArgs maps the policy to CLI flags', async () => {
   // Groups ask rather than block: nothing is disallowed by default.
   expect(policyArgs(defaultPolicy('group'))).not.toContain('--disallowedTools')
 })
+
+describe('scopeDecision action guard', () => {
+  test('action guard denies off-limits calls first, even in the owner DM (020 AC4)', async () => {
+    const guarded = (tool_name: string, tool_input: object, actionGuard: boolean) =>
+      scopeDecision({ tool_name, tool_input, cwd: '/work' }, '123', { ...opts, actionGuard }) as Promise<any>
+    const out = await guarded('mcp__bank__transfer_funds', { amount: 500 }, true)
+    expect(out.hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(out.hookSpecificOutput.permissionDecisionReason).toContain('moving money between accounts')
+    expect(await guarded('mcp__bank__transfer_funds', { amount: 500 }, false)).toEqual({})
+    // Other classes fall through to the existing flow until T2002.
+    expect(await guarded('mcp__gmail__sendEmail', { to: 'a@b.c' }, true)).toEqual({})
+  })
+})

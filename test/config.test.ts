@@ -15,6 +15,8 @@ describe('config', () => {
     expect(loadConfig({ TELEGRAM_WATCH: '1' }).watch).toBe(true)
     expect(loadConfig({}).browser).toBe(false)
     expect(loadConfig({ TELEGRAM_BROWSER: '1' }).browser).toBe(true)
+    expect(loadConfig({}).actionGuard).toBe(false)
+    expect(loadConfig({ TELEGRAM_ACTION_GUARD: '1' }).actionGuard).toBe(true)
   })
 
   test('cli version check', () => {

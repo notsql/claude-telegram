@@ -519,7 +519,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.r
     if (run) log(`subagent ${run.type} for ${key} took ${Math.round(run.ms / 1000)}s`)
   },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
-  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm }),
+  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm, actionGuard: config.actionGuard }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 

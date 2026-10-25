@@ -88,7 +88,7 @@ function readOnlyCommand(command: string): boolean {
  * double quotes), backgrounding, or redirection other than to /dev/null or
  * between output streams.
  */
-function splitCommand(command: string): string[][] | undefined {
+export function splitCommand(command: string): string[][] | undefined {
   const segments: string[][] = []
   let words: string[] = []
   let word = ''
