@@ -112,6 +112,7 @@ import { linkSkill, loadLedger, unlearned, useSkillName } from './capabilities/l
 import { registerSessions } from './telegram/handlers/sessions.ts'
 import { registerUsage } from './telegram/handlers/usage.ts'
 import { registerSettings } from './telegram/handlers/settings.ts'
+import { registerActions } from './telegram/handlers/actions.ts'
 import { registerCron } from './telegram/handlers/cron.ts'
 import { registerApprovals } from './telegram/handlers/approvals.ts'
 import { registerInbound, type Inbound } from './telegram/handlers/inbound.ts'
@@ -384,7 +385,8 @@ const handoffs = browser && createHandoffs({
 const mcpServer = startMcpServer({ authToken: mcpToken, api: bot.api, botToken: TOKEN, memory: memoryTools, history: historyTools, skills: skillTools, agents: agentTools, session: sessionTools, scheduler: scheduleTools, capabilities: createCapabilityTools(capabilityRequests), watch: watchTools, browser: handoffs,
   // `approvals` is set up just below; the tool only calls it during a turn.
   actions: config.actionGuard ? createActionConfirm((...a) => approvals.confirm(...a)) : undefined })
-const audit = createAudit(join(STATE_DIR, 'audit.log'))
+const AUDIT_FILE = join(STATE_DIR, 'audit.log')
+const audit = createAudit(AUDIT_FILE)
 const approvals = createApprovals({
   api: bot.api,
   audit,
@@ -523,7 +525,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.r
     if (run) log(`subagent ${run.type} for ${key} took ${Math.round(run.ms / 1000)}s`)
   },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
-  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm, actionGuard: config.actionGuard }),
+  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm, actionGuard: config.actionGuard, audit }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 
@@ -672,7 +674,8 @@ const sessionsUi = registerSessions(bot, {
   compact: key => turns.enqueue(key, { prompt: '/compact', text: '/compact' }),
 })
 const usageCommand = registerUsage(bot)
-const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch, signin: !!browser, stateDir: STATE_DIR })
+const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch, signin: !!browser, actions: config.actionGuard, stateDir: STATE_DIR })
+if (config.actionGuard) registerActions(bot, AUDIT_FILE)
 const signinUi = browser && handoffs && registerSignin(bot, { open: url => browser.open(url), log, handoffs, updatesTo: () => updatesTo() || undefined, dir: join(STATE_DIR, 'browser') })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)

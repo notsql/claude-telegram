@@ -12,6 +12,10 @@ import { threadOpts } from '../telegram/send.ts'
 import { deriveRule } from './rules.ts'
 import { isReadOnly } from './readOnly.ts'
 import type { AuditEntry } from './audit.ts'
+import { ACTION_ICON, type ActionClass } from './consequential.ts'
+
+/** A 020 action card: its class picks the icon, `summary` is the heading. */
+export type ActionCard = { action: ActionClass; summary: string }
 
 /** 5 lowercase letters without 'l', the alphabet of the `yes xxxxx` text reply (FR5). */
 const ID_ALPHABET = 'abcdefghijkmnopqrstuvwxyz'
@@ -114,9 +118,9 @@ export function createApprovals({ api, timeoutSec, saveRule, sessionRule, audit 
    * A one-off prompt from the PreToolUse hook (`ask` there is a deny in -p).
    * No Always: rules can't widen the scope check or skip a 020 action card.
    */
-  async function confirm(key: string, toolName: string, input: Record<string, unknown>, title?: string): Promise<boolean> {
-    const { decision, by } = await ask(key, toolName, input, false, title)
-    audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }) })
+  async function confirm(key: string, toolName: string, input: Record<string, unknown>, card?: ActionCard): Promise<boolean> {
+    const { decision, by } = await ask(key, toolName, input, false, card && `${ACTION_ICON[card.action]} ${card.summary}`)
+    audit?.({ event: 'approval', key, tool: toolName, decision, ...(by && { user: by }), ...(card && { action: card.action, summary: card.summary }) })
     return decision === 'allow' || decision === 'always'
   }
 

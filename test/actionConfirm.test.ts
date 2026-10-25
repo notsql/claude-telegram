@@ -9,12 +9,12 @@ describe('action_confirm (020 FR2)', () => {
   test('posts a 💳 card in the calling session and reports the answer (AC2)', async () => {
     const asked: string[] = []
     let ok = true
-    const tools = createActionConfirm(async (key, tool, input, title) => { asked.push(`${key} ${tool} ${title} ${input.details}`); return ok })
+    const tools = createActionConfirm(async (key, tool, input, card) => { asked.push(`${key} ${tool} ${card?.action} ${card?.summary} ${input.details}`); return ok })
     const args = { class: 'pay', summary: 'Pay S$84.20 to SP Group', details: 'Bill Oct 2026' }
     expect(textOf(await tools.call('action_confirm', args, '-100:7'))).toStartWith('Approved.')
     ok = false
     expect(textOf(await tools.call('action_confirm', args, '-100:7'))).toStartWith('Not approved.')
-    expect(asked[0]).toBe('-100:7 action_confirm 💳 Pay · Pay S$84.20 to SP Group Bill Oct 2026')
+    expect(asked[0]).toBe('-100:7 action_confirm pay Pay S$84.20 to SP Group Bill Oct 2026')
   })
 
   test('rejects unknown classes and other tool names', async () => {

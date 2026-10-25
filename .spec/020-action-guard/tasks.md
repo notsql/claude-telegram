@@ -7,5 +7,5 @@ Depends on: 003 (PreToolUse, approvals, audit), 015 (browser), 017 (work dir exe
   *Verify:* AC1, AC3.
 - [x] **T2003** `action_confirm` tool + system prompt rule for browser and undetectable actions (FR2).
   *Verify:* AC2.
-- [ ] **T2004** Audit tagging and ⚙️ Settings → 🛡 Actions page (FR5).
+- [x] **T2004** Audit tagging and ⚙️ Settings → 🛡 Actions page (FR5).
   *Verify:* AC5.

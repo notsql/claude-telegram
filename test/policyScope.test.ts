@@ -74,7 +74,9 @@ describe('scopeDecision action guard', () => {
   test('action guard denies off-limits calls first, even in the owner DM (020 AC4)', async () => {
     const guarded = (tool_name: string, tool_input: object, actionGuard: boolean) =>
       scopeDecision({ tool_name, tool_input, cwd: '/work' }, '123', { ...opts, actionGuard }) as Promise<any>
-    const out = await guarded('mcp__bank__transfer_funds', { amount: 500 }, true)
+    const audited: object[] = []
+    const out = await scopeDecision({ tool_name: 'mcp__bank__transfer_funds', tool_input: { amount: 500 }, cwd: '/work' }, '123', { ...opts, actionGuard: true, audit: e => audited.push(e) }) as any
+    expect(audited).toEqual([{ event: 'approval', key: '123', tool: 'mcp__bank__transfer_funds', decision: 'deny', action: 'off_limits', summary: 'moving money between accounts' }])
     expect(out.hookSpecificOutput.permissionDecision).toBe('deny')
     expect(out.hookSpecificOutput.permissionDecisionReason).toContain('moving money between accounts')
     expect(await guarded('mcp__bank__transfer_funds', { amount: 500 }, false)).toEqual({})
@@ -85,12 +87,12 @@ describe('scopeDecision action guard', () => {
     const guarded = (tool_name: string, tool_input: object, ok: boolean) =>
       scopeDecision({ tool_name, tool_input, cwd: '/work' }, '123', {
         ...opts, actionGuard: true,
-        confirm: async (_k: string, _t: string, _i: object, title?: string) => { titles.push(title ?? ''); return ok },
+        confirm: async (_k: string, _t: string, _i: object, card?: { action: string; summary: string }) => { titles.push(`${card?.action} ${card?.summary}`); return ok },
       }) as Promise<any>
     expect((await guarded('mcp__gmail__sendEmail', { to: 'a@b.c' }, true)).hookSpecificOutput.permissionDecision).toBe('allow')
     // Cancelled or timed out (confirm resolves false on expiry) is a deny.
     expect((await guarded('Bash', { command: 'rm -rf ~/old' }, false)).hookSpecificOutput.permissionDecision).toBe('deny')
-    expect(titles).toEqual(['✉️ Send · gmail sendEmail → a@b.c', '🗑 Delete · rm -rf ~/old'])
+    expect(titles).toEqual(['send Send · gmail sendEmail → a@b.c', 'delete Delete · rm -rf ~/old'])
     // Reads still pass without a card (AC6).
     expect(await guarded('Bash', { command: 'ls ~' }, false)).toEqual({})
     expect(titles).toHaveLength(2)

@@ -11,7 +11,9 @@
 
 import { parseKey } from '../sessions/key.ts'
 import { expandPath, isInside } from './args.ts'
-import { ACTION_ICON, classify } from './consequential.ts'
+import type { ActionCard } from './approvals.ts'
+import type { AuditEntry } from './audit.ts'
+import { classify } from './consequential.ts'
 import type { Policy } from './schema.ts'
 
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep']
@@ -21,10 +23,12 @@ export type ScopeOpts = {
   policy: (key: string) => Policy
   /** Always readable, e.g. the inbox where inbound photos land. */
   extraDirs: string[]
-  /** Asks the key's approvers; true if allowed. `title` heads a 020 action card. */
-  confirm: (key: string, toolName: string, input: Record<string, unknown>, title?: string) => Promise<boolean>
+  /** Asks the key's approvers; true if allowed. `card` makes it a 020 action card. */
+  confirm: (key: string, toolName: string, input: Record<string, unknown>, card?: ActionCard) => Promise<boolean>
   /** 020: `TELEGRAM_ACTION_GUARD=1`. */
   actionGuard?: boolean
+  /** 020 FR5: off-limits denials, which never reach `confirm`. */
+  audit?: (entry: AuditEntry) => void
 }
 
 export async function scopeDecision(payload: Record<string, unknown>, key: string, opts: ScopeOpts) {
@@ -35,11 +39,12 @@ export async function scopeDecision(payload: Record<string, unknown>, key: strin
   if (opts.actionGuard) {
     const c = classify(tool, input, { cwd: String(payload.cwd ?? '/') })
     if (c && 'offLimits' in c) {
+      opts.audit?.({ event: 'approval', key, tool, decision: 'deny', action: 'off_limits', summary: c.offLimits })
       return deny(`Off-limits even with approval: ${c.offLimits}. Explain this to the owner and offer to prepare the steps for them to do themselves.`)
     }
     // FR3: asked every time, ahead of Always rules and chat policy; unanswered is a deny.
     if (c) {
-      return (await opts.confirm(key, tool, input, `${ACTION_ICON[c.class]} ${c.summary}`))
+      return (await opts.confirm(key, tool, input, { action: c.class, summary: c.summary }))
         ? decide('allow', 'Approved on Telegram.')
         : deny(`The owner did not approve this ${c.class} action. Don't retry it; ask what they want instead.`)
     }

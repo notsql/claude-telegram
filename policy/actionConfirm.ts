@@ -6,7 +6,8 @@
  */
 
 import type { ToolResult } from '../memory/tools.ts'
-import { ACTION_ICON, ACTION_LABEL, type ActionClass } from './consequential.ts'
+import type { ActionCard } from './approvals.ts'
+import { ACTION_LABEL, type ActionClass } from './consequential.ts'
 
 const CLASSES = Object.keys(ACTION_LABEL) as ActionClass[]
 
@@ -27,7 +28,7 @@ const TOOL = {
 const text = (t: string, isError?: boolean): ToolResult => ({ content: [{ type: 'text', text: t }], ...(isError && { isError }) })
 
 /** `confirm` is the 003 approval prompt (no Always). */
-export function createActionConfirm(confirm: (key: string, toolName: string, input: Record<string, unknown>, title?: string) => Promise<boolean>) {
+export function createActionConfirm(confirm: (key: string, toolName: string, input: Record<string, unknown>, card?: ActionCard) => Promise<boolean>) {
   return {
     list: () => [TOOL],
 
@@ -38,7 +39,7 @@ export function createActionConfirm(confirm: (key: string, toolName: string, inp
       if (!CLASSES.includes(cls)) return text(`class must be one of ${CLASSES.join(', ')}.`, true)
       const summary = String(args.summary ?? '').trim().slice(0, 200)
       if (!summary) return text('summary is required.', true)
-      const ok = await confirm(key, TOOL.name, { details: String(args.details ?? '') }, `${ACTION_ICON[cls]} ${ACTION_LABEL[cls]} · ${summary}`)
+      const ok = await confirm(key, TOOL.name, { details: String(args.details ?? '') }, { action: cls, summary })
       return text(ok
         ? 'Approved. Take exactly this step, nothing more.'
         : "Not approved. Don't take this step or try another way to do it; tell the owner and ask what they want instead.")
