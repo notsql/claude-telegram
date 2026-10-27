@@ -119,6 +119,39 @@ test('a batch carries earlier messages of its chats as unlabelled context', asyn
   expect(inputs[0]!.indexOf('already sorted')).toBeLessThan(inputs[0]!.indexOf('can you?'))
 })
 
+test('a chat\'s context and items share one conversation block in time order, so split messages read together', async () => {
+  const db = openInboxDb(':memory:')
+  const inputs: string[] = []
+  const t = createTriage({ db, rules: { mutedChats: [], mutedSenders: [], vips: [] }, budget: { take: () => true }, run: async (_a, input) => { inputs.push(input); return { items: [] } } })
+  const msg = (n: number, text: string, chat = 'c1') => insertItem(db, { source: 'whatsapp', extId: `m${n}`, ts: n, from: { id: 'b', name: 'B' }, chat: { id: chat, name: chat, isGroup: true }, text, toMe: false, fromMe: false })!
+  msg(1, 'guys')
+  t.add(msg(2, 'do we have a'))
+  t.add(msg(3, 'other chat', 'c2'))
+  t.add(msg(4, 'api key ah'))
+  await t.flush()
+  const block = inputs[0]!.split('<conversation chat="c1"')[1]!.split('</conversation>')[0]!
+  expect(block.indexOf('<context_item')).toBeLessThan(block.indexOf('do we have a'))
+  expect(block.indexOf('do we have a')).toBeLessThan(block.indexOf('api key ah'))
+  expect(block).not.toContain('other chat')
+})
+
+test('in a group the owner\'s own message does not close awaiting-me loops', async () => {
+  const s = setup(i => ({ items: ids(i).map(id => ({ id, label: 'action' as const, reason: 'asks', loop: { kind: 'awaiting_me' as const, summary: 'book the room' } })) }))
+  const g = { chat: { id: 'g', name: 'G', isGroup: true } }
+  const id = insertItem(s.db, item(1, g))!
+  s.triage.add(id)
+  await s.triage.flush()
+  s.triage.add(insertItem(s.db, item(2, { ...g, fromMe: true, from: { id: 'me', name: 'Me' } }))!)
+  expect(s.db.query('SELECT closed_at FROM loops WHERE item_id = ?').get(id)).toEqual({ closed_at: null })
+})
+
+test('an awaiting-me loop on a chat question the model calls fyi is not kept', async () => {
+  const s = setup(i => ({ items: ids(i).map(id => ({ id, label: 'fyi' as const, reason: 'chat', loop: { kind: 'awaiting_me' as const, summary: 'reply' } })) }))
+  s.triage.add(insertItem(s.db, item(1))!)
+  await s.triage.flush()
+  expect(s.db.query('SELECT count(*) AS n FROM loops').get()).toEqual({ n: 0 })
+})
+
 test('FR15: an action item with a deadline gets a loop to nudge on; fyi does not', async () => {
   const s = setup(i => ({ items: ids(i).map((id, n) => ({ id, label: n ? 'fyi' as const : 'action' as const, reason: 'pay the bill', due: '2026-10-17T09:00:00Z' })) }))
   const a = insertItem(s.db, item(1))!

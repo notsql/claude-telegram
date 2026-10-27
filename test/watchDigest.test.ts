@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { openInboxDb, insertItem, type Item } from '../watch/store.ts'
-import { runDigest, type DigestApi } from '../watch/digest.ts'
+import { runDigest, sweepLoops, type DigestApi } from '../watch/digest.ts'
 import type { BriefSchema } from '../watch/deliver.ts'
 import type { PlateSchema } from '../watch/digest.ts'
 import type { z } from 'zod'
@@ -25,7 +25,7 @@ function setup() {
   let fail: boolean | string = false
   let budget = true
   // Default model: every conversation is important, summarised by its number.
-  let judge = (input: string): Brief => ({ threads: [...input.matchAll(/<conversation n="(\d+)"/g)].map(m => ({ n: Number(m[1]), important: true, summary: `sum ${m[1]}` })) })
+  let judge = (input: string): Brief => ({ threads: [...input.matchAll(/<conversation n="(\d+)"/g)].map(m => ({ n: Number(m[1]), important: true, summary: `sum ${m[1]}`, links: [] })) })
   // Default promise pass: every promise kept, as "todo <n>".
   let plate = (input: string): Plate => ({ promises: [...input.matchAll(/<promise n="(\d+)"/g)].map(m => ({ n: Number(m[1]), keep: true, todo: `todo ${m[1]}` })) })
   let modelDown = false
@@ -94,7 +94,7 @@ test('only conversations the model keeps are sent; the rest are digested quietly
   s.db.query(`UPDATE items SET status = 'pinged' WHERE id = ?`).run(pinged)
   const noise = s.add(4, 'noise', { toMe: false, from: { id: 'dee', name: 'Dee' }, chat: { id: 'c4', name: 'Dee', isGroup: false } })
   const mine = s.add(5, 'fyi', { fromMe: true, toMe: false, chat: { id: 'c5', name: 'Eve', isGroup: false } })
-  s.judge(input => ({ threads: [...input.matchAll(/<conversation n="(\d+)" name="([^"]*)"/g)].map(m => ({ n: Number(m[1]), important: m[2] === 'repo', summary: 'Review the PR for Bob today.' })) }))
+  s.judge(input => ({ threads: [...input.matchAll(/<conversation n="(\d+)" name="([^"]*)"/g)].map(m => ({ n: Number(m[1]), important: m[2] === 'repo', summary: 'Review the PR for Bob today.', links: [] })) }))
   await s.run()
   expect(s.inputs[0]).toContain('newsletter &lt;b&gt;deals&lt;/b&gt;')
   expect(s.inputs[0]).toContain('<example want="no">newsletter</example>')
@@ -110,14 +110,42 @@ test('only conversations the model keeps are sent; the rest are digested quietly
 
 test('an unimportant conversation closes its awaiting-me loop and never comes back', async () => {
   const s = setup()
-  const id = s.add(1, 'fyi', { text: 'lol nice' })
+  const id = s.add(1, 'action', { text: 'lol nice' })
   s.set(T0 + 5 * H)
-  s.judge(() => ({ threads: [{ n: 1, important: false, summary: '' }] }))
+  s.judge(() => ({ threads: [{ n: 1, important: false, summary: '', links: [] }] }))
   expect(await s.run()).toBe(false)
   expect(s.status(id)).toBe('digested')
   expect(s.db.query('SELECT closed_at FROM loops').get()).toEqual({ closed_at: T0 + 5 * H })
   s.judge(() => { throw new Error('should not be asked') })
   expect(await s.run()).toBe(false)
+})
+
+test('an unanswered DM opens an awaiting-me loop only when it was labelled a task', () => {
+  const s = setup()
+  s.add(1, 'fyi', { text: '你在哪里' })
+  const task = s.add(2, 'action', { text: 'pay the bill by Friday', extId: 'm2b' })
+  sweepLoops(s.db, T0 + 5 * H)
+  expect(s.db.query('SELECT item_id FROM loops').all()).toEqual([{ item_id: task }])
+})
+
+test('an owner message in a group does not close its awaiting-me loops; the model judges from the conversation', () => {
+  const s = setup()
+  const g = { id: 'g1', name: 'Team', isGroup: true }
+  s.add(1, 'action', { chat: g, text: 'can someone book the room' })
+  s.add(2, null, { chat: g, fromMe: true, from: { id: 'me', name: 'me' }, text: 'unrelated lol', ts: T0 + 1 })
+  s.db.query(`INSERT INTO loops (item_id, kind, summary, opened_at) VALUES (1, 'awaiting_me', 'Book the room', ?)`).run(T0)
+  sweepLoops(s.db, T0 + 2)
+  expect(s.db.query('SELECT closed_at FROM loops').get()).toEqual({ closed_at: null })
+})
+
+test('the digest sees messages after the flagged one and shows the links the owner needs', async () => {
+  const s = setup()
+  s.add(1, 'action', { text: 'pls fill https://forms.gle/abc by fri', url: 'https://t.me/x/1' })
+  s.add(2, null, { text: 'reminder ya', ts: T0 + 1 })
+  s.judge(() => ({ threads: [{ n: 1, important: true, summary: 'Fill in the form for Ana by Fri 30 Oct.', links: ['https://forms.gle/abc', 'https://evil.example/made-up'] }] }))
+  expect(await s.run()).toBe(true)
+  expect(s.inputs[0]!.indexOf('pls fill')).toBeLessThan(s.inputs[0]!.indexOf('reminder ya'))
+  expect(s.sent[1]!.text).toEndWith('Fill in the form for Ana by Fri 30 Oct.\n🔗 https://t.me/x/1\n🔗 https://forms.gle/abc')
 })
 
 test('a failed send or model call, or a spent budget, holds everything for the next digest', async () => {
@@ -208,7 +236,7 @@ test('the model is told the current time and message dates; each conversation is
   const bob = s.add(2, 'action', { toMe: false, ts: T0 - H, from: { id: 'bob', name: 'Bob' }, chat: { id: 'c2', name: 'Bob', isGroup: false }, text: 'pay the bill by Friday' })
   const cy = s.add(3, 'action', { toMe: false, from: { id: 'cy', name: 'Cy' }, chat: { id: 'c3', name: 'Cy', isGroup: false } })
   s.set(T0 + H)
-  s.judge(() => ({ threads: [{ n: 1, important: false, summary: '' }, { n: 2, important: true, summary: 'Pay the bill by Fri 16 Oct.' }, { n: 3, important: true, summary: 'sum 3' }] }))
+  s.judge(() => ({ threads: [{ n: 1, important: false, summary: '', links: [] }, { n: 2, important: true, summary: 'Pay the bill by Fri 16 Oct.', links: [] }, { n: 3, important: true, summary: 'sum 3', links: [] }] }))
   // Cy's message fails to send: Bob's stays digested, Cy's waits for the next digest.
   s.fail('Cy')
   await expect(s.run()).rejects.toThrow('down')
@@ -218,7 +246,7 @@ test('the model is told the current time and message dates; each conversation is
   expect(s.sent[1]!.extra.reply_markup.inline_keyboard.flat().map((x: any) => x.callback_data)).toContain(`inb:do:${bob}`)
   expect([old, bob, cy].map(s.status)).toEqual(['digested', 'digested', 'new'])
   s.fail(false)
-  s.judge(() => ({ threads: [{ n: 1, important: true, summary: 'sum 3' }] }))
+  s.judge(() => ({ threads: [{ n: 1, important: true, summary: 'sum 3', links: [] }] }))
   await s.run()
   expect(s.sent.at(-1)!.text).toBe('🟠 Cy · Mon 12 Oct at 08:00\nsum 3')
   expect(s.status(cy)).toBe('digested')
