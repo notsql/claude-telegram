@@ -1,6 +1,6 @@
 /**
- * Runs one daemon turn: spawns `claude -p`, parses its stream-json output and
- * resolves with the final `result`. The caller picks the Claude Code session
+ * Runs one daemon turn: spawns `claude -p`, feeds the prompt over stream-json
+ * stdin, parses its stream-json output and resolves with the final `result`. The caller picks the Claude Code session
  * to resume (002 FR3) and reads the new one from `init`. The MCP config is
  * rendered per turn so its URL carries the session key (T003: the query
  * string reaches the server, `${VAR}` in `headers` is interpolated).
@@ -34,6 +34,8 @@ export type RunTurnOpts = {
   resume?: string
   /** Every parsed event, for logging and progress. */
   onEvent?: (ev: StreamEvent) => void
+  /** Receives a sender that adds a message to the running turn (002 FR11); it returns false once the turn takes no more. */
+  onSteer?: (send: (prompt: string) => boolean) => void
   /** Abort ends the turn via `interruptChild` (FR8, FR9). */
   signal?: AbortSignal
 }
@@ -81,11 +83,11 @@ function renderMcpConfig(port: number, key: string, browserPort?: number) {
  * servers (the browser MCP for ladder rung 4, servers added by 012) load
  * alongside `tg`.
  */
-export function turnArgv(key: string, prompt: string, opts: RunTurnOpts): string[] {
+export function turnArgv(key: string, opts: RunTurnOpts): string[] {
   return [
-    'claude', '-p', prompt,
+    'claude', '-p',
     ...(opts.resume ? ['--resume', opts.resume] : []),
-    '--output-format', 'stream-json', '--verbose',
+    '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
     // 009 FR5: subagent text in the stream (T901: present without it in 2.1.292).
     '--forward-subagent-text',
     '--settings', opts.settings ? mergeSettings(opts.settingsFile, opts.settings) : opts.settingsFile,
@@ -99,16 +101,38 @@ export function turnArgv(key: string, prompt: string, opts: RunTurnOpts): string
 export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): Promise<TurnOutcome> {
   // T003: inherited Claude Code env makes the child reuse the parent's session.
   const { CLAUDECODE, CLAUDE_CODE_SESSION_ID, ...env } = process.env
-  const child = Bun.spawn(turnArgv(key, prompt, opts), {
+  const child = Bun.spawn(turnArgv(key, opts), {
     cwd: opts.cwd,
-    stdin: 'ignore',
+    stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'inherit',
     // 009 FR6: background subagents keep `-p` open until they finish, up to this ceiling.
     env: { ...env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: String(BG_WAIT_CEILING_MS), TG_SESSION_KEY: key, TG_MCP_TOKEN: opts.mcpToken, TG_HOOK_TOKEN: opts.hookToken },
   })
 
-  const onAbort = () => interruptChild(child)
+  // 002 FR11: stdin stays open until the first `result`, so messages sent
+  // mid-turn reach the model at its next step. One written just before that
+  // result still runs, as a second result in the same process (2.1.312).
+  let open = true
+  const close = () => {
+    if (!open) return
+    open = false
+    try { child.stdin.end() } catch {}
+  }
+  const send = (text: string): boolean => {
+    if (!open) return false
+    try {
+      child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n')
+      child.stdin.flush()
+      return true
+    } catch {
+      return false
+    }
+  }
+  send(prompt)
+  opts.onSteer?.(send)
+
+  const onAbort = () => { close(); interruptChild(child) }
   if (opts.signal?.aborted) onAbort()
   else opts.signal?.addEventListener('abort', onAbort, { once: true })
 
@@ -119,6 +143,7 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
     const problems = guard(ev)
     if (problems?.length) {
       outcome.refused = problems
+      close()
       child.kill('SIGTERM')
       break
     }
@@ -128,9 +153,11 @@ export async function runTurn(key: string, prompt: string, opts: RunTurnOpts): P
       outcome.init = ev.event
     } else if (ev.kind === 'result') {
       outcome.result = ev.event
+      close()
     }
     opts.onEvent?.(ev)
   }
+  close()
   return { ...outcome, exitCode: await child.exited }
 }
 

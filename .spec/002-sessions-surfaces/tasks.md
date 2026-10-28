@@ -24,3 +24,5 @@ Depends on: 001 (T005, T007, T009)
   *Verify:* a burst of 50 chunks completes without 429 errors.
   *Verified 2026-10-06: 50 concurrent DM sends, 0 failures, 0 raw 429s, ~49s (the per-chat limiter sends 1/s).*
 - [x] **T211** Group onboarding doc: how to add the bot, turn off privacy mode in BotFather (required to see unmentioned messages for FR8), and enable topics.
+- [ ] **T212** Mid-turn messages steer the running turn: the runner feeds prompts over stream-json stdin, the queue hands a running key's messages to it (FR11).
+  *Verify:* AC6, plus queue unit tests.

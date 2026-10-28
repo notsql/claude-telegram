@@ -91,4 +91,31 @@ describe('turn queue (002 FR5, FR6)', () => {
     await Bun.sleep(0)
     expect(done).toBe(true)
   })
+
+  test('a message for a running key goes into that turn when steer takes it (FR11)', async () => {
+    const c = controlled()
+    const steered: string[] = [], queued: string[] = []
+    const q = createTurnQueue({ concurrency: 1, run: c.run, steer: (_, item) => (steered.push(item), true), onQueued: (_, item) => queued.push(item) })
+    q.enqueue('a', 'a1')
+    q.enqueue('a', 'a2')
+    q.enqueue('b', 'b1')
+    expect(steered).toEqual(['a2'])
+    expect(queued).toEqual(['b1'])
+    await c.finish('a')
+    expect(c.log).toEqual(['start a [a1]', 'end a', 'start b [b1]'])
+  })
+
+  test('a message steer declines, and every one after it, waits for the next turn', async () => {
+    const c = controlled()
+    let take = false
+    const steered: string[] = []
+    const q = createTurnQueue({ concurrency: 1, run: c.run, steer: (_, item) => take && (steered.push(item), true) })
+    q.enqueue('a', 'a1')
+    q.enqueue('a', 'a2')
+    take = true
+    q.enqueue('a', 'a3')
+    expect(steered).toEqual([])
+    await c.finish('a')
+    expect(c.log).toEqual(['start a [a1]', 'end a', 'start a [a2,a3]'])
+  })
 })

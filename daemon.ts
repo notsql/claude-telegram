@@ -323,6 +323,8 @@ const reflection = createReflectionWorker({
 
 // FR8: each key's running turn, so /stop or a new message (with the flag) can interrupt it.
 const runningTurns = new Map<string, AbortController>()
+// 002 FR11: each running chat turn's sender, for messages that arrive mid-turn.
+const steers = new Map<string, (prompt: string) => boolean>()
 const INTERRUPT_ON_NEW_MESSAGE = process.env.TELEGRAM_INTERRUPT_ON_NEW_MESSAGE === '1'
 const lifecycle = createSessionLifecycle(sessions, key => runningTurns.get(key)?.abort())
 // 008 FR9: the agent's parity path for /new, /resume, /model and /status.
@@ -597,7 +599,7 @@ async function runInSession(key: string, prompt: string, firstMessage: string, o
   return outcome
 }
 
-// 002 FR5/FR6: serial per key, up to N keys at once, mid-turn messages batched.
+// 002 FR5/FR6/FR11: serial per key, up to N keys at once, mid-turn messages steer the running turn.
 const turns = createTurnQueue<Inbound>({
   concurrency: config.maxConcurrentSessions,
   // 007 FR9: scheduled runs share the slots, keyed `job:<id>` so one job never overlaps itself.
@@ -605,6 +607,8 @@ const turns = createTurnQueue<Inbound>({
     : key.startsWith(SYS_PREFIX) ? fireSystemJob(key.slice(SYS_PREFIX.length) as SystemJobId | 'digest')
     : runBatch(key, batch))
     .catch(err => { log(`turn failed: ${err}`) }),
+  // Only chat messages: /compact and skill runs have no msgId and wait for the next turn.
+  steer: (key, item) => item.msgId != null && !!steers.get(key)?.(item.prompt),
   onQueued: (key, item) => {
     item.queued = true
     if (item.msgId != null) setReaction(parseKey(key).chatId, item.msgId, QUEUED_REACTION)
@@ -635,9 +639,11 @@ async function runBatch(key: string, batch: Inbound[]): Promise<void> {
   // /model and session-scoped Allow apply on top of the chat's policy.
   const session = { ...policy, model: lifecycle.model(key) ?? policy.model, alwaysAllow: [...policy.alwaysAllow ?? [], ...lifecycle.allowed(key)] }
   const prompt = batch.map(m => m.prompt).join('\n\n')
-  const outcome = await runInSession(key, prompt, batch[0]!.text, turnOpts(session, AbortSignal.any([turnAbort.signal, turn.signal]), progress.onEvent))
+  const onSteer = (send: (prompt: string) => boolean) => { steers.set(key, send) }
+  const outcome = await runInSession(key, prompt, batch[0]!.text, { ...turnOpts(session, AbortSignal.any([turnAbort.signal, turn.signal]), progress.onEvent), onSteer })
     .finally(() => {
       progress.finish()
+      steers.delete(key)
       if (runningTurns.get(key) === turn) runningTurns.delete(key)
     })
   if (outcome.init && discovery.record(discovery.cwdOf(policy), outcome.init)) menu.refresh()

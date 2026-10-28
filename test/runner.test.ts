@@ -32,7 +32,7 @@ describe('turnArgv (012 T1207)', () => {
   const opts = { settingsFile: '/s.json', mcpPort: 1, mcpToken: 't', hookToken: 'h', cwd: '/', maxTurns: 5, policyArgs: ['--allowedTools', 'mcp__tg'] }
 
   test('user-scope MCP servers stay visible (no --strict-mcp-config)', () => {
-    const argv = turnArgv('k', 'hi', opts)
+    const argv = turnArgv('k', opts)
     expect(argv).not.toContain('--strict-mcp-config')
     expect(Object.keys(JSON.parse(argv[argv.indexOf('--mcp-config') + 1]).mcpServers)).toEqual(['tg'])
   })

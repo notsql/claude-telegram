@@ -24,7 +24,7 @@ describe('shared browser (015 T1501)', () => {
   })
 
   const opts = { settingsFile: '/s.json', mcpPort: 1, mcpToken: 't', hookToken: 'h', cwd: '/', maxTurns: 5, policyArgs: [] }
-  const servers = (o: object) => { const a = turnArgv('k', 'hi', { ...opts, ...o }); return JSON.parse(a[a.indexOf('--mcp-config') + 1]).mcpServers }
+  const servers = (o: object) => { const a = turnArgv('k', { ...opts, ...o }); return JSON.parse(a[a.indexOf('--mcp-config') + 1]).mcpServers }
 
   test('turns get the browser server only when it runs (FR2, AC4)', () => {
     expect(Object.keys(servers({}))).toEqual(['tg'])

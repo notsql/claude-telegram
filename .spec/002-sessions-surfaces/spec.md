@@ -15,11 +15,12 @@ The channel plugin sends every chat into one shared Claude context and does not 
 - **FR3**: Each turn runs `claude -p --resume <sessionId>` (001). The `session_id` from the stream-json `system/init` event is stored, because resume can return a new ID.
 - **FR4**: Every outbound send (reply, files, progress, permission prompts, scheduler output) carries `message_thread_id` when the key has a topic.
 - **FR5**: Turns are serialised per session key. Up to N sessions (default 3) run concurrently across keys. Extra keys wait in a FIFO with a "queued" reaction.
-- **FR6**: Messages that arrive while a turn is running are batched into the next turn, unless `interruptOnNewMessage` is set (001).
+- **FR6**: Messages that arrive while a turn is running go into that turn (FR11). When it can't take them, they are batched into the next turn. With `interruptOnNewMessage` set (001), they interrupt the turn instead.
 - **FR7**: Group gating keeps today's rules (`groups[chat_id]`, `requireMention`, `allowFrom`, `mentionPatterns`, and reply-to-bot counts as a mention). Policy can be set per topic (see 003).
 - **FR8**: The inbound prompt includes sender identity (username, user_id), chat type and title, and topic name when known. In groups it includes up to K recent messages that were *not* addressed to the bot (an in-memory ring buffer per chat), so the agent has conversational context. Telegram's API has no history endpoint, which makes this buffer necessary.
 - **FR9**: Session lifecycle operations (`new`, `resume <n>`, `list`) are available as functions, used by the tools here and by the commands in 008.
 - **FR10**: Bot service messages (topic created or renamed) update a cached topic-name map, used for titles.
+- **FR11**: A chat message sent while its key's turn is running is written to that turn's `claude -p` over stream-json stdin (`--input-format stream-json`). The model sees it at its next step, so the owner can steer or add to a task without waiting. Stdin closes at the first `result`. A message written just before that result still runs, as a second result in the same process. Messages that come after stdin closes, `/compact` and skill runs wait for the next turn as in FR6. A message that goes into the running turn keeps the ack reaction, with no "queued" reaction.
 
 ## Non-goals
 - Telegram broadcast channels (`channel_post`).
@@ -31,6 +32,7 @@ The channel plugin sends every chat into one shared Claude context and does not 
 - **AC3** (FR5): Two chats send long tasks at the same time. Both progress, and messages within one chat stay in order.
 - **AC4** (FR7): An unmentioned group message is not answered, but it does appear in the context of the next mentioned turn (FR8).
 - **AC5** (FR9): `/new` followed by a question gets an answer with no prior context, and `/resume 1` restores the old context.
+- **AC6** (FR11): During a long task the owner sends "also do X", and the same turn's reply covers X, with no second turn and no queued reaction.
 
 ## Open questions
 - What should the ring-buffer size K be for group context? (Proposal: 20 messages or 4k characters.)

@@ -1,14 +1,17 @@
 /**
  * Turn scheduling (002 FR5, FR6): turns for one session key run one at a time,
  * at most `concurrency` keys run at once, and keys waiting for a slot are
- * served FIFO. Items that arrive while their key is busy or waiting are batched
- * into that key's next turn.
+ * served FIFO. An item that arrives while its key is running goes into the
+ * running turn when `steer` takes it (FR11); otherwise items for a busy or
+ * waiting key are batched into its next turn.
  */
 
 export type TurnQueueOpts<T> = {
   concurrency: number
   /** Runs one turn over every item that was pending when it started. */
   run: (key: string, batch: T[]) => Promise<void>
+  /** Hands an item to its key's running turn; false when that turn can't take it. */
+  steer?: (key: string, item: T) => boolean
   /** Called for an item that can't start right away (key busy or no free slot). */
   onQueued?: (key: string, item: T) => void
 }
@@ -42,6 +45,8 @@ export function createTurnQueue<T>(opts: TurnQueueOpts<T>) {
   return {
     enqueue(key: string, item: T): void {
       const batch = pending.get(key)
+      // Not past items already waiting, so a chat's messages stay in order.
+      if (!batch && running.has(key) && opts.steer?.(key, item)) return
       if (batch) {
         batch.push(item)
       } else {
