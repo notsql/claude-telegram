@@ -25,7 +25,7 @@ describe('action_confirm (020 FR2)', () => {
 
   test('the action rules are appended only when passed (FR6)', () => {
     const opts = { settingsFile: '/s.json', mcpPort: 1, mcpToken: 't', hookToken: 'h', cwd: '/', maxTurns: 5, policyArgs: [] }
-    const prompt = (o: object) => { const a = turnArgv('k', 'hi', o as any); return a[a.indexOf('--append-system-prompt') + 1]! }
+    const prompt = (o: object) => { const a = turnArgv('k', o as any); return a[a.indexOf('--append-system-prompt') + 1]! }
     expect(prompt(opts)).not.toContain('action_confirm')
     expect(prompt({ ...opts, extraInstructions: ACTION_GUARD_INSTRUCTIONS })).toContain('call action_confirm first')
   })
