@@ -83,3 +83,9 @@ The agent only acts when I message it or a cron job fires, while the things I mi
 
 ## Open questions
 - Should digest delivery move to the `Inbox` topic by default once the owner creates a forum group for it? (Proposal: yes when `watch.target` is set.)
+
+## Amendments (2026-11-01, at the owner's request)
+- **Whole chat, not a window (FR6, FR7, FR8).** 20 messages cover about two minutes of a busy chat, and Haiku had no idea who the owner is (their own name is stored as `me`). The first pass stays cheap Haiku but waits for a chat to go quiet; the final importance check is Sonnet (`tg-briefer`) with far more of the conversation, a `chat_notes` rolling summary of the rest, and an `<owner>` block from memory. Delivery still decides per conversation.
+- **Do it and Reply stay where you tapped (FR7, FR9).** They run in that chat or topic, not the owner DM. Inbox tools follow who can start a turn, not where: they are available unless the chat has `allowOthersOnSubscription`.
+- **Cards carry formatting (FR7, FR8).** Bold, italics and bullets go out as Telegram entities. `parse_mode` is still never used for item text.
+

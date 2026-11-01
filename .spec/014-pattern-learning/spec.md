@@ -22,7 +22,7 @@ The reflection pass (004/006) learns facts and procedures from single conversati
   - `routine` → a schedule proposal (007).
   - `preference` → a memory entry, e.g. "prefers bullet digests".
   - `skill` → a 006 proposal for a repeated multi-step request.
-- **FR3 — Thresholds.** A proposal needs `n ≥ 5` observations, a window of at least 7 days, and confidence ≥ 0.7. There are at most 5 proposals per pass. Patterns that were rejected aren't proposed again for 30 days.
+- **FR3 — Thresholds.** A proposal needs `n ≥ 4` observations (US2's "4 of the last 4 Mondays"; lowered from 5 on 2026-11-01), a window of at least 7 days, and confidence ≥ 0.7. There are at most 5 proposals per pass. Patterns that were rejected aren't proposed again for 30 days.
 - **FR4 — Applying.**
   - `active_hours`, `vip`, `mute` and `preference` apply automatically in the owner DM, with a notice and **Undo** (constitution V). Each is written as a memory file of `type: user` (habits) or `type: feedback` (mute/VIP), with frontmatter `metadata: {source: tg, pattern: <kind>, evidence, confidence}`. This makes them part of the one brain and visible to the terminal CLI (constitution II).
   - `routine` and `skill` are **always proposed with buttons** and never applied silently, because they create jobs that spend usage.
@@ -44,3 +44,8 @@ The reflection pass (004/006) learns facts and procedures from single conversati
 - **AC5** (FR6): Replying fast to a muted sender, twice, leads to an un-mute proposal at the next pass.
 - **AC6** (FR8): The miner input in the debug log contains no message bodies.
 - **AC7** (FR7): "forget that I'm a night owl" removes the `active_hours` memory, and quiet hours go back to the default.
+
+## Amendments (2026-11-01, at the owner's request)
+- **Repeated tasks first.** The owner asked for learning from repeated tasks, so `routine` and `skill` proposals ship first (T1408). The miner reads the owner's own Telegram requests from 005 history plus the to-dos they tapped 🤖 Do it on, and cites them by id: the daemon counts `n` and the window from those ids, never from the model's claim. `vip`, `mute`, `active_hours` and `preference` stay open under T1401–T1407.
+- Proposals go to the 📍 Updates chat and work in groups and topics, gated by owner (replaces "owner DM" for these kinds). **Not now** asks again after 7 days.
+

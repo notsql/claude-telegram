@@ -31,6 +31,7 @@ Start with [constitution.md](./constitution.md). Each feature folder follows spe
 | [017](./017-deliverables/spec.md) | Deliverables: files with versions, ✏️ Change, 🔁 Keep current, 📁 Files | P8 | 007, 008, 016 |
 | [018](./018-topic-channels/spec.md) | Topic channels: the agent opens a forum topic per recurring subject and routes updates there | P8 | 002, 004, 013 |
 | [019](./019-follow-through/spec.md) | Follow-through: drafts ready in the digest, ⏳ waiting on others, plain-word notification rules | P8 | 004, 013, 016 |
+| [021](./021-chrome-extension/spec.md) | Chrome extension: turns can drive the owner's real, signed-in Chrome through Claude in Chrome | P8 | 001, 003, 015, 020 |
 | [010](./010-agent-teams/spec.md) | Agent teams | **Deferred**: teams need an interactive session, which `-p` can't provide | 009 |
 
 Docs last checked against Claude Code **2.1.288** on 2026-10-03: [headless](https://code.claude.com/docs/en/headless), [hooks](https://code.claude.com/docs/en/hooks), [sub-agents](https://code.claude.com/docs/en/sub-agents), [skills](https://code.claude.com/docs/en/skills), [agent-teams](https://code.claude.com/docs/en/agent-teams).
