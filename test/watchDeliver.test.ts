@@ -26,6 +26,7 @@ function setup(start = at(12), vips: string[] = []) {
   const disliked: number[] = []
   const acted: number[] = []
   const actedText: string[] = []
+  const actedKey: (string | undefined)[] = []
   let t = start
   let target: { chatId: string; threadId?: number } = { chatId: '42' }
   const d = createDeliver({
@@ -34,7 +35,7 @@ function setup(start = at(12), vips: string[] = []) {
     budget: { take: () => budget },
     examples: () => '<example want="no">reply to lunch</example>',
     dislike: r => disliked.push(r.id),
-    act: r => { acted.push(r.id); actedText.push(r.text) },
+    act: (r, key) => { acted.push(r.id); actedText.push(r.text); actedKey.push(key) },
   })
   const add = (n: number, label: string, over: Partial<Item> = {}) => {
     const id = insertItem(db, item(n, over))!
@@ -43,7 +44,7 @@ function setup(start = at(12), vips: string[] = []) {
   }
   const status = (id: number) => (db.query('SELECT status, snooze_until, label FROM items WHERE id = ?').get(id) as any)
   return {
-    db, d, sent, inputs, muted, disliked, acted, actedText, add, status,
+    db, d, sent, inputs, muted, disliked, acted, actedText, actedKey, add, status,
     set: (ms: number) => { t = ms }, fail: (v: boolean) => { fail = v }, budget: (v: boolean) => { budget = v },
     judge: (fn: typeof judge) => { judge = fn }, target: (v: typeof target) => { target = v },
   }
@@ -212,9 +213,16 @@ test('🔕 Not like this records the item as unwanted and settles the conversati
 test('🤖 Do it starts a turn for the item and leaves it open', () => {
   const s = setup()
   const a = s.add(1, 'action', { text: 'pay the bill by Friday' })
-  expect(s.d.tap('do', a)).toBe('🤖 On it, in your DM…')
+  expect(s.d.tap('do', a)).toBe('🤖 On it…')
   expect(s.acted).toEqual([a])
   expect(s.status(a).status).toBe('new')
+})
+
+test('🤖 Do it runs in the chat where it was tapped', () => {
+  const s = setup()
+  const a = s.add(1, 'action')
+  s.d.tap('do', a, '-100:7')
+  expect(s.actedKey).toEqual(['-100:7'])
 })
 
 test('🤖 Do it on a promise carries the to-do along with the owner\'s own message', () => {

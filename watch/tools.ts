@@ -1,10 +1,11 @@
 /**
  * `inbox_*`, `source_*` and `draft_reply` on the daemon MCP server (013 FR9),
- * owner DM only: hidden from `tools/list` and refused elsewhere. Item text is
- * untrusted third-party content; results say so and are plain text.
+ * only in chats where just the owner can start a turn: hidden from
+ * `tools/list` and refused elsewhere. Item text is untrusted third-party
+ * content; results say so and are plain text.
  *
  * `draft_reply` never sends. It posts a draft card with Send / Edit / Cancel
- * to the owner DM; only the owner's Send tap runs the source's send template
+ * to the chat or topic it was drafted in; only the owner's Send tap runs the source's send template
  * (send.ts, FR4), and that tap is audited as a 003 approval decision. A draft
  * is sent at most once, and drafts are lost on restart (fail closed).
  */
@@ -15,6 +16,7 @@ import type { InlineKeyboardButton } from 'grammy/types'
 import type { ToolResult } from '../memory/tools.ts'
 import type { AuditEntry } from '../policy/audit.ts'
 import { parseKey } from '../sessions/key.ts'
+import { threadOpts } from '../telegram/send.ts'
 import { answer, appendLabel, createReplyPrompts, isOwner, ownerOnly } from '../telegram/handlers/ui.ts'
 import { loadSources, removeSource, saveSources, setEnabled, type Source } from './registry.ts'
 import { BUILTINS, findBin, propose, type SourceArgs } from './onboard.ts'
@@ -105,15 +107,15 @@ const items = (rows: ItemRow[]) => text(rows.length ? `${UNTRUSTED}\n\n${rows.ma
 const ftsQuery = (q: string) => q.split(/\s+/).filter(Boolean).map(w => `"${w.replaceAll('"', '""')}"`).join(' ')
 
 export type DraftApi = {
-  sendMessage(chatId: string, text: string, extra: { reply_markup: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown>
+  sendMessage(chatId: string, text: string, extra: { message_thread_id?: number; reply_markup: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown>
 }
 
 export type WatchToolDeps = {
   db: Database
   stateDir: string
   api: DraftApi
-  /** True for the owner's DM session key. */
-  isOwnerDm: (key: string) => boolean
+  /** True when only the owner can start a turn in this session key. */
+  isOwnerChat: (key: string) => boolean
   spawn: SendSpawner
   audit?: (entry: AuditEntry) => void
   now?: () => number
@@ -141,19 +143,21 @@ export function createWatchTools(d: WatchToolDeps) {
   const item = (id: number) => d.db.query('SELECT * FROM items WHERE id = ?').get(id) as ItemRow | null
   const sourceOf = (id: string) => loadSources(d.stateDir).find(s => s.id === id)
 
-  /** Posts the draft card for `id` to its owner DM. */
+  /** Posts the draft card for `id` to the chat or topic it was drafted in. */
   async function card(id: number): Promise<void> {
     const dr = drafts.get(id)!
     const r = item(dr.itemId)!
     const cb = (a: DraftAction) => `drf:${a}:${id}`
-    await d.api.sendMessage(parseKey(dr.key).chatId, `✉️ Draft reply to ${r.from_name ?? r.from_id ?? 'unknown'} via ${r.source}:\n\n${dr.text}`, {
+    const to = parseKey(dr.key)
+    await d.api.sendMessage(to.chatId, `✉️ Draft reply to ${r.from_name ?? r.from_id ?? 'unknown'} via ${r.source}:\n\n${dr.text}`, {
+      ...threadOpts(to),
       reply_markup: { inline_keyboard: [[{ text: 'Send', callback_data: cb('send') }, { text: 'Edit', callback_data: cb('edit') }, { text: 'Cancel', callback_data: cb('cancel') }]] },
     })
   }
 
   async function call(name: string, args: Record<string, unknown>, key: string): Promise<ToolResult | undefined> {
     if (!TOOLS.some(t => t.name === name)) return undefined
-    if (!d.isOwnerDm(key)) return text(`${name} is only available in the owner's DM`, true)
+    if (!d.isOwnerChat(key)) return text(`${name} is only available to the owner`, true)
     try {
       switch (name) {
         case 'inbox_search': {
@@ -225,7 +229,9 @@ export function createWatchTools(d: WatchToolDeps) {
           adds.set(id, s)
           const cfg = s.config as { command?: string[]; connector?: string; intervalSec?: number }
           const what = cfg.command ? `Command: ${cfg.command.join(' ')}` : `Connector: ${cfg.connector}`
-          await d.api.sendMessage(parseKey(key).chatId, `📡 Add source "${s.title}" (${s.id}, ${s.kind})?\n${what}${cfg.intervalSec ? `\nEvery ${cfg.intervalSec}s` : ''}\nIt runs read-only until paused or removed.`, {
+          const to = parseKey(key)
+          await d.api.sendMessage(to.chatId, `📡 Add source "${s.title}" (${s.id}, ${s.kind})?\n${what}${cfg.intervalSec ? `\nEvery ${cfg.intervalSec}s` : ''}\nIt runs read-only until paused or removed.`, {
+            ...threadOpts(to),
             reply_markup: { inline_keyboard: [[{ text: 'Add', callback_data: `srcadd:add:${id}` }, { text: 'Cancel', callback_data: `srcadd:cancel:${id}` }]] },
           })
           return text(`Shown to the owner with Add / Cancel. The source is added only if they tap Add. End the turn here.`)
@@ -291,7 +297,7 @@ export function createWatchTools(d: WatchToolDeps) {
   }
 
   return {
-    list: (key: string) => d.isOwnerDm(key) ? TOOLS : [],
+    list: (key: string) => d.isOwnerChat(key) ? TOOLS : [],
     call,
     tap,
     edit,

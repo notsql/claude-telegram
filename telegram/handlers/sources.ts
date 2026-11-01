@@ -114,7 +114,7 @@ export function registerSources(bot: Bot, o: {
   /** The owner DM's key; the source_* tools only run there. */
   owner: () => string | undefined
   /** Starts an owner-DM turn that sets a source up with source_add (and 012 installs). */
-  setup: (prompt: string, text: string) => void
+  setup: (prompt: string, text: string, key?: string) => void
   /** After a source is added: offers the digest setup (FR16). */
   added?: () => unknown
 }) {
@@ -144,7 +144,7 @@ export function registerSources(bot: Bot, o: {
         if (!b || !r) return answer(ctx, 'Unknown source.')
         // A missing CLI goes through the agent, which offers to install it (012).
         if ('error' in r) {
-          o.setup(`Add the built-in source "${b.id}" with source_add. If its tool is missing, help me install it, then add it.`, `Set up ${b.title}`)
+          o.setup(`Add the built-in source "${b.id}" with source_add. If its tool is missing, help me install it, then add it.`, `Set up ${b.title}`, here)
           return answer(ctx, `🔧 Setting up ${b.title}: continue in your DM.`, !dm)
         }
         const sources = loadSources(o.stateDir)
@@ -187,7 +187,7 @@ export function registerSources(bot: Bot, o: {
     if (!others.peek(ctx) || !isOwner(ctx)) return false
     others.done(ctx)
     const what = ctx.message?.text?.trim()
-    if (what) o.setup(`Watch this as a new source with source_add, installing whatever it needs: ${what}`, `Add source: ${what}`)
+    if (what) o.setup(`Watch this as a new source with source_add, installing whatever it needs: ${what}`, `Add source: ${what}`, ctx.message && keyOf(ctx.message))
     return true
   }
 

@@ -26,7 +26,7 @@ import type { Database } from 'bun:sqlite'
 import type { Bot } from 'grammy'
 import type { InlineKeyboardButton } from 'grammy/types'
 import { z } from 'zod'
-import { answer, appendLabel, isOwner, ownerOnly } from '../telegram/handlers/ui.ts'
+import { answer, appendLabel, isOwner, keyOf, ownerOnly } from '../telegram/handlers/ui.ts'
 import { wrapContext, wrapItem } from './triage.ts'
 
 export type DeliverApi = {
@@ -59,10 +59,10 @@ export type DeliverOpts = {
   dislike?: (item: { id: number; text: string }) => void
   /** Called on Mute sender (cards sent before summaries); durable mutes are memory (014). */
   mute: (source: string, fromId: string) => void
-  /** Called on Do it: starts a turn in the owner DM that carries out the task (tools.ts). */
-  act?: (item: { id: number; source: string; from_name: string | null; text: string }) => void
-  /** Called on Draft reply: starts a turn that drafts with `draft_reply` (tools.ts). */
-  draft?: (item: { id: number; source: string; from_name: string | null; text: string }) => void
+  /** Called on Do it: starts a turn in the chat `key` (where it was tapped) that carries out the task (tools.ts). */
+  act?: (item: { id: number; source: string; from_name: string | null; text: string }, key?: string) => void
+  /** Called on Draft reply: starts a turn in the chat `key` that drafts with `draft_reply` (tools.ts). */
+  draft?: (item: { id: number; source: string; from_name: string | null; text: string }, key?: string) => void
   /** Local "HH:MM" bounds; default 23:00–07:30. */
   quiet?: { start: string; end: string }
   pingsPerHour?: number
@@ -324,8 +324,8 @@ export function createDeliver(o: DeliverOpts) {
     })()
   }
 
-  /** A button tap; returns the label to show. */
-  function tap(action: Action, id: number): string {
+  /** A button tap in the chat `key`; returns the label to show. */
+  function tap(action: Action, id: number, key?: string): string {
     const r = o.db.query('SELECT id, source, from_id, from_name, text FROM items WHERE id = ?').get(id) as Pick<Row, 'id' | 'source' | 'from_id' | 'from_name' | 'text'> | null
     if (!r) return 'Item no longer stored.'
     switch (action) {
@@ -350,12 +350,12 @@ export function createDeliver(o: DeliverOpts) {
         if (!o.act) return 'Doing tasks is not available yet.'
         // A promise of the owner's: the to-do says more than their own short message.
         const promise = o.db.query(`SELECT summary FROM loops WHERE item_id = ? AND kind = 'i_promised' AND closed_at IS NULL`).get(id) as { summary: string } | null
-        o.act(promise ? { ...r, text: `The owner promised: ${promise.summary}\nTheir message: ${r.text}` } : r)
-        return '🤖 On it, in your DM…'
+        o.act(promise ? { ...r, text: `The owner promised: ${promise.summary}\nTheir message: ${r.text}` } : r, key)
+        return '🤖 On it…'
       }
       case 'draft':
         if (!o.draft) return 'Drafting replies is not available yet.'
-        o.draft(r)
+        o.draft(r, key)
         return '✍️ Drafting a reply…'
     }
   }
@@ -373,7 +373,8 @@ export function registerInboxButtons(bot: Bot, deliver: Pick<ReturnType<typeof c
   bot.callbackQuery(/^inb:(done|snz1|snzn|snzt|mute|draft|nah|do):(\d+)$/, async ctx => {
     if (!isOwner(ctx)) return ownerOnly(ctx)
     const action = ctx.match![1] as Action
-    const label = deliver.tap(action, Number(ctx.match![2]))
+    const msg = ctx.callbackQuery.message
+    const label = deliver.tap(action, Number(ctx.match![2]), msg && keyOf(msg))
     await answer(ctx, label)
     if (action !== 'draft' && action !== 'do') await appendLabel(ctx, label)
   })
