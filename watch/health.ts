@@ -9,7 +9,7 @@
 
 import type { Bot } from 'grammy'
 import type { InlineKeyboardButton } from 'grammy/types'
-import { answer, appendLabel, isOwner, ownerOnly } from '../telegram/handlers/ui.ts'
+import { answer, appendLabel, isOwner, keyOf, ownerOnly } from '../telegram/handlers/ui.ts'
 import { loadSources, type Source } from './registry.ts'
 
 export const ERROR_THRESHOLD = 5
@@ -21,7 +21,7 @@ export type HealthDeps = {
   /** Where notices go: the inbox delivery target (deliver.ts). */
   target: () => { chatId: string; threadId?: number }
   /** Starts the Fix turn in the owner DM. */
-  fix: (prompt: string) => void
+  fix: (prompt: string, key?: string) => void
   /** Pauses the source in sources.json and the supervisor. */
   pause: (id: string) => void
   log: (line: string) => void
@@ -66,14 +66,14 @@ export function createHealth(d: HealthDeps) {
   }
 
   /** Owner's Fix or Pause; returns the label to show. */
-  function tap(action: 'fix' | 'pause', id: string): string {
+  function tap(action: 'fix' | 'pause', id: string, key?: string): string {
     const s = loadSources(d.stateDir).find(x => x.id === id)
     if (!s) return `${id} no longer exists`
     if (action === 'pause') {
       d.pause(id)
       return '⏸ Paused'
     }
-    d.fix(fixPrompt(s, problem(s, now(), since) ?? 'was reported unhealthy'))
+    d.fix(fixPrompt(s, problem(s, now(), since) ?? 'was reported unhealthy'), key)
     return '🔧 Diagnosing…'
   }
 
@@ -92,6 +92,7 @@ export function registerHealthButtons(bot: Bot, health: Health) {
   bot.callbackQuery(/^wsh:(fix|pause):([a-z0-9][a-z0-9_-]*)$/, async ctx => {
     if (!isOwner(ctx)) return ownerOnly(ctx)
     await answer(ctx)
-    await appendLabel(ctx, health.tap(ctx.match![1] as 'fix' | 'pause', ctx.match![2]!))
+    const msg = ctx.callbackQuery.message
+    await appendLabel(ctx, health.tap(ctx.match![1] as 'fix' | 'pause', ctx.match![2]!, msg && keyOf(msg)))
   })
 }

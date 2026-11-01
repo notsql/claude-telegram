@@ -28,7 +28,7 @@ function setup() {
   const tools = createWatchTools({
     db, stateDir,
     api: { async sendMessage(chatId, text, extra) { cards.push({ chatId, text, extra }) } },
-    isOwnerDm: key => key === OWNER,
+    isOwnerChat: key => key === OWNER,
     spawn: async argv => { spawned.push(argv); return { ok: true } },
     audit: e => audits.push(e),
   })
@@ -79,7 +79,7 @@ test('source_list, pause, resume', async () => {
   expect((await s.call('source_pause', { id: 'nope' })).isError).toBe(true)
 })
 
-test('tools are owner DM only', async () => {
+test('tools are hidden where others can start turns', async () => {
   const s = setup()
   expect(s.tools.list(OWNER).map(t => t.name)).toContain('draft_reply')
   expect(s.tools.list('-100')).toEqual([])

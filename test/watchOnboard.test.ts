@@ -36,7 +36,7 @@ function setup(which: (bin: string) => string | null = () => null) {
   const tools = createWatchTools({
     db: openInboxDb(':memory:'), stateDir, which,
     api: { async sendMessage(chatId, text, extra) { cards.push({ chatId, text, extra }) } },
-    isOwnerDm: key => key === OWNER,
+    isOwnerChat: key => key === OWNER,
     spawn: async () => ({ ok: true }),
     live: { start: s => sup.startSource(s), stop: id => sup.stopSource(id) },
   })

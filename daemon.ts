@@ -362,11 +362,11 @@ const resumer = createResumer({
     text,
   }),
 })
-// 013 FR9: inbox/source/draft tools, owner DM only. Sends run only from the owner's Send tap.
+// 013 FR9: inbox/source/draft tools, wherever only the owner can start a turn. Sends run only from the owner's Send tap.
 const inboxDb = config.watch ? openInboxDb(inboxPath(STATE_DIR)) : undefined
 const watchTools = inboxDb && createWatchTools({
   db: inboxDb, stateDir: STATE_DIR, api: bot.api, spawn: bunSendSpawn, audit: e => audit(e),
-  isOwnerDm: key => { const t = parseKey(key); return t.threadId == null && loadAccess().allowFrom.includes(t.chatId) },
+  isOwnerChat: key => policyOf(key).allowOthersOnSubscription !== true,
   // T1308: add/pause/resume/remove reach the running supervisor (created below).
   live: { start: s => watch?.supervisor.startSource(s), stop: id => watch?.supervisor.stopSource(id) },
   // 013 FR16: the first source added offers the digest setup; settings changes reschedule it.
@@ -417,14 +417,13 @@ const watch = config.watch ? (() => {
   const owner = loadAccess().allowFrom[0]
   const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, examples,
     dislike: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: false, at: Date.now() }), mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
-    // Do it: a turn in the owner DM that carries out the task (T1314).
-    act: r => turns.enqueue(owner, {
-      prompt: renderInbound(doPrompt(r), { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),
+    // Do it and Draft reply run where the button was tapped (T1319).
+    act: (r, key = owner) => turns.enqueue(key, {
+      prompt: renderInbound(doPrompt(r), { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
       text: 'Do it',
     }),
-    // Draft reply: a turn in the owner DM that calls draft_reply (T1307).
-    draft: r => turns.enqueue(owner, {
-      prompt: renderInbound(draftPrompt(r), { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),
+    draft: (r, key = owner) => turns.enqueue(key, {
+      prompt: renderInbound(draftPrompt(r), { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
       text: 'Draft reply',
     }),
   }) : undefined
@@ -485,8 +484,8 @@ const watch = config.watch ? (() => {
   // FR10: one Fix/Pause notice per failing or silent source.
   const health = owner ? createHealth({
     stateDir: STATE_DIR, api: bot.api, target: () => inboxTarget(owner), log,
-    fix: prompt => turns.enqueue(owner, {
-      prompt: renderInbound(prompt, { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }),
+    fix: (prompt, key = owner) => turns.enqueue(key, {
+      prompt: renderInbound(prompt, { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
       text: 'Fix source',
     }),
     pause: id => { setEnabled(STATE_DIR, id, false); supervisor.stopSource(id) },
@@ -691,9 +690,8 @@ const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capability
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
 const sourcesUi = watch && registerSources(bot, { stateDir: STATE_DIR, db: watch.db, live: { start: s => watch.supervisor.startSource(s), stop: id => watch.supervisor.stopSource(id) }, which: findBin,
   owner: () => loadAccess().allowFrom[0],
-  setup: (prompt, text) => {
-    const owner = loadAccess().allowFrom[0]
-    if (owner) turns.enqueue(owner, { prompt: renderInbound(prompt, { origin: 'inbox', chat_id: owner, ts: new Date().toISOString() }), text })
+  setup: (prompt, text, key = loadAccess().allowFrom[0]) => {
+    if (key) turns.enqueue(key, { prompt: renderInbound(prompt, { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }), text })
   },
   added: () => digestUi?.offer().catch(e => log(`digest setup: ${e}`)),
 })

@@ -99,7 +99,7 @@ test('digest_settings reads and changes the prefs, rejecting bad times; an agent
   const tools = createWatchTools({
     db: openInboxDb(':memory:'), stateDir, which: () => '/usr/bin/gh',
     api: { async sendMessage(_c, text) { cards.push(text) } },
-    isOwnerDm: key => key === '42', spawn: async () => ({ ok: true }),
+    isOwnerChat: key => key === '42', spawn: async () => ({ ok: true }),
     added: () => void added++, digestChanged: () => void changed++,
   })
   expect((await tools.call('digest_settings', {}, '42'))!.content[0]!.text).toStartWith('When: 08:30 and 18:30, every day')
