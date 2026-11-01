@@ -7,7 +7,7 @@
  * `awaiting_me` loops, go by conversation to the `tg-summarizer` one-shot,
  * which keeps only what the owner would want in a roundup and writes a line for
  * each, judging staleness from the message dates against the current time.
- * They go out as a title message, then one plain-text message per conversation
+ * They go out as a title message, then one formatted message per conversation
  * dated by its latest message, with 🤖 Do it, ✍️ Reply, ✅ Done and 🔕 Not like
  * this (deliver.ts), then 🤝 On your plate (T1317): the owner's open
  * `i_promised` loops go, with the messages before and since, to the same
@@ -19,18 +19,19 @@
  * next digest. The owner's digest prefs (FR16) leave out sections or sources,
  * settling what they drop, and add their own note to the summarizer prompt.
  * Item text is untrusted: the model sees it only inside wrappers,
- * and nothing is sent with parse_mode.
+ * and formatting goes out as entities, never parse_mode.
  */
 
 import type { Database } from 'bun:sqlite'
-import type { InlineKeyboardButton } from 'grammy/types'
+import type { InlineKeyboardButton, MessageEntity } from 'grammy/types'
 import { z } from 'zod'
+import { bold, capped, joined, type Rich } from '../telegram/rich.ts'
 import type { DigestPrefs } from './digestPrefs.ts'
-import { BriefSchema, briefButtons, linkLines, REPLIED, threadLines, threadLinks, threadsOf, type Picked, type Row, type RunBrief, type Thread } from './deliver.ts'
+import { BriefSchema, briefButtons, DETAILS_RULE, detailsOf, REPLIED, threadCard, threadLines, threadLinks, threadsOf, type Picked, type Row, type RunBrief, type Thread } from './deliver.ts'
 import { wrapContext, wrapItem } from './triage.ts'
 
 export type DigestApi = {
-  sendMessage(chatId: string, text: string, extra: { message_thread_id?: number; reply_markup?: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown>
+  sendMessage(chatId: string, text: string, extra: { message_thread_id?: number; entities?: MessageEntity[]; reply_markup?: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown>
 }
 
 export type DigestOpts = {
@@ -72,8 +73,6 @@ const MAX_MESSAGE = 4000
 /** At most this many conversation messages per digest; the rest wait for the next one. */
 const MAX_THREADS = 20
 
-const fmtWhen = (t: number) => new Date(t).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
-
 /** Closes answered, done or expired loops, then opens `awaiting_me` loops for unanswered items older than `loopAfterMs`. */
 export function sweepLoops(db: Database, t: number, loopAfterMs = LOOP_AFTER_MS): void {
   db.transaction(() => {
@@ -101,6 +100,7 @@ export function digestInput(threads: Thread[], examples = '', now = Date.now(), 
     'Judge each conversation as a whole, not each message alone: people split one request over several messages, and a later message may answer or settle it.',
     'For each conversation decide `important`: true only if the owner has something to do: a task for them (do, buy, pay, book, attend, submit, review, fill in, sign) or a decision only they can make that someone is waiting on. False when there is nothing for the owner to do: a question that only needs a quick chat reply, news, opinions, plans being discussed, newsletters, promotions, automated or bot notifications, receipts, casual chat, and anything already answered or handled by others. Also false when the dates show it no longer matters: the event or deadline has passed, or a later message settled it. When unsure, false.',
     'Then write `summary` as a to-do in one sentence, two at most: start with the verb, then who it is for, what exactly and by when, e.g. "Confirm the room with Jaimin for the interview, now Tue 28 Oct." Name people by the names in the messages, never a pronoun on its own or a numeric id. Resolve relative dates in messages ("tomorrow", "Friday") from the day they were sent, and write them as a day and date, e.g. "by Fri 17 Oct". No greeting, no quotes, no emoji.',
+    DETAILS_RULE,
     'Put in `links` every URL from the conversation the owner needs to do it themselves (the form to fill, the PR to review, the document, payment or booking page), copied exactly; empty when there is none. Do not put URLs in `summary`.',
     ...(examples ? [examples] : []),
     ...(note.trim() ? [`The owner's own instructions for this roundup, which outrank the rules above:\n${note.trim()}`] : []),
@@ -133,15 +133,15 @@ export function plateInput(promises: OpenPromise[], now = Date.now()): string {
 const fmtDay = (t: number) => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 
 /** The 🤝 On your plate message and its buttons, one row per to-do. */
-export function plateMessage(kept: { item: Row; todo: string }[], watching: number, now: number): { text: string; buttons: InlineKeyboardButton[][] } {
+export function plateMessage(kept: { item: Row; todo: string }[], watching: number, now: number): { text: Rich; buttons: InlineKeyboardButton[][] } {
   const shown = kept.slice(0, PLATE_SHOWN)
   const more = kept.length - shown.length + watching
   return {
-    text: [
-      `🤝 On your plate · ${fmtDay(now)}`,
+    text: joined([
+      bold(`🤝 On your plate · ${fmtDay(now)}`),
       shown.map((k, i) => `${i + 1}. ${k.todo}`).join('\n'),
       ...(more ? [`${more} more I'm watching.`] : []),
-    ].join('\n\n'),
+    ], '\n\n'),
     buttons: shown.map((k, i) => [
       { text: `🤖 Do it · ${i + 1}`, callback_data: `inb:do:${k.item.id}` },
       { text: `✅ Done · ${i + 1}`, callback_data: `inb:done:${k.item.id}` },
@@ -208,7 +208,7 @@ export async function runDigest(o: DigestOpts): Promise<boolean> {
     const close = o.db.query('UPDATE loops SET closed_at = ? WHERE item_id = ? AND closed_at IS NULL')
     threads.forEach((thread, i) => {
       const v = out.threads.find(x => x.n === i + 1)
-      if (v?.important && v.summary.trim()) picked.push({ thread, summary: v.summary.trim(), links: threadLinks(thread, v.links) })
+      if (v?.important && v.summary.trim()) picked.push({ thread, summary: v.summary.trim(), details: detailsOf(v.details), links: threadLinks(thread, v.links) })
       else if (v) o.db.transaction(() => { for (const r of thread.items) { settle.run(r.id); close.run(t, r.id) } })()
     })
   }
@@ -237,19 +237,19 @@ export async function runDigest(o: DigestOpts): Promise<boolean> {
   }
   if (!picked.length && !kept.length) return false
 
-  const cap = (text: string) => text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text
   const where = o.to.threadId ? { message_thread_id: o.to.threadId } : {}
-  await o.api.sendMessage(o.to.chatId, `📋 ${o.title}`, where)
+  const title = bold(`📋 ${o.title}`)
+  await o.api.sendMessage(o.to.chatId, title.text, { ...where, entities: title.entities })
   const mark = o.db.query(`UPDATE items SET status = 'digested' WHERE id = ? AND status = 'new'`)
   for (const p of picked) {
-    const { thread: th, summary, links } = p
-    const head = `${th.items.some(r => r.label === 'urgent') ? '🔴' : '🟠'} ${th.name} · ${fmtWhen(th.items.at(-1)!.ts)}`
-    await o.api.sendMessage(o.to.chatId, cap([head, summary, ...(links.length ? [linkLines(links)] : [])].join('\n')), { ...where, reply_markup: { inline_keyboard: briefButtons([p]) } })
-    o.db.transaction(() => { for (const r of th.items) mark.run(r.id) })()
+    const msg = capped(threadCard(p), MAX_MESSAGE)
+    await o.api.sendMessage(o.to.chatId, msg.text, { ...where, entities: msg.entities, reply_markup: { inline_keyboard: briefButtons([p]) } })
+    o.db.transaction(() => { for (const r of p.thread.items) mark.run(r.id) })()
   }
   if (kept.length) {
     const plate = plateMessage(kept, watching, t)
-    await o.api.sendMessage(o.to.chatId, cap(plate.text), { ...where, reply_markup: { inline_keyboard: plate.buttons } })
+    const msg = capped(plate.text, MAX_MESSAGE)
+    await o.api.sendMessage(o.to.chatId, msg.text, { ...where, entities: msg.entities, reply_markup: { inline_keyboard: plate.buttons } })
   }
   return true
 }

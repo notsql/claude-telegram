@@ -58,7 +58,8 @@ test('due items go out as one summary per send, grouped by conversation, with Re
   await s.d.tick()
   expect(s.sent).toHaveLength(1)
   expect(s.sent[0]!.chatId).toBe('42')
-  expect(s.sent[0]!.text).toBe('📥 Needs you\n\n🔴 Boss\nsum 1\n\n🟠 Family\nsum 2')
+  expect(s.sent[0]!.text.replace(/ · .*/g, '')).toBe('📥 Needs you\n\n🔴 Boss\nsum 1\n\n🟠 Family\nsum 2')
+  expect(s.sent[0]!.extra.entities.slice(0, 2).map((e: { type: string }) => e.type)).toEqual(['bold', 'bold'])
   expect(s.sent[0]!.extra.parse_mode).toBeUndefined()
   expect(s.sent[0]!.extra.reply_markup.inline_keyboard.map((row: any[]) => row.map(x => x.callback_data)))
     .toEqual([[`inb:do:${a2}`, `inb:draft:${a2}`], [`inb:done:${a2}`, `inb:nah:${a2}`], [`inb:do:${b}`, `inb:draft:${b}`], [`inb:done:${b}`, `inb:nah:${b}`]])
@@ -74,7 +75,7 @@ test('the model sees messages after the flagged one, and the summary carries the
   s.judge(() => ({ threads: [{ n: 1, important: true, summary: 'Review PR 41 for Boss.', links: ['https://docs.example/spec', 'https://not-in-chat.example'] }] }))
   await s.d.tick()
   expect(s.inputs[0]).toContain('spec is at')
-  expect(s.sent[0]!.text).toBe('📥 Needs you\n\n🟠 Boss\nReview PR 41 for Boss.\n🔗 https://github.com/o/r/pull/41\n🔗 https://docs.example/spec')
+  expect(s.sent[0]!.text.replace(/ · .*/, '')).toBe('📥 Needs you\n\n🟠 Boss\nReview PR 41 for Boss.\n🔗 https://github.com/o/r/pull/41\n🔗 https://docs.example/spec')
 })
 
 test('an owner reply settles a DM item without the model, but not a group one', async () => {
@@ -255,4 +256,15 @@ test('FR15: a loop due within the lead time is nudged once; overdue reads as suc
   await s.d.tick()
   expect(s.sent).toHaveLength(2)
   expect(s.sent[1]!.text).toContain(`task ${far}`)
+})
+
+test('a card shows bullet points, and message text with markup stays literal', async () => {
+  const s = setup()
+  s.add(1, 'action', { from: { id: 'b', name: '<b>Boss</b>' }, chat: { id: 'c1', name: 'Chat', isGroup: false } })
+  s.judge(() => ({ threads: [{ n: 1, important: true, summary: 'Pay **it**', details: [' by Fri ', '', '$8.70', 'c', 'd'], links: [] }] }))
+  await s.d.tick()
+  const sent = s.sent[0]!
+  expect(sent.text.endsWith('Pay **it**\n• by Fri\n• $8.70\n• c')).toBe(true)
+  expect(sent.text).toContain('<b>Boss</b>')
+  expect(sent.extra.parse_mode).toBeUndefined()
 })

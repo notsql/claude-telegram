@@ -15,6 +15,15 @@ import { parseKey } from '../sessions/key.ts'
 import { downloadAttachment } from '../telegram/attachments.ts'
 import { visibleTools } from '../policy/tools.ts'
 import type { Policy } from '../policy/schema.ts'
+import { markdown, type Rich } from '../telegram/rich.ts'
+
+const FORMAT_HELP = "'markdown' (default) renders **bold**, *italic*, `code`, fenced code, [label](url), and - bullets, with no escaping needed. 'text' sends it exactly as written."
+
+/** The text as sent; markdown is turned into entities, never `parse_mode`, so it can't fail to parse. */
+const rendered = (text: string, format?: string): Rich => {
+  const r = format === 'text' ? { text, entities: [] } : markdown(text)
+  return r.text.trim() ? r : { text, entities: [] }
+}
 
 /**
  * `key` is the session the daemon's MCP request is bound to; replies to its
@@ -51,8 +60,8 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
             },
             format: {
               type: 'string',
-              enum: ['text', 'markdownv2'],
-              description: "Rendering mode. 'markdownv2' enables Telegram formatting (bold, italic, code, links). Caller must escape special chars per MarkdownV2 rules. Default: 'text' (plain, no escaping needed).",
+              enum: ['markdown', 'text'],
+              description: FORMAT_HELP,
             },
           },
           required: ['chat_id', 'text'],
@@ -93,8 +102,8 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
             text: { type: 'string' },
             format: {
               type: 'string',
-              enum: ['text', 'markdownv2'],
-              description: "Rendering mode. 'markdownv2' enables Telegram formatting (bold, italic, code, links). Caller must escape special chars per MarkdownV2 rules. Default: 'text' (plain, no escaping needed).",
+              enum: ['markdown', 'text'],
+              description: FORMAT_HELP,
             },
           },
           required: ['chat_id', 'message_id', 'text'],
@@ -114,8 +123,7 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
           const text = args.text as string
           const reply_to = args.reply_to != null ? Number(args.reply_to) : undefined
           const files = (args.files as string[] | undefined) ?? []
-          const format = (args.format as string | undefined) ?? 'text'
-          const parseMode = format === 'markdownv2' ? 'MarkdownV2' as const : undefined
+          const format = args.format as string | undefined
 
           assertAllowedChat(chat_id)
           const thread = bound?.chatId === chat_id ? threadOpts(bound) : {}
@@ -141,10 +149,11 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
                 reply_to != null &&
                 replyMode !== 'off' &&
                 (replyMode === 'all' || i === 0)
-              const sent = await api.sendMessage(chat_id, chunks[i], {
+              const body = rendered(chunks[i]!, format)
+              const sent = await api.sendMessage(chat_id, body.text, {
                 ...thread,
+                entities: body.entities,
                 ...(shouldReplyTo ? { reply_parameters: { message_id: reply_to } } : {}),
-                ...(parseMode ? { parse_mode: parseMode } : {}),
               })
               sentIds.push(sent.message_id)
             }
@@ -192,13 +201,12 @@ export function registerTelegramTools(mcp: Server, api: Api, token: string, key?
         }
         case 'edit_message': {
           assertAllowedChat(args.chat_id as string)
-          const editFormat = (args.format as string | undefined) ?? 'text'
-          const editParseMode = editFormat === 'markdownv2' ? 'MarkdownV2' as const : undefined
+          const body = rendered(args.text as string, args.format as string | undefined)
           const edited = await api.editMessageText(
             args.chat_id as string,
             Number(args.message_id),
-            args.text as string,
-            ...(editParseMode ? [{ parse_mode: editParseMode }] : []),
+            body.text,
+            { entities: body.entities },
           )
           const id = typeof edited === 'object' ? edited.message_id : args.message_id
           return { content: [{ type: 'text', text: `edited (id: ${id})` }] }
