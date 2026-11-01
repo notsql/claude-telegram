@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { openInboxDb, insertItem, type Item } from '../watch/store.ts'
-import { BriefSchema, createDeliver, inQuietHours, NUDGE_LEAD_MS, snoozeUntil, type DeliverApi } from '../watch/deliver.ts'
+import { BriefSchema, createDeliver, type TurnItem, inQuietHours, NUDGE_LEAD_MS, snoozeUntil, type DeliverApi } from '../watch/deliver.ts'
 import type { z } from 'zod'
 
 const item = (n: number, over: Partial<Item> = {}): Item => ({
@@ -24,18 +24,24 @@ function setup(start = at(12), vips: string[] = []) {
   const api: DeliverApi = { async sendMessage(chatId, text, extra) { if (fail) throw new Error('down'); sent.push({ chatId, text, extra }) } }
   const muted: string[] = []
   const disliked: number[] = []
+  const dislikedText: string[] = []
+  const liked: string[] = []
   const acted: number[] = []
   const actedText: string[] = []
   const actedKey: (string | undefined)[] = []
+  const turns: TurnItem[] = []
   let t = start
   let target: { chatId: string; threadId?: number } = { chatId: '42' }
   const d = createDeliver({
     db, api, target: () => target, vips, mute: (s, f) => muted.push(`${s}:${f}`), now: () => t,
-    run: async (_agent, input) => { inputs.push(input); return judge(input) },
+    run: (async (agent: string, input: string) => { inputs.push(input); return agent === 'tg-summarizer' ? { summary: 'They run the club together.' } : judge(input) }) as never,
     budget: { take: () => budget },
     examples: () => '<example want="no">reply to lunch</example>',
-    dislike: r => disliked.push(r.id),
-    act: (r, key) => { acted.push(r.id); actedText.push(r.text); actedKey.push(key) },
+    dislike: r => { disliked.push(r.id); dislikedText.push(r.text) },
+    like: r => liked.push(r.text),
+    owner: () => '<owner>about me</owner>',
+    act: (r, key) => { acted.push(r.id); actedText.push(r.text); actedKey.push(key); turns.push(r) },
+    draft: r => { turns.push(r) },
   })
   const add = (n: number, label: string, over: Partial<Item> = {}) => {
     const id = insertItem(db, item(n, over))!
@@ -44,7 +50,7 @@ function setup(start = at(12), vips: string[] = []) {
   }
   const status = (id: number) => (db.query('SELECT status, snooze_until, label FROM items WHERE id = ?').get(id) as any)
   return {
-    db, d, sent, inputs, muted, disliked, acted, actedText, actedKey, add, status,
+    db, d, sent, inputs, muted, disliked, dislikedText, liked, acted, actedText, actedKey, turns, add, status,
     set: (ms: number) => { t = ms }, fail: (v: boolean) => { fail = v }, budget: (v: boolean) => { budget = v },
     judge: (fn: typeof judge) => { judge = fn }, target: (v: typeof target) => { target = v },
   }
@@ -191,7 +197,6 @@ test('Done settles the whole conversation up to that item and closes loops; snoo
   const m = s.add(4, 'action')
   expect(s.d.tap('mute', m)).toBe('🔕 Muted Boss')
   expect(s.muted).toEqual(['whatsapp:boss'])
-  expect(s.d.tap('draft', m)).toContain('not available')
   expect(s.d.tap('done', 999)).toBe('Item no longer stored.')
 })
 
@@ -267,4 +272,63 @@ test('a card shows bullet points, and message text with markup stays literal', a
   expect(sent.text.endsWith('Pay **it**\n• by Fri\n• $8.70\n• c')).toBe(true)
   expect(sent.text).toContain('<b>Boss</b>')
   expect(sent.extra.parse_mode).toBeUndefined()
+})
+
+test('the model sees the owner block and the whole recent conversation, and older messages as a chat note', async () => {
+  const s = setup()
+  for (let n = 1; n <= 250; n++) insertItem(s.db, item(n, { text: `chat ${n}` }))
+  s.add(300, 'action', { text: 'pls review pr' })
+  await s.d.tick()
+  const brief = s.inputs.at(-1)!
+  expect(s.inputs).toHaveLength(2)
+  expect(s.inputs[0]).toContain('chat 130')
+  expect(brief).toContain('<owner>about me</owner>')
+  expect(brief).toContain('<chat_note>They run the club together.</chat_note>')
+  expect(brief).toContain('chat 131')
+  expect(brief).not.toContain('chat 130\n')
+})
+
+test('a chat note is reused until enough has aged out of the window', async () => {
+  const s = setup()
+  for (let n = 1; n <= 250; n++) insertItem(s.db, item(n, { text: `chat ${n}` }))
+  s.add(300, 'action')
+  await s.d.tick()
+  s.add(301, 'action')
+  await s.d.tick()
+  expect(s.inputs.filter(i => i.includes('Write `summary`: a note'))).toHaveLength(1)
+})
+
+test('a failed chat note still lets the card go out', async () => {
+  const s = setup()
+  for (let n = 1; n <= 250; n++) insertItem(s.db, item(n, { text: `chat ${n}` }))
+  s.add(300, 'action')
+  s.judge((input) => { if (input.includes('a note')) throw new Error('down'); return { threads: [{ n: 1, important: true, summary: 'x', links: [] }] } })
+  await s.d.tick()
+  expect(s.sent).toHaveLength(1)
+})
+
+test('🤖 Do it and ✍️ Reply carry the card\'s to-do and the conversation', async () => {
+  const s = setup()
+  s.add(1, 'fyi', { text: 'can count the merch?' })
+  const a = s.add(2, 'action', { text: 'asap' })
+  s.judge(() => ({ threads: [{ n: 1, important: true, summary: 'Count the merch for Geri.', links: [] }] }))
+  await s.d.tick()
+  s.d.tap('do', a)
+  s.d.tap('draft', a)
+  expect(s.turns).toHaveLength(2)
+  for (const t of s.turns) {
+    expect(t.task).toBe('Count the merch for Geri.')
+    expect(t.conversation).toContain('can count the merch?')
+  }
+})
+
+test('🔕 and 🤖 keep how the conversation ended, not one fragment', () => {
+  const s = setup()
+  s.add(1, 'fyi', { text: 'run the script?' })
+  s.add(2, 'fyi', { text: 'yes', from: { id: 'me', name: 'me' }, fromMe: true })
+  const a = s.add(3, 'action', { text: 'like' })
+  s.d.tap('nah', a)
+  expect(s.dislikedText).toEqual(['Boss: run the script? / owner: yes / Boss: like'])
+  s.d.tap('do', a)
+  expect(s.liked).toEqual(['Boss: run the script? / owner: yes / Boss: like'])
 })

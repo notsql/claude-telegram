@@ -11,7 +11,8 @@ import { readJson, writeJson } from '../util/files.ts'
 export type Example = { itemId: number; text: string; want: boolean; at: number }
 
 const MAX = 40
-const MAX_TEXT = 200
+const MAX_TEXT = 400
+const MAX_FACTS = 60
 const path = (stateDir: string) => join(stateDir, 'inbox-prefs.json')
 
 export const loadExamples = (stateDir: string): Example[] => readJson<{ examples: Example[] }>(path(stateDir))?.examples ?? []
@@ -24,6 +25,17 @@ export function addExample(stateDir: string, e: Example): void {
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+/** Who the messages belong to, from memory (their own name is only ever `me` in the items); '' when nothing is known. */
+export function ownerBlock(facts: string[]): string {
+  if (!facts.length) return ''
+  return [
+    '<owner>',
+    'The owner is the person these messages belong to: their own messages have `fromMe="true"` and the name "me". What the agent knows about them, including what they are responsible for:',
+    ...facts.slice(0, MAX_FACTS).map(f => `- ${esc(f)}`),
+    '</owner>',
+  ].join('\n')
+}
 
 /** The prompt block, or '' with no feedback yet. */
 export function examplesBlock(examples: Example[]): string {

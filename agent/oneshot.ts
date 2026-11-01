@@ -10,7 +10,7 @@
 import { z } from 'zod'
 
 export async function runOneShot<T extends z.ZodType>(
-  agent: 'tg-reflector' | 'tg-summarizer' | 'tg-triager' | 'tg-poller',
+  agent: 'tg-reflector' | 'tg-summarizer' | 'tg-triager' | 'tg-briefer' | 'tg-poller' | 'tg-pattern-miner',
   input: string,
   schema: T,
   /** 013 agent-poll: the connector's tools (e.g. `mcp__claude_ai_Google_Calendar`); keeps user MCP config. */

@@ -12,7 +12,7 @@ const item = (n: number, over: Partial<Item> = {}): Item => ({
 const ids = (input: string) => [...input.matchAll(/<external_item id="(\d+)"/g)].map(m => Number(m[1]))
 const fyiAll = (input: string) => ({ items: ids(input).map(id => ({ id, label: 'fyi' as const, reason: 'r' })) })
 
-function setup(answer: (input: string) => z.infer<typeof TriageSchema>, opts: { budget?: () => boolean; vips?: string[] } = {}) {
+function setup(answer: (input: string) => z.infer<typeof TriageSchema>, opts: { budget?: () => boolean; vips?: string[]; settleMs?: number; owner?: () => string } = {}) {
   const db = openInboxDb(':memory:')
   const inputs: string[] = []
   const run: RunTriager = async (_a, input) => { inputs.push(input); return answer(input) }
@@ -21,6 +21,8 @@ function setup(answer: (input: string) => z.infer<typeof TriageSchema>, opts: { 
     db, run, now: () => t,
     rules: { mutedChats: ['muted'], mutedSenders: [], vips: opts.vips ?? [] },
     budget: { take: opts.budget ?? (() => true) },
+    settleMs: opts.settleMs,
+    owner: opts.owner,
   })
   return { db, inputs, triage, advance: (ms: number) => { t += ms } }
 }
@@ -160,4 +162,58 @@ test('FR15: an action item with a deadline gets a loop to nudge on; fyi does not
   await s.triage.flush()
   expect(s.db.query('SELECT item_id, kind, summary, due FROM loops').all())
     .toEqual([{ item_id: a, kind: 'awaiting_me', summary: 'pay the bill', due: Date.parse('2026-10-17T09:00:00Z') }])
+})
+
+test('a chat is judged once it goes quiet, so a burst stays together', async () => {
+  const s = setup(fyiAll, { settleMs: 180_000 })
+  s.triage.add(insertItem(s.db, item(1, { text: 'can you' }))!)
+  s.advance(60_000)
+  s.triage.add(insertItem(s.db, item(2, { text: 'count the merch' }))!)
+  s.advance(120_000)
+  await s.triage.flush()
+  expect(s.inputs).toHaveLength(0)
+  s.advance(60_000)
+  await s.triage.flush()
+  expect(s.inputs).toHaveLength(1)
+  expect(ids(s.inputs[0]!)).toHaveLength(2)
+  expect(s.triage.pending()).toBe(0)
+})
+
+test('a chat that never goes quiet still gets judged, and a quiet one is not held up by it', async () => {
+  const s = setup(fyiAll, { settleMs: 180_000 })
+  for (let m = 0; m < 12; m++) {
+    s.triage.add(insertItem(s.db, item(m))!)
+    if (m === 0) s.triage.add(insertItem(s.db, item(100, { chat: { id: 'c2', name: 'Other', isGroup: false } }))!)
+    s.advance(60_000)
+    await s.triage.flush()
+  }
+  expect(s.inputs).toHaveLength(2)
+  expect(s.inputs[0]).toContain('Other')
+  expect(s.inputs[1]).toContain('hello 0')
+})
+
+test('a VIP does not wait for the chat to go quiet', async () => {
+  const s = setup(fyiAll, { settleMs: 180_000, vips: ['alex'] })
+  s.triage.add(insertItem(s.db, item(1))!)
+  await s.triage.flush()
+  expect(s.inputs).toHaveLength(1)
+})
+
+test('unlabelled items from the last day are requeued at start', async () => {
+  const s = setup(fyiAll)
+  s.advance(2 * 86_400_000)
+  insertItem(s.db, item(1, { ts: 1_000 }))
+  const fresh = insertItem(s.db, item(2, { ts: 2 * 86_400_000 - 1_000 }))!
+  s.triage.start()
+  s.triage.stop()
+  expect(s.triage.pending()).toBe(1)
+  await s.triage.flush()
+  expect(ids(s.inputs[0]!)).toEqual([fresh])
+})
+
+test('the owner block reaches the triager', async () => {
+  const s = setup(fyiAll, { owner: () => '<owner>Goes by Zheng Kai</owner>' })
+  s.triage.add(insertItem(s.db, item(1))!)
+  await s.triage.flush()
+  expect(s.inputs[0]).toContain('<owner>Goes by Zheng Kai</owner>')
 })

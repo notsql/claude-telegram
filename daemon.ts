@@ -102,7 +102,7 @@ import { registerAgents } from './telegram/handlers/agents.ts'
 import { registerCapabilities } from './telegram/handlers/capabilities.ts'
 import { registerSources } from './telegram/handlers/sources.ts'
 import { findBin } from './watch/onboard.ts'
-import { addExample, examplesBlock, loadExamples } from './watch/prefs.ts'
+import { addExample, examplesBlock, loadExamples, ownerBlock } from './watch/prefs.ts'
 import { createCapabilityRequests } from './capabilities/request.ts'
 import { createCapabilityTools } from './capabilities/tools.ts'
 import { runArgv } from './capabilities/install.ts'
@@ -413,10 +413,17 @@ const watch = config.watch ? (() => {
   const db = inboxDb!
   const rules: TriageRules = { mutedChats: [], mutedSenders: [], vips: [] }
   const examples = () => examplesBlock(loadExamples(STATE_DIR))
-  const triage = createTriage({ db, rules, log, run: runOneShot, budget: { take: () => budget.take() }, examples })
   const owner = loadAccess().allowFrom[0]
-  const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, examples,
-    dislike: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: false, at: Date.now() }), mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
+  // T1321: the owner's name in items is only `me`; memory says who they are and what's theirs.
+  const ownerFacts = () => ownerBlock([
+    ...(owner ? userStore(owner).list() : []),
+    ...memory.list().filter(e => e.type === 'user' || e.type === 'project'),
+  ].map(e => e.description))
+  const triage = createTriage({ db, rules, log, run: runOneShot, budget: { take: () => budget.take() }, examples, owner: ownerFacts, settleMs: 180_000, intervalMs: 60_000 })
+  const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, examples, owner: ownerFacts,
+    dislike: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: false, at: Date.now() }),
+    like: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: true, at: Date.now() }),
+    mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
     // Do it and Draft reply run where the button was tapped (T1319).
     act: (r, key = owner) => turns.enqueue(key, {
       prompt: renderInbound(doPrompt(r), { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
@@ -490,7 +497,7 @@ const watch = config.watch ? (() => {
     }),
     pause: id => { setEnabled(STATE_DIR, id, false); supervisor.stopSource(id) },
   }) : undefined
-  return { db, supervisor, route, triage, deliver, health, examples, runPoller }
+  return { db, supervisor, route, triage, deliver, health, examples, ownerFacts, runPoller }
 })() : undefined
 const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.route, handlers: {
   'permission-request': approvals.handle,
@@ -809,7 +816,7 @@ async function fireSystemJob(id: SystemJobId | 'digest'): Promise<void> {
   // 013 FR8: a one-shot summary, no turn; FR16: at the owner's times, with their choices.
   if (id === 'digest') {
     const owner = loadAccess().allowFrom[0]
-    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: digestTitle(new Date().getHours()), run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, prefs: prefsOf(STATE_DIR), log })
+    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: digestTitle(new Date().getHours()), run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, owner: watch.ownerFacts, prefs: prefsOf(STATE_DIR), log })
     return
   }
   // 013 FR14: findings become `action` items; delivery sends them to the inbox target.
