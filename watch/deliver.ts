@@ -5,7 +5,7 @@
  * for a last importance check, a one-line summary and the links the owner needs
  * to do it themselves. Links are kept only when they appear in the
  * conversation, and an item's own link (a PR, an issue) is always shown.
- * The important ones go out as one plain-text message to the delivery target
+ * The important ones go out as one formatted message to the delivery target
  * (a chat picked on the Sources page; the owner DM by default), with 🤖 Do it,
  * ✍️ Reply, ✅ Done and 🔕 Not like this per conversation. The rest become
  * `fyi` for the digest.
@@ -19,18 +19,19 @@
  * `urgent` from a VIP, at most `pingsPerHour` messages go out, and a spent
  * budget or a failed call leaves items `new` for the next tick. Snoozed items
  * come back once `snooze_until` passes. Item text is untrusted: the model sees
- * it only inside wrappers, and nothing is sent with parse_mode.
+ * it only inside wrappers, and formatting goes out as entities, never parse_mode.
  */
 
 import type { Database } from 'bun:sqlite'
 import type { Bot } from 'grammy'
-import type { InlineKeyboardButton } from 'grammy/types'
+import type { InlineKeyboardButton, MessageEntity } from 'grammy/types'
 import { z } from 'zod'
+import { bold, capped, italic, joined, rich, type Rich } from '../telegram/rich.ts'
 import { answer, appendLabel, isOwner, keyOf, ownerOnly } from '../telegram/handlers/ui.ts'
 import { wrapContext, wrapItem } from './triage.ts'
 
 export type DeliverApi = {
-  sendMessage(chatId: string, text: string, extra: { message_thread_id?: number; reply_markup: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown>
+  sendMessage(chatId: string, text: string, extra: { message_thread_id?: number; entities?: MessageEntity[]; reply_markup: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown>
 }
 
 export const BriefSchema = z.object({
@@ -38,9 +39,13 @@ export const BriefSchema = z.object({
     n: z.number().int(),
     important: z.boolean(),
     summary: z.string(),
+    details: z.array(z.string()).optional(),
     links: z.array(z.string()),
   })),
 })
+
+/** Shared by the delivery and digest prompts. */
+export const DETAILS_RULE = 'Put in `details` up to 3 short bullet points, under 12 words each, with what the owner needs that the to-do does not already say: the deadline, who is waiting, the amount, the place, what was agreed. Empty when the to-do says it all. No emoji, no URLs.'
 
 export type RunBrief = (agent: 'tg-summarizer', input: string, schema: typeof BriefSchema) => Promise<z.infer<typeof BriefSchema>>
 
@@ -148,6 +153,7 @@ export function briefInput(threads: Thread[], examples = ''): string {
     'Each conversation is in time order: the flagged messages are <external_item>, the rest of the conversation, before and after them, is <context_item>. Judge the conversation as a whole, not each message alone: people split one request over several messages, and a later message may settle it.',
     'For each conversation decide `important`: true only if it gives the owner a concrete task: something to do, buy, pay, book, attend, submit, review, fill in or decide, ideally with a time. A message that only waits for a chat reply is false, and so is anything already answered, handled by others (including later in the conversation), casual chat or small talk.',
     'Then write `summary` as a to-do: start with the verb, then who it is for, what exactly and by when, e.g. "Buy a bottle of water for Osk before you head home." Name people by the names in the messages, never a pronoun on its own or a numeric id. One sentence, two at most. No greeting, no quotes, no emoji.',
+    DETAILS_RULE,
     'Put in `links` every URL from the conversation the owner needs to do it themselves (the form to fill, the PR to review, the document, payment or booking page), copied exactly; empty when there is none. Do not put URLs in `summary`.',
     ...(examples ? [examples] : []),
     ...threads.map((t, i) => [
@@ -158,13 +164,28 @@ export function briefInput(threads: Thread[], examples = ''): string {
   ].join('\n\n')
 }
 
-export type Picked = { thread: Thread; summary: string; links: string[] }
+export type Picked = { thread: Thread; summary: string; details?: string[]; links: string[] }
 
-/** One message: each important conversation with its summary and links. */
-export function briefText(picked: Picked[], title = '📥 Needs you'): string {
-  const text = [title, ...picked.map(({ thread: t, summary, links }) =>
-    [`${t.items.some(r => r.label === 'urgent') ? '🔴' : '🟠'} ${t.name}`, summary, ...(links.length ? [linkLines(links)] : [])].join('\n'))].join('\n\n')
-  return text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text
+const MAX_DETAILS = 3
+
+/** The model's bullet points for a conversation, trimmed. */
+export const detailsOf = (details: string[] = []) => details.map(d => d.trim()).filter(Boolean).slice(0, MAX_DETAILS)
+
+export const fmtWhen = (t: number) => new Date(t).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+
+/** One conversation: the name and when, the to-do, its bullet points, its links. */
+export function threadCard({ thread: t, summary, details = [], links }: Picked): Rich {
+  return joined([
+    rich(`${t.items.some(r => r.label === 'urgent') ? '🔴' : '🟠'} `, bold(t.name), ' · ', italic(fmtWhen(t.items.at(-1)!.ts))),
+    summary,
+    ...details.map(d => `• ${d}`),
+    ...(links.length ? [linkLines(links)] : []),
+  ], '\n')
+}
+
+/** One message: each important conversation as a `threadCard`. */
+export function briefText(picked: Picked[], title = '📥 Needs you'): Rich {
+  return capped(joined([bold(title), ...picked.map(threadCard)], '\n\n'), MAX_MESSAGE)
 }
 
 /** Two rows per conversation, all on its latest item: 🤖 Do it and ✍️ Reply, then ✅ Done and 🔕 Not like this. */
@@ -183,9 +204,9 @@ type NudgeRow = { id: number; item_id: number; summary: string; due: number; sou
 const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
 
 /** One "⏰ Due soon" message; past deadlines read as overdue. */
-export function nudgeText(rows: NudgeRow[], t: number): string {
-  const text = ['⏰ Due soon', ...rows.map(r => `${r.due <= t ? '🔴 Overdue' : `🟠 Due ${hhmm(r.due)}`} · ${r.name}\n${r.summary}${r.url ? `\n${linkLines([r.url])}` : ''}`)].join('\n\n')
-  return text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text
+export function nudgeText(rows: NudgeRow[], t: number): Rich {
+  return capped(joined([bold('⏰ Due soon'), ...rows.map(r =>
+    rich(bold(r.due <= t ? '🔴 Overdue' : `🟠 Due ${hhmm(r.due)}`), ` · ${r.name}\n${r.summary}${r.url ? `\n${linkLines([r.url])}` : ''}`))], '\n\n'), MAX_MESSAGE)
 }
 
 /** Groups items by conversation, each with the `CONTEXT` messages before its first item and up to `SINCE` other messages after it. */
@@ -236,7 +257,9 @@ export function createDeliver(o: DeliverOpts) {
     if (!rows.length) return false
     const to = o.target()
     try {
-      await o.api.sendMessage(to.chatId, nudgeText(rows, t), {
+      const msg = nudgeText(rows, t)
+      await o.api.sendMessage(to.chatId, msg.text, {
+        entities: msg.entities,
         ...(to.threadId ? { message_thread_id: to.threadId } : {}),
         reply_markup: { inline_keyboard: rows.map(r => [
           { text: `🤖 Do it · ${short(r.name)}`, callback_data: `inb:do:${r.item_id}` },
@@ -289,14 +312,16 @@ export function createDeliver(o: DeliverOpts) {
       const demote = o.db.query(`UPDATE items SET label = 'fyi' WHERE id = ?`)
       threads.forEach((thread, i) => {
         const v = out.threads.find(x => x.n === i + 1)
-        if (v?.important && v.summary.trim()) picked.push({ thread, summary: v.summary.trim(), links: threadLinks(thread, v.links) })
+        if (v?.important && v.summary.trim()) picked.push({ thread, summary: v.summary.trim(), details: detailsOf(v.details), links: threadLinks(thread, v.links) })
         // Judged not worth an interruption: left for the digest.
         else if (v) for (const r of thread.items) demote.run(r.id)
       })
       if (!picked.length) return
       const to = o.target()
       try {
-        await o.api.sendMessage(to.chatId, briefText(picked), {
+        const msg = briefText(picked)
+        await o.api.sendMessage(to.chatId, msg.text, {
+          entities: msg.entities,
           ...(to.threadId ? { message_thread_id: to.threadId } : {}),
           reply_markup: { inline_keyboard: briefButtons(picked) },
         })
