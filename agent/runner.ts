@@ -19,6 +19,8 @@ export type RunTurnOpts = {
   mcpPort: number
   /** The shared browser's MCP port (015 FR2); no `browser` server when unset. */
   browserPort?: number
+  /** The owner's real Chrome through the Claude in Chrome extension (021 FR1). */
+  chrome?: boolean
   /** Bearer tokens for the MCP and hook endpoints, passed to the child only through env. */
   mcpToken: string
   hookToken: string
@@ -92,6 +94,7 @@ export function turnArgv(key: string, opts: RunTurnOpts): string[] {
     '--forward-subagent-text',
     '--settings', opts.settings ? mergeSettings(opts.settingsFile, opts.settings) : opts.settingsFile,
     '--mcp-config', JSON.stringify(renderMcpConfig(opts.mcpPort, key, opts.browserPort)),
+    ...(opts.chrome ? ['--chrome'] : []),
     '--append-system-prompt', opts.extraInstructions ? `${TELEGRAM_INSTRUCTIONS}\n\n${opts.extraInstructions}` : TELEGRAM_INSTRUCTIONS,
     ...opts.policyArgs,
     '--max-turns', String(opts.maxTurns),

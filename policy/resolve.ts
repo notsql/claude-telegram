@@ -27,6 +27,9 @@ export function resolvePolicy(access: Access, key: string, type: ChatType): Poli
 /** The key's policy as of now, from access.json. */
 export const policyOf = (key: string): Policy => resolvePolicy(loadAccess(), key, chatTypeOf(key))
 
+/** Only owners can start turns here (FR12), so owner-only things may run: inbox tools (013), Chrome (021 FR2). */
+export const ownersOnly = (p: Policy) => p.allowOthersOnSubscription !== true
+
 /**
  * Where Telegram-side policy writes land (Always, `/policy`): the whole chat,
  * so every topic in a group shares them. Topic overrides are terminal-only.

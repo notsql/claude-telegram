@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { createActionConfirm } from '../policy/actionConfirm.ts'
 import { turnArgv } from '../agent/runner.ts'
 import { ACTION_GUARD_INSTRUCTIONS } from '../agent/prompt.ts'
+import { ownersOnly } from '../policy/resolve.ts'
 
 const textOf = (r: any) => r.content[0].text as string
 
@@ -28,5 +29,13 @@ describe('action_confirm (020 FR2)', () => {
     const prompt = (o: object) => { const a = turnArgv('k', o as any); return a[a.indexOf('--append-system-prompt') + 1]! }
     expect(prompt(opts)).not.toContain('action_confirm')
     expect(prompt({ ...opts, extraInstructions: ACTION_GUARD_INSTRUCTIONS })).toContain('call action_confirm first')
+  })
+
+  test('021: --chrome only when asked', () => {
+    const opts = { settingsFile: '/s.json', mcpPort: 1, mcpToken: 't', hookToken: 'h', cwd: '/', maxTurns: 5, policyArgs: [] }
+    expect(turnArgv('k', opts as any)).not.toContain('--chrome')
+    expect(turnArgv('k', { ...opts, chrome: true } as any)).toContain('--chrome')
+    expect(ownersOnly({} as any)).toBe(true)
+    expect(ownersOnly({ allowOthersOnSubscription: true } as any)).toBe(false)
   })
 })
