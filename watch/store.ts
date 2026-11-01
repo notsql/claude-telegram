@@ -34,6 +34,9 @@ const MIGRATIONS = [
   `ALTER TABLE loops ADD COLUMN nudged_at INTEGER;`,
   // 013 FR8 (T1317): chat quote ids were stored as threads; only GitHub has real ones.
   `UPDATE items SET thread_id = NULL WHERE chat_id NOT LIKE 'repo:%';`,
+  // 013 T1321: the to-do on an item's card, and a rolling summary of each chat's older messages.
+  `ALTER TABLE items ADD COLUMN brief TEXT;
+   CREATE TABLE chat_notes (source TEXT NOT NULL, chat_id TEXT NOT NULL, summary TEXT NOT NULL, upto INTEGER NOT NULL, PRIMARY KEY (source, chat_id));`,
 ]
 
 /** FR2 normalised item. */
