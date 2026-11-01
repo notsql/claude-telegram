@@ -10,7 +10,7 @@ test('both weekly jobs are registered in the given tz; the first start runs noth
   const f = file()
   const ran: string[] = []
   const sys = startSystemJobs({ stateFile: f, tz: 'Asia/Singapore', run: id => ran.push(id), now: () => 1_000 })
-  expect(SYSTEM_JOBS.map(j => j.id)).toEqual(['memory-consolidation', 'skill-pruning', 'attention-sweep'])
+  expect(SYSTEM_JOBS.map(j => j.id)).toEqual(['memory-consolidation', 'skill-pruning', 'attention-sweep', 'pattern-mining'])
   const next = sys.nextRun('memory-consolidation')!
   expect(next.toLocaleString('en-GB', { timeZone: 'Asia/Singapore', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })).toBe('Sun 03:00')
   expect(sys.nextRun('skill-pruning')!.getTime() - next.getTime()).toBe(30 * 60 * 1000)
