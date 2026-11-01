@@ -15,6 +15,6 @@ Depends on: 004 (memory writer), 005 (history), 006 (skills), 007 (scheduler), 0
   *Verify:* AC5.
 - [ ] **T1407** `pattern_list` / `pattern_forget` tools (FR7).
   *Verify:* AC7.
-- [ ] **T1408** Repeated tasks: `patterns/` with a `signals` row per 🤖 Do it, a `patterns` table, the `tg-pattern-miner` agent and weekly `pattern-mining` system job behind `TELEGRAM_PATTERNS=1`; proposals validated against cited ids; 📈 cards with Yes / No / Not now. Yes on a `routine` creates a 007 job in that chat, and Yes on a `skill` starts a turn that authors it (FR1–FR4, FR9).
+- [x] **T1408** Repeated tasks: `patterns/` with a `signals` row per 🤖 Do it, a `patterns` table, the `tg-pattern-miner` agent and weekly `pattern-mining` system job behind `TELEGRAM_PATTERNS=1`; proposals validated against cited ids; 📈 cards with Yes / No / Not now. Yes on a `routine` creates a 007 job in that chat, and Yes on a `skill` starts a turn that authors it (FR1–FR4, FR9).
   *Verify:* AC2, AC3 on seeded history; a live pass over real history produces only proposals with real evidence.
 

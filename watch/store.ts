@@ -37,6 +37,12 @@ const MIGRATIONS = [
   // 013 T1321: the to-do on an item's card, and a rolling summary of each chat's older messages.
   `ALTER TABLE items ADD COLUMN brief TEXT;
    CREATE TABLE chat_notes (source TEXT NOT NULL, chat_id TEXT NOT NULL, summary TEXT NOT NULL, upto INTEGER NOT NULL, PRIMARY KEY (source, chat_id));`,
+  // 014 FR1, T1408: evidence for pattern mining, and what was proposed.
+  `CREATE TABLE signals (ts INTEGER NOT NULL, kind TEXT NOT NULL, subject TEXT NOT NULL, value REAL);
+   CREATE INDEX signals_kind_ts ON signals (kind, ts);
+   CREATE TABLE patterns (
+     id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, claim TEXT NOT NULL, title TEXT NOT NULL,
+     prompt TEXT NOT NULL, cron TEXT, n INTEGER NOT NULL, days INTEGER NOT NULL, status TEXT NOT NULL, until INTEGER);`,
 ]
 
 /** FR2 normalised item. */

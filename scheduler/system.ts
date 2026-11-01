@@ -17,6 +17,8 @@ export const SYSTEM_JOBS = [
   // 013 FR14: only when source watchers are on; before the default morning digest, and once after lunch.
   // Digests run at the owner's chosen times (watch/digestPrefs.ts).
   { id: 'attention-sweep', title: 'Attention sweep', expr: '0 8,13 * * *', watch: true },
+  // 014 FR2: only when pattern learning is on.
+  { id: 'pattern-mining', title: 'Pattern mining', expr: '0 4 * * 0', patterns: true },
 ] as const
 
 export type SystemJobId = (typeof SYSTEM_JOBS)[number]['id']
@@ -27,6 +29,8 @@ export type SystemJobOpts = {
   tz: string
   /** 013 FR12: registers the `watch` jobs (the sweep) only when true. */
   watch?: boolean
+  /** 014 FR9: registers the `patterns` jobs only when true. */
+  patterns?: boolean
   run: (id: SystemJobId) => unknown
   now?: () => number
 }
@@ -42,7 +46,7 @@ export function startSystemJobs(opts: SystemJobOpts) {
   }
 
   const caughtUp: SystemJobId[] = []
-  const jobs = SYSTEM_JOBS.filter(j => !('watch' in j) || opts.watch)
+  const jobs = SYSTEM_JOBS.filter(j => ('watch' in j ? opts.watch : 'patterns' in j ? opts.patterns : true))
   const crons = jobs.map(j => {
     const last = state[j.id]
     // First start: count from now rather than running straight away.

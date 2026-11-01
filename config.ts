@@ -42,6 +42,8 @@ export type Config = {
   actionGuard: boolean
   /** Turns drive the owner's real Chrome (021 FR1, FR3); needs `TELEGRAM_CHROME=1` and the guard. */
   chrome: boolean
+  /** Pattern learning (014 FR9); on only when `TELEGRAM_PATTERNS=1`. */
+  patterns: boolean
 }
 
 function positiveInt(env: Record<string, string | undefined>, name: string, fallback: number): number {
@@ -64,6 +66,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     browser: env.TELEGRAM_BROWSER === '1',
     actionGuard: env.TELEGRAM_ACTION_GUARD === '1',
     chrome: env.TELEGRAM_CHROME === '1' && env.TELEGRAM_ACTION_GUARD === '1',
+    patterns: env.TELEGRAM_PATTERNS === '1',
   }
 }
 

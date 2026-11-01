@@ -96,6 +96,8 @@ import { createScheduleTools } from './scheduler/tools.ts'
 import type { Job } from './scheduler/store.ts'
 import { startSystemJobs, type SystemJobId } from './scheduler/system.ts'
 import { registerClose, sendTo } from './telegram/handlers/ui.ts'
+import { jobTitle } from './scheduler/run.ts'
+import { loadJobs } from './scheduler/store.ts'
 import { registerMemory } from './telegram/handlers/memory.ts'
 import { registerSkills } from './telegram/handlers/skills.ts'
 import { registerAgents } from './telegram/handlers/agents.ts'
@@ -103,6 +105,7 @@ import { registerCapabilities } from './telegram/handlers/capabilities.ts'
 import { registerSources } from './telegram/handlers/sources.ts'
 import { findBin } from './watch/onboard.ts'
 import { addExample, examplesBlock, loadExamples, ownerBlock } from './watch/prefs.ts'
+import { learnPrompt, recordDoIt, registerPatternButtons, runMining } from './patterns/repeated.ts'
 import { createCapabilityRequests } from './capabilities/request.ts'
 import { createCapabilityTools } from './capabilities/tools.ts'
 import { runArgv } from './capabilities/install.ts'
@@ -363,9 +366,10 @@ const resumer = createResumer({
   }),
 })
 // 013 FR9: inbox/source/draft tools, wherever only the owner can start a turn. Sends run only from the owner's Send tap.
-const inboxDb = config.watch ? openInboxDb(inboxPath(STATE_DIR)) : undefined
-const watchTools = inboxDb && createWatchTools({
-  db: inboxDb, stateDir: STATE_DIR, api: bot.api, spawn: bunSendSpawn, audit: e => audit(e),
+const inboxDb = config.watch || config.patterns ? openInboxDb(inboxPath(STATE_DIR)) : undefined
+const watchDb = config.watch ? inboxDb : undefined
+const watchTools = watchDb && createWatchTools({
+  db: watchDb, stateDir: STATE_DIR, api: bot.api, spawn: bunSendSpawn, audit: e => audit(e),
   isOwnerChat: key => ownersOnly(policyOf(key)),
   // T1308: add/pause/resume/remove reach the running supervisor (created below).
   live: { start: s => watch?.supervisor.startSource(s), stop: id => watch?.supervisor.stopSource(id) },
@@ -425,10 +429,13 @@ const watch = config.watch ? (() => {
     like: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: true, at: Date.now() }),
     mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
     // Do it and Draft reply run where the button was tapped (T1319).
-    act: (r, key = owner) => turns.enqueue(key, {
-      prompt: renderInbound(doPrompt(r), { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
-      text: 'Do it',
-    }),
+    act: (r, key = owner) => {
+      if (config.patterns) recordDoIt(db, r.task ?? r.text)
+      turns.enqueue(key, {
+        prompt: renderInbound(doPrompt(r), { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
+        text: 'Do it',
+      })
+    },
     draft: (r, key = owner) => turns.enqueue(key, {
       prompt: renderInbound(draftPrompt(r), { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
       text: 'Draft reply',
@@ -694,6 +701,18 @@ const signinUi = browser && handoffs && registerSignin(bot, { open: url => brows
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
+if (config.patterns) registerPatternButtons(bot, {
+  db: inboxDb!,
+  // The owner's Yes is the consent, even in a chat that doesn't let the agent schedule on its own.
+  schedule: (p, key) => {
+    const r = scheduleTools.call('schedule_create', { when: p.cron, prompt: p.prompt, title: p.title }, key, { ...policyOf(key), schedulerAllowed: true })
+    return r?.isError ? r.content.map(c => c.text).join(' ') : undefined
+  },
+  learn: (p, key) => turns.enqueue(key, {
+    prompt: renderInbound(learnPrompt(p), { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
+    text: `Learn: ${p.title}`,
+  }),
+})
 if (watch?.health) registerHealthButtons(bot, watch.health)
 const capsUi = registerCapabilities(bot, capabilityRequests, resumer, capabilityNotices)
 const draftReply = watchTools && registerDraftButtons(bot, watchTools)
@@ -821,6 +840,19 @@ async function fireSystemJob(id: SystemJobId | 'digest'): Promise<void> {
     if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: digestTitle(new Date().getHours()), run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, owner: watch.ownerFacts, prefs: prefsOf(STATE_DIR), log })
     return
   }
+  // 014 T1408: repeated tasks become proposals in the Updates chat.
+  if (id === 'pattern-mining') {
+    const to = updatesTo()
+    if (!inboxDb || !to) return
+    const sent = await runMining({
+      db: inboxDb, history: historyDb, run: runOneShot, budget: { take: () => budget.take() }, log,
+      ownersOnly: chat => ownersOnly(policyOf(chat)),
+      known: () => [...loadJobs(STATE_DIR).map(jobTitle), ...skillStoreFor(to).list().map(s => s.name)],
+      post: (text, buttons) => sendTo(bot.api, to, text.text, { entities: text.entities, reply_markup: { inline_keyboard: buttons } }),
+    })
+    log(`pattern mining: ${sent} proposal(s)`)
+    return
+  }
   // 013 FR14: findings become `action` items; delivery sends them to the inbox target.
   if (id === 'attention-sweep') {
     if (!watch) return
@@ -843,6 +875,7 @@ const systemJobs = startSystemJobs({
   stateFile: join(STATE_DIR, 'system-jobs.json'),
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
   watch: config.watch,
+  patterns: config.patterns,
   run: id => turns.enqueue(SYS_PREFIX + id, { prompt: '', text: '' }),
 })
 if (systemJobs.caughtUp.length) log(`scheduler: catching up system jobs ${systemJobs.caughtUp.join(', ')}`)
