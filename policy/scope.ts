@@ -6,7 +6,9 @@
  * (also refused inside the tools). Telegram tools may message any allowlisted chat (owner decision
  * 2026-10-07); `assertAllowedChat` still refuses the rest. With the 020
  * guard on, off-limits actions are denied first and send / pay / sign /
- * delete calls always ask, whatever the policy says.
+ * delete calls always ask, whatever the policy says. The CLI lets Chrome tools
+ * through without a permission request, so the first non-read one in a session
+ * asks here (021 FR5).
  */
 
 import { parseKey } from '../sessions/key.ts'
@@ -14,8 +16,10 @@ import { expandPath, isInside } from './args.ts'
 import type { ActionCard } from './approvals.ts'
 import type { AuditEntry } from './audit.ts'
 import { classify } from './consequential.ts'
+import { isReadOnly } from './readOnly.ts'
 import type { Policy } from './schema.ts'
 
+const CHROME = 'mcp__claude-in-chrome'
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Glob', 'Grep']
 
 export type ScopeOpts = {
@@ -27,6 +31,8 @@ export type ScopeOpts = {
   confirm: (key: string, toolName: string, input: Record<string, unknown>, card?: ActionCard) => Promise<boolean>
   /** 020: `TELEGRAM_ACTION_GUARD=1`. */
   actionGuard?: boolean
+  /** 021 FR5: the session's allow rules, and adding one. */
+  sessionRules?: { allowed: (key: string) => string[]; allow: (key: string, rule: string) => void }
   /** 020 FR5: off-limits denials, which never reach `confirm`. */
   audit?: (entry: AuditEntry) => void
 }
@@ -47,6 +53,15 @@ export async function scopeDecision(payload: Record<string, unknown>, key: strin
       return (await opts.confirm(key, tool, input, { action: c.class, summary: c.summary }))
         ? decide('allow', 'Approved on Telegram.')
         : deny(`The owner did not approve this ${c.class} action. Don't retry it; ask what they want instead.`)
+    }
+  }
+
+  if (tool.startsWith(`${CHROME}__`) && !isReadOnly(tool, input)) {
+    const p = opts.policy(key)
+    const rules = [...p.alwaysAllow ?? [], ...opts.sessionRules?.allowed(key) ?? []]
+    if (p.permissionMode !== 'bypassPermissions' && !rules.includes(CHROME)) {
+      if (!await opts.confirm(key, tool, input)) return deny('The owner did not allow using their Chrome here. Stop using it and say so.')
+      opts.sessionRules?.allow(key, CHROME)
     }
   }
 

@@ -17,7 +17,7 @@ import { randomBytes } from 'crypto'
 import { basename, join } from 'path'
 import { STATE_DIR, initAccess, setBotUsername, loadAccess, dmCommandGate, checkApprovals, saveAccess } from './access.ts'
 import { createApprovals } from './policy/approvals.ts'
-import { addAlwaysAllow, policyKey, policyOf } from './policy/resolve.ts'
+import { addAlwaysAllow, ownersOnly, policyKey, policyOf } from './policy/resolve.ts'
 import { scopeDecision } from './policy/scope.ts'
 import { createAudit } from './policy/audit.ts'
 import { isTrustedCwd, policyArgs, policySettings } from './policy/args.ts'
@@ -28,7 +28,7 @@ import { startBrowser } from './browser/server.ts'
 import { registerSignin } from './browser/signin.ts'
 import { createHandoffs } from './browser/handoff.ts'
 import { createActionConfirm } from './policy/actionConfirm.ts'
-import { ACTION_GUARD_INSTRUCTIONS } from './agent/prompt.ts'
+import { ACTION_GUARD_INSTRUCTIONS, CHROME_INSTRUCTIONS } from './agent/prompt.ts'
 import { startHookServer } from './hooks/endpoint.ts'
 import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, nameChat, openInboxDb, type Item } from './watch/store.ts'
@@ -366,7 +366,7 @@ const resumer = createResumer({
 const inboxDb = config.watch ? openInboxDb(inboxPath(STATE_DIR)) : undefined
 const watchTools = inboxDb && createWatchTools({
   db: inboxDb, stateDir: STATE_DIR, api: bot.api, spawn: bunSendSpawn, audit: e => audit(e),
-  isOwnerChat: key => policyOf(key).allowOthersOnSubscription !== true,
+  isOwnerChat: key => ownersOnly(policyOf(key)),
   // T1308: add/pause/resume/remove reach the running supervisor (created below).
   live: { start: s => watch?.supervisor.startSource(s), stop: id => watch?.supervisor.stopSource(id) },
   // 013 FR16: the first source added offers the digest setup; settings changes reschedule it.
@@ -533,7 +533,7 @@ const hookServer = startHookServer({ authToken: hookToken, log, ingest: watch?.r
     if (run) log(`subagent ${run.type} for ${key} took ${Math.round(run.ms / 1000)}s`)
   },
   'pre-compact': (payload, key) => { void reflection.enqueue(key, payload, true) },
-  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm, actionGuard: config.actionGuard, audit }),
+  'pre-tool-use': (payload, key) => scopeDecision(payload, key, { policy: policyOf, trustedDirs: () => loadAccess().trustedDirs ?? [], extraDirs: [INBOX_DIR], confirm: approvals.confirm, actionGuard: config.actionGuard, audit, sessionRules: lifecycle }),
 } })
 writeHookSettings(SETTINGS_FILE, { port: hookServer.port, approvalTimeoutSec: APPROVAL_TIMEOUT_SEC })
 
@@ -571,6 +571,7 @@ function turnRefusal(policy: Policy): string | undefined {
 }
 
 function turnOpts(policy: Policy, signal: AbortSignal, onEvent: (ev: StreamEvent) => void): RunTurnOpts {
+  const chrome = config.chrome && ownersOnly(policy)
   return {
     settingsFile: SETTINGS_FILE,
     mcpPort: mcpServer.port,
@@ -579,7 +580,8 @@ function turnOpts(policy: Policy, signal: AbortSignal, onEvent: (ev: StreamEvent
     hookToken,
     cwd: discovery.cwdOf(policy),
     maxTurns: policy.maxTurns ?? config.maxTurns,
-    ...(config.actionGuard && { extraInstructions: ACTION_GUARD_INSTRUCTIONS }),
+    chrome,
+    ...(config.actionGuard && { extraInstructions: [ACTION_GUARD_INSTRUCTIONS, ...(chrome ? [CHROME_INSTRUCTIONS] : [])].join('\n\n') }),
     policyArgs: policyArgs(policy),
     settings: policySettings(policy),
     signal,

@@ -35,3 +35,9 @@ describe('config', () => {
     expect(createTurnBudget(0).take()).toBe(true)
   })
 })
+
+test('021 FR3: Chrome needs both flags', () => {
+  expect(loadConfig({}).chrome).toBe(false)
+  expect(loadConfig({ TELEGRAM_CHROME: '1' }).chrome).toBe(false)
+  expect(loadConfig({ TELEGRAM_CHROME: '1', TELEGRAM_ACTION_GUARD: '1' }).chrome).toBe(true)
+})

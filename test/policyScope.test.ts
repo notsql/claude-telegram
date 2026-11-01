@@ -98,3 +98,39 @@ describe('scopeDecision action guard', () => {
     expect(titles).toHaveLength(2)
   })
 })
+
+describe('021 FR5: Chrome', () => {
+  const chrome = 'mcp__claude-in-chrome__navigate'
+  const run = (policy: object, ok: boolean, tool = chrome) => {
+    const rules: string[] = []
+    const seen: string[] = []
+    const o = {
+      trustedDirs: () => [], extraDirs: [], policy: () => policy as any,
+      confirm: async (_k: string, t: string) => { seen.push(t); return ok },
+      sessionRules: { allowed: () => rules, allow: (_k: string, r: string) => void rules.push(r) },
+    }
+    const go = () => scopeDecision({ tool_name: tool, tool_input: { url: 'https://x' }, cwd: '/w' }, '1', o) as Promise<any>
+    return { go, seen }
+  }
+
+  test('asks once a session', async () => {
+    const s = run({}, true)
+    expect(await s.go()).toEqual({})
+    expect(await s.go()).toEqual({})
+    expect(s.seen).toEqual([chrome])
+  })
+
+  test('a denial blocks the call and asks again next time', async () => {
+    const s = run({}, false)
+    expect((await s.go()).hookSpecificOutput.permissionDecision).toBe('deny')
+    await s.go()
+    expect(s.seen).toHaveLength(2)
+  })
+
+  test('read tools, bypass chats and an Always rule are not asked', async () => {
+    for (const s of [run({}, false, 'mcp__claude-in-chrome__get_page_text'), run({ permissionMode: 'bypassPermissions' }, false), run({ alwaysAllow: ['mcp__claude-in-chrome'] }, false)]) {
+      expect(await s.go()).toEqual({})
+      expect(s.seen).toEqual([])
+    }
+  })
+})
