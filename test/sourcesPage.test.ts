@@ -92,7 +92,7 @@ test('✏️ Something else asks in the owner DM; the owner\'s reply starts setu
   expect(s.asked).toHaveLength(1)
   expect(s.asked[0]!.chatId).toBe('42')
   expect(s.asked[0]!.extra.reply_markup.force_reply).toBe(true)
-  const reply = (from: number, text: string, to = 50) => ({ from: { id: from }, chat: { id: 42, type: 'private' }, message: { text, reply_to_message: { message_id: to } } }) as any
+  const reply = (from: number, text: string, to = 50) => ({ from: { id: from }, chat: { id: 42, type: 'private' }, message: { text, chat: { id: 42, type: 'private' }, reply_to_message: { message_id: to } } }) as any
   expect(await s.ui.addReply(reply(42, 'hi', 49))).toBe(false)
   expect(await s.ui.addReply(reply(42, 'my Outlook inbox'))).toBe(true)
   expect(s.setups).toEqual([['Watch this as a new source with source_add, installing whatever it needs: my Outlook inbox', 'Add source: my Outlook inbox']])
