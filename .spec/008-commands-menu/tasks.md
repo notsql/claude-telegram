@@ -54,3 +54,5 @@ Depends on: 001–004 for the core set. Hooks into 005–007 as they land.
   *Verify:* `test/pluginStore.test.ts` passes.
 - [x] **T829** 📍 Updates chat on ⚙️ Settings: one bot-wide target for automatic messages, replacing 📍 on 📡 Sources (FR23).
   *Verify:* `test/policyUi.test.ts`, `test/sourcesPage.test.ts` and `test/digestPage.test.ts` pass.
+- [x] **T830** 🔕 Automatic messages off: one bot-wide switch on ⚙️ Settings that stops every automatic message but 🧩 Installed notices (FR24).
+  *Verify:* `test/policyUi.test.ts`, `test/watchDeliver.test.ts` and `test/watchOnboard.test.ts` pass, and with it off no digest, summary, health notice or proposal is sent.

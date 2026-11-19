@@ -6,7 +6,7 @@
  * keeps its 013 name, `inbox-target.json`, so an existing choice carries over.
  */
 
-import { rmSync } from 'fs'
+import { existsSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { readJson, writeJson } from '../util/files.ts'
 
@@ -20,6 +20,14 @@ export const clearUpdatesTarget = (stateDir: string) => rmSync(path(stateDir), {
 
 /** The session key automatic messages go to: the 📍 chat, else the owner DM. */
 export const updatesKey = (stateDir: string, owner: string) => loadUpdatesTarget(stateDir)?.key ?? owner
+
+/** FR24: automatic messages are on unless the `automatic-off` marker exists. */
+const offPath = (stateDir: string) => join(stateDir, 'automatic-off')
+export const automaticOn = (stateDir: string) => !existsSync(offPath(stateDir))
+export function setAutomatic(stateDir: string, on: boolean): void {
+  if (on) rmSync(offPath(stateDir), { force: true })
+  else writeFileSync(offPath(stateDir), `${new Date().toISOString()}\n`)
+}
 
 /** "this chat", "your DM" or the chosen chat's title. */
 export function updatesWhere(stateDir: string, here: string): string {

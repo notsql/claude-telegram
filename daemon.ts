@@ -34,7 +34,7 @@ import { writeHookSettings } from './hooks/settings.ts'
 import { inboxPath, insertItem, nameChat, openInboxDb, type Item } from './watch/store.ts'
 import { tgcliChats } from './watch/adapters/tgcli.ts'
 import { loadSources, recordItem, setEnabled, type Source } from './watch/registry.ts'
-import { updatesKey } from './telegram/updates.ts'
+import { automaticOn, updatesKey } from './telegram/updates.ts'
 import { createHealth, registerHealthButtons } from './watch/health.ts'
 import { runSweep } from './watch/sweep.ts'
 import { adapterFor, createSupervisor, type RunPoller } from './watch/supervisor.ts'
@@ -374,7 +374,7 @@ const watchTools = watchDb && createWatchTools({
   // T1308: add/pause/resume/remove reach the running supervisor (created below).
   live: { start: s => watch?.supervisor.startSource(s), stop: id => watch?.supervisor.stopSource(id) },
   // 013 FR16: the first source added offers the digest setup; settings changes reschedule it.
-  added: () => digestUi?.offer().catch(e => log(`digest setup: ${e}`)),
+  added: () => (automaticOff() ? undefined : digestUi?.offer())?.catch(e => log(`digest setup: ${e}`)),
   digestChanged: () => digestCrons?.reload(),
 })
 const browser = config.browser ? startBrowser({ dir: join(STATE_DIR, 'browser'), log }) : undefined
@@ -410,6 +410,8 @@ const skillContext = new Map<string, string>()
 const BOT_ID = TOKEN.split(':')[0]
 const inboxTarget = (owner: string): { chatId: string; threadId?: number } => parseKey(updatesKey(STATE_DIR, owner))
 const updatesTo = () => { const owner = loadAccess().allowFrom[0]; return owner && updatesKey(STATE_DIR, owner) }
+// 008 FR24: 🔕 on ⚙️ Settings stops automatic messages (all but 🧩 Installed notices).
+const automaticOff = () => !automaticOn(STATE_DIR)
 // 013 FR1, FR12: source watchers, only with TELEGRAM_WATCH=1. Items land in inbox.db,
 // go through triage, and urgent/action items ping the owner (first allowFrom).
 // Mutes and VIPs are in-memory until 014 makes them memory.
@@ -424,7 +426,7 @@ const watch = config.watch ? (() => {
     ...memory.list().filter(e => e.type === 'user' || e.type === 'project'),
   ].map(e => e.description))
   const triage = createTriage({ db, rules, log, run: runOneShot, budget: { take: () => budget.take() }, examples, owner: ownerFacts, settleMs: 180_000, intervalMs: 60_000 })
-  const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, examples, owner: ownerFacts,
+  const deliver = owner ? createDeliver({ db, api: bot.api, target: () => inboxTarget(owner), off: automaticOff, vips: rules.vips, log, run: runOneShot, budget: { take: () => budget.take() }, examples, owner: ownerFacts,
     dislike: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: false, at: Date.now() }),
     like: r => addExample(STATE_DIR, { itemId: r.id, text: r.text, want: true, at: Date.now() }),
     mute: (_source, fromId) => void rules.mutedSenders.push(fromId),
@@ -497,7 +499,7 @@ const watch = config.watch ? (() => {
   })
   // FR10: one Fix/Pause notice per failing or silent source.
   const health = owner ? createHealth({
-    stateDir: STATE_DIR, api: bot.api, target: () => inboxTarget(owner), log,
+    stateDir: STATE_DIR, api: bot.api, target: () => inboxTarget(owner), off: automaticOff, log,
     fix: (prompt, key = owner) => turns.enqueue(key, {
       prompt: renderInbound(prompt, { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }),
       text: 'Fix source',
@@ -697,7 +699,7 @@ const sessionsUi = registerSessions(bot, {
 const usageCommand = registerUsage(bot)
 const settingsCommand = registerSettings(bot, { discovery, audit, refreshMenu: () => menu.refresh(), sources: !!watch, signin: !!browser, actions: config.actionGuard, stateDir: STATE_DIR })
 if (config.actionGuard) registerActions(bot, AUDIT_FILE)
-const signinUi = browser && handoffs && registerSignin(bot, { open: url => browser.open(url), log, handoffs, updatesTo: () => updatesTo() || undefined, dir: join(STATE_DIR, 'browser') })
+const signinUi = browser && handoffs && registerSignin(bot, { open: url => browser.open(url), log, handoffs, updatesTo: () => automaticOff() ? undefined : updatesTo() || undefined, dir: join(STATE_DIR, 'browser') })
 const cronUi = registerCron(bot, { stateDir: STATE_DIR, tools: scheduleTools, reload: () => scheduler.reload(), runNow: id => queueJob(id) })
 registerClose(bot)
 if (watch?.deliver) registerInboxButtons(bot, watch.deliver)
@@ -721,7 +723,7 @@ const sourcesUi = watch && registerSources(bot, { stateDir: STATE_DIR, db: watch
   setup: (prompt, text, key = loadAccess().allowFrom[0]) => {
     if (key) turns.enqueue(key, { prompt: renderInbound(prompt, { origin: 'inbox', chat_id: parseKey(key).chatId, ts: new Date().toISOString() }), text })
   },
-  added: () => digestUi?.offer().catch(e => log(`digest setup: ${e}`)),
+  added: () => (automaticOff() ? undefined : digestUi?.offer())?.catch(e => log(`digest setup: ${e}`)),
 })
 // 013 FR16: 🗞 Digest pages and the one-time setup message.
 const digestUi = watch && registerDigest(bot, { stateDir: STATE_DIR, to: () => updatesTo() || undefined, reload: () => digestCrons?.reload() })
@@ -837,13 +839,13 @@ async function fireSystemJob(id: SystemJobId | 'digest'): Promise<void> {
   // 013 FR8: a one-shot summary, no turn; FR16: at the owner's times, with their choices.
   if (id === 'digest') {
     const owner = loadAccess().allowFrom[0]
-    if (watch && owner) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: digestTitle(new Date().getHours()), run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, owner: watch.ownerFacts, prefs: prefsOf(STATE_DIR), log })
+    if (watch && owner && !automaticOff()) await runDigest({ db: watch.db, api: bot.api, to: inboxTarget(owner), title: digestTitle(new Date().getHours()), run: runOneShot, budget: { take: () => budget.take() }, examples: watch.examples, owner: watch.ownerFacts, prefs: prefsOf(STATE_DIR), log })
     return
   }
   // 014 T1408: repeated tasks become proposals in the Updates chat.
   if (id === 'pattern-mining') {
     const to = updatesTo()
-    if (!inboxDb || !to) return
+    if (!inboxDb || !to || automaticOff()) return
     const sent = await runMining({
       db: inboxDb, history: historyDb, run: runOneShot, budget: { take: () => budget.take() }, log,
       ownersOnly: chat => ownersOnly(policyOf(chat)),
@@ -863,9 +865,11 @@ async function fireSystemJob(id: SystemJobId | 'digest'): Promise<void> {
   }
   // 004 FR8: run as tg-curator (009).
   if (id === 'memory-consolidation') return ownerTurn('memory consolidation', 'Weekly memory consolidation', CONSOLIDATE_PROMPT, { agent: 'tg-curator' })
-  skillsUi.proposeArchives(owner => updatesKey(STATE_DIR, owner))
-  const to = updatesTo()
-  if (to) agentsUi.proposeArchives(to)
+  if (!automaticOff()) {
+    skillsUi.proposeArchives(owner => updatesKey(STATE_DIR, owner))
+    const to = updatesTo()
+    if (to) agentsUi.proposeArchives(to)
+  }
   // 009 FR12: skill-creator evals, only when that plugin is installed and something has enough runs.
   const targets = evalTargets(agentUsage.all(), skillUsage.all())
   if (skillCreatorInstalled(claudeDir()) && (targets.agents.length || targets.skills.length)) await ownerTurn('evals', 'Weekly evals', evalPrompt(targets))
@@ -882,7 +886,7 @@ if (systemJobs.caughtUp.length) log(`scheduler: catching up system jobs ${system
 // 013 FR16: digest times come from digest-prefs.json and are rebuilt on change.
 const digestCrons = watch ? startDigestCrons({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone, prefs: () => prefsOf(STATE_DIR), run: () => turns.enqueue(SYS_PREFIX + 'digest', { prompt: '', text: '' }) }) : undefined
 // An install that already has sources gets the setup once.
-if (watch && (() => { try { return loadSources(STATE_DIR).length } catch { return 0 } })()) void digestUi?.offer().catch(e => log(`digest setup: ${e}`))
+if (watch && (() => { try { return loadSources(STATE_DIR).length } catch { return 0 } })()) void (automaticOff() ? undefined : digestUi?.offer())?.catch(e => log(`digest setup: ${e}`))
 void signinUi?.offer().catch(e => log(`browser onboarding: ${e}`))
 
 let shuttingDown = false

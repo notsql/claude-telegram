@@ -24,7 +24,7 @@ import { EXTENSIONS_CALLBACK, extensionsView, mcpSwitchesView, pluginSwitchesVie
 import { alwaysRuleAt, applyPolicyEdit, bypassConfirmView, EDITABLE, fieldView, label, permissionsView, POLICY_CALLBACK, policyView, resetPolicy, type UpdatesHere, resetView, ruleLabel, rulesView, ruleView, type EditableField } from '../policyUi.ts'
 import { STORE_CALLBACK, categoriesView, confirmView, listView, pluginView, resultView } from '../storeUi.ts'
 import { answer, isOwner, keyOf, ownerOnly } from './ui.ts'
-import { clearUpdatesTarget, loadUpdatesTarget, saveUpdatesTarget, updatesWhere } from '../updates.ts'
+import { automaticOn, clearUpdatesTarget, loadUpdatesTarget, saveUpdatesTarget, setAutomatic, updatesWhere } from '../updates.ts'
 
 type View = { text: string; keyboard: InlineKeyboardMarkup }
 
@@ -44,18 +44,25 @@ export type SettingsDeps = {
 }
 
 export function registerSettings(bot: Bot, { discovery, audit, refreshMenu, sources, signin, actions, stateDir }: SettingsDeps): Command {
-  const updates = (here: string, dm: boolean): UpdatesHere => ({ where: updatesWhere(stateDir, here), isHere: (loadUpdatesTarget(stateDir)?.key ?? loadAccess().allowFrom[0]) === here, dm })
+  const updates = (here: string, dm: boolean): UpdatesHere => ({ where: updatesWhere(stateDir, here), isHere: (loadUpdatesTarget(stateDir)?.key ?? loadAccess().allowFrom[0]) === here, dm, on: automaticOn(stateDir) })
   bot.callbackQuery(POLICY_CALLBACK, async ctx => {
     const msg = ctx.callbackQuery.message
     if (!isOwner(ctx) || !msg) return ownerOnly(ctx)
     const here = keyOf(msg)
     const key = policyKey(here)
-    const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y' | 'b' | 'u', string?, string?]
+    const [, action, a, b] = ctx.match as unknown as [string, 'm' | 'p' | 'f' | 's' | 'c' | 'r' | 'x' | 'z' | 'y' | 'b' | 'u' | 'a', string?, string?]
     const dm = msg.chat.type === 'private'
     const show = (r: View) => ctx.editMessageText(r.text, { reply_markup: withClose(r.keyboard) }).catch(() => {})
     const user = String(ctx.from.id)
     const home = () => policyView(key, policyOf(here), { sources, signin, actions, updates: updates(here, dm) })
     switch (action) {
+      case 'a': {
+        // FR24: bot-wide, like 📍.
+        setAutomatic(stateDir, a === 'on')
+        audit({ event: 'policy', key: '*', user, field: 'automaticMessages', value: a === 'on' ? 'on' : 'off' })
+        void answer(ctx, a === 'on' ? '🔔 Automatic messages on' : '🔕 Automatic messages off')
+        return void await show(home())
+      }
       case 'u': {
         // FR23: a DM is only ever the owner's own, so it means "back to my DM".
         if (a === 'dm' || dm) clearUpdatesTarget(stateDir)
