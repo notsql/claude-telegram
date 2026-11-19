@@ -33,12 +33,23 @@ test('main page describes each setting, with buttons that explain their values',
 
 test('FR23: 📍 offers to send automatic messages here, or back to the DM from the chosen group', () => {
   const data = (u: Parameters<typeof policyView>[2]) => buttons(policyView('5', {}, u)).map(x => x.callback_data)
-  expect(data({ updates: { where: 'your DM', isHere: false, dm: false } })).toContain('pol:u')
-  expect(data({ updates: { where: 'this chat', isHere: true, dm: false } })).toContain('pol:u:dm')
-  const dm = data({ updates: { where: 'your DM', isHere: true, dm: true } })
+  expect(data({ updates: { where: 'your DM', isHere: false, dm: false, on: true } })).toContain('pol:u')
+  expect(data({ updates: { where: 'this chat', isHere: true, dm: false, on: true } })).toContain('pol:u:dm')
+  const dm = data({ updates: { where: 'your DM', isHere: true, dm: true, on: true } })
   expect(dm.some(d => d?.startsWith('pol:u'))).toBe(false)
-  expect(policyView('5', {}, { updates: { where: 'Family', isHere: false, dm: true } }).text).toContain('📍 Automatic messages (digests, inbox summaries, notices and suggestions) go to Family.')
+  expect(policyView('5', {}, { updates: { where: 'Family', isHere: false, dm: true, on: true } }).text).toContain('📍 Automatic messages (digests, inbox summaries, notices and suggestions) go to Family.')
   expect(POLICY_CALLBACK.test('pol:u') && POLICY_CALLBACK.test('pol:u:dm')).toBe(true)
+})
+
+test('FR24: 🔕 turns automatic messages off for the whole bot; off hides 📍 and offers 🔔', () => {
+  const on = policyView('5', {}, { updates: { where: 'your DM', isHere: false, dm: false, on: true } })
+  expect(buttons(on).map(x => x.callback_data)).toContain('pol:a:off')
+  const off = policyView('5', {}, { updates: { where: 'your DM', isHere: false, dm: false, on: false } })
+  const data = buttons(off).map(x => x.callback_data)
+  expect(data).toContain('pol:a:on')
+  expect(data.some(d => d?.startsWith('pol:u'))).toBe(false)
+  expect(off.text).toContain('🔕 Automatic messages (digests, inbox summaries, notices and suggestions) are off for the whole bot.')
+  expect(POLICY_CALLBACK.test('pol:a:off') && POLICY_CALLBACK.test('pol:a:on')).toBe(true)
 })
 
 test('permissions traverse: kinds, then paged rules, then one rule; only Always rules can be removed', () => {

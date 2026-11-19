@@ -13,7 +13,7 @@ const at = (h: number, m = 0) => new Date(2026, 9, 12, h, m).getTime()
 
 type Brief = z.infer<typeof BriefSchema>
 
-function setup(start = at(12), vips: string[] = []) {
+function setup(start = at(12), vips: string[] = [], off = () => false) {
   const db = openInboxDb(':memory:')
   const sent: { chatId: string; text: string; extra: any }[] = []
   const inputs: string[] = []
@@ -33,7 +33,7 @@ function setup(start = at(12), vips: string[] = []) {
   let t = start
   let target: { chatId: string; threadId?: number } = { chatId: '42' }
   const d = createDeliver({
-    db, api, target: () => target, vips, mute: (s, f) => muted.push(`${s}:${f}`), now: () => t,
+    db, api, target: () => target, off, vips, mute: (s, f) => muted.push(`${s}:${f}`), now: () => t,
     run: (async (agent: string, input: string) => { inputs.push(input); return agent === 'tg-summarizer' ? { summary: 'They run the club together.' } : judge(input) }) as never,
     budget: { take: () => budget },
     examples: () => '<example want="no">reply to lunch</example>',
@@ -331,4 +331,16 @@ test('🔕 and 🤖 keep how the conversation ended, not one fragment', () => {
   expect(s.dislikedText).toEqual(['Boss: run the script? / owner: yes / Boss: like'])
   s.d.tap('do', a)
   expect(s.liked).toEqual(['Boss: run the script? / owner: yes / Boss: like'])
+})
+
+test('FR24 (008): with automatic messages off, due items are held, then sent once back on', async () => {
+  let off = true
+  const s = setup(at(12), [], () => off)
+  const a = s.add(1, 'action', { text: 'lunch at 1?' })
+  await s.d.tick()
+  expect(s.sent).toHaveLength(0)
+  expect(s.status(a).status).toBe('new')
+  off = false
+  await s.d.tick()
+  expect(s.sent).toHaveLength(1)
 })

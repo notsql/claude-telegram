@@ -27,7 +27,7 @@ export const EDITABLE = {
 
 export type EditableField = keyof typeof EDITABLE
 
-export const POLICY_CALLBACK = /^pol:(m|p|f|s|c|r|x|z|y|b|u)(?::(\w+))?(?::(\w+))?$/
+export const POLICY_CALLBACK = /^pol:(m|p|f|s|c|r|x|z|y|b|u|a)(?::(\w+))?(?::(\w+))?$/
 const PAGE = 8
 
 /** What each setting does, and what each value means, shown before you pick. */
@@ -109,9 +109,9 @@ const button = (text: string, data: string): InlineKeyboardButton => ({ text: te
 const SETTINGS = (Object.keys(EDITABLE) as EditableField[]).filter(f => f !== 'permissionMode')
 
 /** Bot-wide 📍 Updates chat (FR23) as seen from this chat. */
-export type UpdatesHere = { where: string; isHere: boolean; dm: boolean }
+export type UpdatesHere = { where: string; isHere: boolean; dm: boolean; on: boolean }
 
-/** The main page: each setting with what it does, as buttons, then Permissions, 📍 Updates chat and Reset. */
+/** The main page: each setting with what it does, as buttons, then Permissions, 🔕/📍 automatic messages and Reset. */
 export function policyView(key: string, p: Policy, o: { sources?: boolean; signin?: boolean; actions?: boolean; updates?: UpdatesHere } = {}): PolicyView {
   const lines = [`⚙️ Settings for ${key}`, '']
   for (const f of SETTINGS) lines.push(`${label(f)}: ${value(p, f)}`, `${ABOUT[f].what}`, '')
@@ -121,7 +121,11 @@ export function policyView(key: string, p: Policy, o: { sources?: boolean; signi
   if (o.sources) lines.push('📡 Sources: inboxes watched for pings and digests.')
   if (o.signin) lines.push("🌐 Browser sign-in: sign in to sites in the agent's browser, so it can use them for you.")
   if (o.actions) lines.push('🛡 Actions: what you approved or blocked for sending, paying, signing and deleting.')
-  if (o.updates) lines.push(`📍 Automatic messages (digests, inbox summaries, notices and suggestions) go to ${o.updates.where}. This one is for the whole bot.`)
+  if (o.updates) {
+    lines.push(o.updates.on
+      ? `📍 Automatic messages (digests, inbox summaries, notices and suggestions) go to ${o.updates.where}. This one is for the whole bot.`
+      : '🔕 Automatic messages (digests, inbox summaries, notices and suggestions) are off for the whole bot. Replies, approvals and your scheduled jobs still arrive.')
+  }
   if (p.cwd) lines.push(`Working directory: ${p.cwd}`)
   lines.push('', 'Tap a setting to change it.')
   return {
@@ -134,7 +138,8 @@ export function policyView(key: string, p: Policy, o: { sources?: boolean; signi
       ...(o.sources ? [[button('📡 Sources', 'src:m')]] : []),
       ...(o.signin ? [[button('🌐 Browser sign-in', 'web:m')]] : []),
       ...(o.actions ? [[button('🛡 Actions', 'act:m')]] : []),
-      ...(!o.updates ? [] : !o.updates.isHere ? [[button('📍 Send automatic messages here', 'pol:u')]] : o.updates.dm ? [] : [[button('↩️ Send automatic messages to my DM', 'pol:u:dm')]]),
+      ...(!o.updates ? [] : [[button(o.updates.on ? '🔕 Turn off automatic messages' : '🔔 Turn on automatic messages', o.updates.on ? 'pol:a:off' : 'pol:a:on')]]),
+      ...(!o.updates?.on ? [] : !o.updates.isHere ? [[button('📍 Send automatic messages here', 'pol:u')]] : o.updates.dm ? [] : [[button('↩️ Send automatic messages to my DM', 'pol:u:dm')]]),
       [button('↺ Reset to defaults', 'pol:z')],
     ] },
   }

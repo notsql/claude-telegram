@@ -118,12 +118,12 @@ const wa = (over: Partial<Source> = {}): Source => ({
   cursor: null, status: 'ok', lastItemAt: null, errors: 0, ...over,
 })
 
-function health(stateDir: string, now: () => number) {
+function health(stateDir: string, now: () => number, off = () => false) {
   const notices: { chatId: string; text: string; extra: any }[] = []
   const fixes: string[] = []
   const paused: string[] = []
   const h = createHealth({
-    stateDir, target: () => ({ chatId: '-100', threadId: 7 }), log: () => {}, now,
+    stateDir, target: () => ({ chatId: '-100', threadId: 7 }), off, log: () => {}, now,
     api: { async sendMessage(chatId, text, extra) { notices.push({ chatId, text, extra }) } },
     fix: p => fixes.push(p),
     pause: id => { setEnabled(stateDir, id, false); paused.push(id) },
@@ -198,4 +198,16 @@ test('findBin also looks in the user bin dirs launchd leaves off PATH', () => {
     process.env.HOME = HOME
     process.env.PATH = PATH
   }
+})
+
+test('FR24 (008): with automatic messages off, a silent source is reported only once they are back on', async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), 'tg-health-'))
+  saveSources(stateDir, [wa({ config: { command: ['/bin/wacli'], expectSilenceMaxSec: 3600 }, lastItemAt: 0 })])
+  let off = true
+  const { h, notices } = health(stateDir, () => 3600_001, () => off)
+  await h.check()
+  expect(notices).toEqual([])
+  off = false
+  await h.check()
+  expect(notices).toHaveLength(1)
 })

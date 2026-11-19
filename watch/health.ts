@@ -20,6 +20,8 @@ export type HealthDeps = {
   api: { sendMessage(chatId: string, text: string, extra: { message_thread_id?: number; reply_markup: { inline_keyboard: InlineKeyboardButton[][] } }): Promise<unknown> }
   /** Where notices go: the inbox delivery target (deliver.ts). */
   target: () => { chatId: string; threadId?: number }
+  /** 008 FR24: automatic messages are off; a problem is reported once they are back on. */
+  off?: () => boolean
   /** Starts the Fix turn in the owner DM. */
   fix: (prompt: string, key?: string) => void
   /** Pauses the source in sources.json and the supervisor. */
@@ -50,6 +52,7 @@ export function createHealth(d: HealthDeps) {
   let timer: ReturnType<typeof setInterval> | undefined
 
   async function check(): Promise<void> {
+    if (d.off?.()) return
     let sources: Source[]
     try { sources = loadSources(d.stateDir) } catch { return }
     for (const s of sources) {

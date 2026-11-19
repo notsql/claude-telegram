@@ -55,6 +55,8 @@ export type DeliverOpts = {
   api: DeliverApi
   /** Where messages go: a chat id and, for a forum topic, its thread. */
   target: () => { chatId: string; threadId?: number }
+  /** 008 FR24: automatic messages are off; items are held, not sent. */
+  off?: () => boolean
   vips: string[]
   run: RunBrief & RunNote
   /** Daily turn budget (001), shared with chat turns. */
@@ -309,6 +311,7 @@ export function createDeliver(o: DeliverOpts) {
         `UPDATE items AS i SET status = 'done' WHERE label IN ('urgent', 'action') AND from_me = 0
            AND status IN ('new', 'snoozed') AND ${REPLIED}`,
       ).run()
+      if (o.off?.()) return
       const quietNow = inQuietHours(t, quiet)
       if (!quietNow) {
         while (sent.length && sent[0]! <= t - 3_600_000) sent.shift()
